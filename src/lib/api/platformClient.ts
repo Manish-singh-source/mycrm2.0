@@ -1,22 +1,30 @@
 import { apiRequest } from '@/lib/api/httpClient';
+import type { ApiRequestOptions } from '@/lib/api/apiTypes';
 
 export const platformClient = {
-  get: <TResponse>(path: string, init?: RequestInit) =>
-    apiRequest<TResponse>(path, { ...init, method: 'GET', guard: 'platform' }),
-  post: <TResponse, TBody = unknown>(path: string, body?: TBody, init?: RequestInit) =>
-    apiRequest<TResponse>(path, {
-      ...init,
+  get: <TData>(path: string, options?: ApiRequestOptions) =>
+    apiRequest<TData>(path, { ...options, method: 'GET', guard: 'platform' }),
+  post: <TData, TBody = unknown>(path: string, body?: TBody, options?: ApiRequestOptions) =>
+    apiRequest<TData>(path, {
+      ...options,
       method: 'POST',
       guard: 'platform',
-      body: body instanceof FormData ? body : JSON.stringify(body ?? {})
+      body
     }),
-  patch: <TResponse, TBody = unknown>(path: string, body?: TBody, init?: RequestInit) =>
-    apiRequest<TResponse>(path, {
-      ...init,
+  put: <TData, TBody = unknown>(path: string, body?: TBody, options?: ApiRequestOptions) =>
+    apiRequest<TData>(path, {
+      ...options,
+      method: 'PUT',
+      guard: 'platform',
+      body
+    }),
+  patch: <TData, TBody = unknown>(path: string, body?: TBody, options?: ApiRequestOptions) =>
+    apiRequest<TData>(path, {
+      ...options,
       method: 'PATCH',
       guard: 'platform',
-      body: JSON.stringify(body ?? {})
+      body
     }),
-  delete: <TResponse>(path: string, init?: RequestInit) =>
-    apiRequest<TResponse>(path, { ...init, method: 'DELETE', guard: 'platform' })
+  delete: <TData>(path: string, options?: ApiRequestOptions) =>
+    apiRequest<TData>(path, { ...options, method: 'DELETE', guard: 'platform' })
 };

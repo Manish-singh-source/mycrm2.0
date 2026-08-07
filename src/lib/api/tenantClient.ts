@@ -1,26 +1,35 @@
 import { apiRequest } from '@/lib/api/httpClient';
+import type { ApiRequestOptions } from '@/lib/api/apiTypes';
 
 export function createTenantClient(tenant: string) {
   return {
-    get: <TResponse>(path: string, init?: RequestInit) =>
-      apiRequest<TResponse>(path, { ...init, method: 'GET', guard: 'tenant', tenant }),
-    post: <TResponse, TBody = unknown>(path: string, body?: TBody, init?: RequestInit) =>
-      apiRequest<TResponse>(path, {
-        ...init,
+    get: <TData>(path: string, options?: ApiRequestOptions) =>
+      apiRequest<TData>(path, { ...options, method: 'GET', guard: 'tenant', tenant }),
+    post: <TData, TBody = unknown>(path: string, body?: TBody, options?: ApiRequestOptions) =>
+      apiRequest<TData>(path, {
+        ...options,
         method: 'POST',
         guard: 'tenant',
         tenant,
-        body: body instanceof FormData ? body : JSON.stringify(body ?? {})
+        body
       }),
-    patch: <TResponse, TBody = unknown>(path: string, body?: TBody, init?: RequestInit) =>
-      apiRequest<TResponse>(path, {
-        ...init,
+    put: <TData, TBody = unknown>(path: string, body?: TBody, options?: ApiRequestOptions) =>
+      apiRequest<TData>(path, {
+        ...options,
+        method: 'PUT',
+        guard: 'tenant',
+        tenant,
+        body
+      }),
+    patch: <TData, TBody = unknown>(path: string, body?: TBody, options?: ApiRequestOptions) =>
+      apiRequest<TData>(path, {
+        ...options,
         method: 'PATCH',
         guard: 'tenant',
         tenant,
-        body: JSON.stringify(body ?? {})
+        body
       }),
-    delete: <TResponse>(path: string, init?: RequestInit) =>
-      apiRequest<TResponse>(path, { ...init, method: 'DELETE', guard: 'tenant', tenant })
+    delete: <TData>(path: string, options?: ApiRequestOptions) =>
+      apiRequest<TData>(path, { ...options, method: 'DELETE', guard: 'tenant', tenant })
   };
 }

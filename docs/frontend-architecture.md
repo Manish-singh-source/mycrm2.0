@@ -21,6 +21,12 @@ The active router is intentionally a shell in `src/app/router/appRouter.tsx`; fu
 
 Platform APIs use `/api/platform/v1` and tenant APIs use `/api/tenant/v1`, matching the docs. The tenant client requires a tenant slug or UUID so every request can include `X-Tenant`.
 
+Use `platformClient` and `createTenantClient(tenant)` from `src/lib/api`. Responses are normalized to `{ data, meta, links }`, including paginated list envelopes. API errors are thrown as `ApiError` with `status`, `code`, `validationErrors`, and `requestId`.
+
+Common list query params should be built with `createListQuery` and `withFilter`, which serialize filters as `filter[field]`. Mutating billing, finance, payroll, security, and bulk actions should pass `withIdempotency(group, action, subjectId)` so the API receives an `Idempotency-Key`.
+
+The HTTP wrapper retries read requests only for transient network/server failures. Mutations are never retried automatically.
+
 ## Shared UI
 
 Reusable component folders are in:

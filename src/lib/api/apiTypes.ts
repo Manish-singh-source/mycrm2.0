@@ -1,5 +1,7 @@
 export type ApiGuard = 'platform' | 'tenant';
 
+export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+
 export type ApiEnvelope<TData> = {
   data: TData;
   meta?: {
@@ -9,14 +11,17 @@ export type ApiEnvelope<TData> = {
   };
 };
 
+export type ApiLinks = {
+  first?: string;
+  last?: string;
+  prev?: string | null;
+  next?: string | null;
+  [key: string]: unknown;
+};
+
 export type PaginatedEnvelope<TData> = {
   data: TData[];
-  links?: {
-    first?: string;
-    last?: string;
-    prev?: string | null;
-    next?: string | null;
-  };
+  links?: ApiLinks;
   meta: {
     current_page: number;
     per_page: number;
@@ -26,12 +31,22 @@ export type PaginatedEnvelope<TData> = {
   };
 };
 
+export type NormalizedApiResponse<TData> = {
+  data: TData;
+  meta?: Record<string, unknown>;
+  links?: ApiLinks;
+};
+
 export type ApiErrorResponse = {
   message: string;
   error_code?: string;
   errors?: Record<string, string[]>;
   request_id?: string;
 };
+
+export type ValidationErrors = Record<string, string[]>;
+
+export type QueryPrimitive = string | number | boolean | null | undefined;
 
 export type ListQuery = {
   page?: number;
@@ -43,5 +58,22 @@ export type ListQuery = {
   date_from?: string;
   date_to?: string;
   view?: 'table' | 'grid' | 'kanban' | 'calendar' | 'gantt' | 'agenda';
-  filter?: Record<string, string | number | boolean | Array<string | number>>;
+  filter?: Record<string, QueryPrimitive | QueryPrimitive[]>;
 };
+
+export type ApiQuery = ListQuery & Record<string, QueryPrimitive | QueryPrimitive[] | Record<string, QueryPrimitive | QueryPrimitive[]>>;
+
+export type ApiRequestMetadata = {
+  idempotencyKey?: string;
+  timezone?: string;
+  locale?: string;
+  impersonationReason?: string;
+  office?: string;
+};
+
+export type ApiRequestOptions = Omit<RequestInit, 'body' | 'method'> &
+  ApiRequestMetadata & {
+    query?: ApiQuery;
+    body?: unknown;
+    retry?: boolean | number;
+  };
