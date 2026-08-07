@@ -27,6 +27,12 @@ Common list query params should be built with `createListQuery` and `withFilter`
 
 The HTTP wrapper retries read requests only for transient network/server failures. Mutations are never retried automatically.
 
+## Auth And Permissions
+
+Platform and tenant sessions are stored separately under `src/features/auth`. A platform session never sends `X-Tenant`; tenant API calls are created through `createTenantClient(tenant)` and must include a tenant slug or UUID for the `X-Tenant` header. `RequireAuth` protects platform and tenant shells, `PublicAuthRoute` redirects authenticated users away from login routes, and `RequirePermission`/`PermissionGate` handle forbidden states and permission-aware actions.
+
+Use `usePermission(guard)` for action visibility and `useSessionPreferences(guard)` for locale, timezone, and tenant office context. The HTTP layer clears only the matching session on a `401`; token refresh is available as an auth API placeholder and can be wired into an interceptor-style refresh queue later.
+
 ## Shared UI
 
 Reusable component folders are in:

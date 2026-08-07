@@ -3,11 +3,12 @@ import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { AuthLayout } from '@/layouts/AuthLayout';
 import { PlatformLayout } from '@/layouts/PlatformLayout';
 import { TenantLayout } from '@/layouts/TenantLayout';
+import { PublicAuthRoute } from '@/features/auth/guards/PublicAuthRoute';
 import { RequireAuth } from '@/features/auth/guards/RequireAuth';
+import { ForbiddenPage } from '@/pages/ForbiddenPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { PlaceholderPage } from '@/pages/PlaceholderPage';
 import { PLATFORM_ROUTES } from '@/features/platform/routes/platformRoutes';
-import { TENANT_ROUTES } from '@/features/tenant/routes/tenantRoutes';
 
 export const appRouter = createBrowserRouter([
   {
@@ -20,9 +21,33 @@ export const appRouter = createBrowserRouter([
     children: [
       {
         path: 'login',
-        element: <PlaceholderPage title="Sign in" description="Auth forms will be wired here." />
+        element: (
+          <PublicAuthRoute>
+            <PlaceholderPage title="Sign in" description="Platform and tenant auth forms will be wired here." />
+          </PublicAuthRoute>
+        )
+      },
+      {
+        path: 'platform/login',
+        element: (
+          <PublicAuthRoute guard="platform">
+            <PlaceholderPage title="Platform sign in" description="Platform admin login will call /auth/login." />
+          </PublicAuthRoute>
+        )
+      },
+      {
+        path: 'tenant/login',
+        element: (
+          <PublicAuthRoute guard="tenant">
+            <PlaceholderPage title="Tenant sign in" description="Tenant login will call /auth/login with tenant context." />
+          </PublicAuthRoute>
+        )
       }
     ]
+  },
+  {
+    path: '/forbidden',
+    element: <ForbiddenPage />
   },
   {
     path: '/platform',

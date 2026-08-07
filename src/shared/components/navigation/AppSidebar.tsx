@@ -17,6 +17,10 @@ function canShowItem(auth: ReturnType<typeof useAuthStore>, guard: AuthGuard, it
   return permissionAllowed && moduleAllowed;
 }
 
+function canShowGroup(auth: ReturnType<typeof useAuthStore>, guard: AuthGuard, group: NavGroup) {
+  return guard !== 'tenant' || !group.moduleCode || isModuleEnabled(auth, group.moduleCode);
+}
+
 export function AppSidebar({ guard, title, groups }: AppSidebarProps) {
   const auth = useAuthStore();
 
@@ -25,6 +29,7 @@ export function AppSidebar({ guard, title, groups }: AppSidebarProps) {
       <div className="app-sidebar__brand">{title}</div>
       <nav aria-label={`${title} navigation`}>
         {groups.map((group) => {
+          if (!canShowGroup(auth, guard, group)) return null;
           const visibleItems = group.items.filter((item) => canShowItem(auth, guard, item));
           if (visibleItems.length === 0) return null;
 

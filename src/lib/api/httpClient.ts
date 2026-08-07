@@ -32,7 +32,8 @@ function createRequestId() {
 
 function normalizeHeaders(options: RequestOptions, body: unknown) {
   const auth = authStore.getSnapshot();
-  const token = options.guard === 'platform' ? auth.platform.accessToken : auth.tenant.accessToken;
+  const session = options.guard === 'platform' ? auth.platform : auth.tenant;
+  const token = session.accessToken;
   const headers = new Headers(options.headers);
 
   if (!headers.has('Accept')) headers.set('Accept', 'application/json');
@@ -45,8 +46,8 @@ function normalizeHeaders(options: RequestOptions, body: unknown) {
 
   if (token) headers.set('Authorization', `Bearer ${token}`);
   if (options.idempotencyKey) headers.set('Idempotency-Key', options.idempotencyKey);
-  if (options.timezone) headers.set('X-Timezone', options.timezone);
-  if (options.locale) headers.set('X-Locale', options.locale);
+  if (options.timezone ?? session.timezone) headers.set('X-Timezone', options.timezone ?? session.timezone);
+  if (options.locale ?? session.locale) headers.set('X-Locale', options.locale ?? session.locale);
 
   if (options.guard === 'platform' && options.impersonationReason) {
     headers.set('X-Impersonation-Reason', options.impersonationReason);
@@ -54,7 +55,7 @@ function normalizeHeaders(options: RequestOptions, body: unknown) {
 
   if (options.guard === 'tenant') {
     if (options.tenant) headers.set('X-Tenant', options.tenant);
-    if (options.office) headers.set('X-Office', options.office);
+    if (options.office ?? auth.tenant.office) headers.set('X-Office', options.office ?? auth.tenant.office ?? '');
   }
 
   return headers;
@@ -135,7 +136,11 @@ async function runRequest<TData>(url: string, options: RequestOptions) {
       payload && typeof payload === 'object'
         ? (payload as { message?: string; error_code?: string; errors?: Record<string, string[]>; request_id?: string })
         : { message: String(payload) };
-    throw new ApiError(response.status, errorPayload.message ?? 'Request failed.', errorPayload);
+    const error = new ApiError(response.status, errorPayload.message ?? 'Request failed.', errorPayload);
+    if (error.status === 401) {
+      authStore.clear(options.guard);
+    }
+    throw error;
   }
 
   return normalizeEnvelope<TData>(payload);

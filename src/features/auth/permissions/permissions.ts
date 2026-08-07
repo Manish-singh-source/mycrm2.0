@@ -9,7 +9,8 @@ export function hasPermission(
   guard: AuthGuard,
   permission: Permission
 ): boolean {
-  return getGuardPermissions(authState, guard).includes(permission);
+  const permissions = getGuardPermissions(authState, guard);
+  return permissions.includes('*') || permissions.includes(permission);
 }
 
 export function hasAnyPermission(

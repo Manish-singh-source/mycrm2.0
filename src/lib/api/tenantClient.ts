@@ -2,6 +2,10 @@ import { apiRequest } from '@/lib/api/httpClient';
 import type { ApiRequestOptions } from '@/lib/api/apiTypes';
 
 export function createTenantClient(tenant: string) {
+  if (!tenant.trim()) {
+    throw new Error('Tenant API requests require a tenant slug or UUID for the X-Tenant header.');
+  }
+
   return {
     get: <TData>(path: string, options?: ApiRequestOptions) =>
       apiRequest<TData>(path, { ...options, method: 'GET', guard: 'tenant', tenant }),
