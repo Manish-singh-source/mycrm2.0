@@ -2,6 +2,7 @@ import { env } from '@/config/env';
 import { ApiError } from '@/lib/api/apiError';
 import type {
   ApiGuard,
+  ApiErrorResponse,
   ApiRequestOptions,
   HttpMethod,
   NormalizedApiResponse
@@ -132,9 +133,15 @@ async function runRequest<TData>(url: string, options: RequestOptions) {
   const payload = await parsePayload(response);
 
   if (!response.ok) {
-    const errorPayload =
+    const errorPayload: ApiErrorResponse =
       payload && typeof payload === 'object'
-        ? (payload as { message?: string; error_code?: string; errors?: Record<string, string[]>; request_id?: string })
+        ? {
+            message:
+              (payload as { message?: string }).message ?? 'Request failed.',
+            error_code: (payload as { error_code?: string }).error_code,
+            errors: (payload as { errors?: Record<string, string[]> }).errors,
+            request_id: (payload as { request_id?: string }).request_id
+          }
         : { message: String(payload) };
     const error = new ApiError(response.status, errorPayload.message ?? 'Request failed.', errorPayload);
     if (error.status === 401) {

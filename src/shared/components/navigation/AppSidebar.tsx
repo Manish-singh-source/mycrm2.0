@@ -1,3 +1,4 @@
+import { ChevronRight } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 
 import { hasPermission, isModuleEnabled } from '@/features/auth/permissions/permissions';
@@ -26,7 +27,12 @@ export function AppSidebar({ guard, title, groups }: AppSidebarProps) {
 
   return (
     <aside className="app-sidebar">
-      <div className="app-sidebar__brand">{title}</div>
+      <div className="app-sidebar__brand">
+        <div>
+          <strong>{title}</strong>
+          <span>{guard === 'platform' ? 'SaaS operations' : 'Tenant workspace'}</span>
+        </div>
+      </div>
       <nav aria-label={`${title} navigation`}>
         {groups.map((group) => {
           if (!canShowGroup(auth, guard, group)) return null;
@@ -43,6 +49,7 @@ export function AppSidebar({ guard, title, groups }: AppSidebarProps) {
                     {Icon ? <Icon size={18} aria-hidden /> : null}
                     <span>{item.label}</span>
                     {item.badge ? <span className="nav-badge">{item.badge}</span> : null}
+                    <ChevronRight size={14} aria-hidden className="nav-link__chevron" />
                   </NavLink>
                 );
               })}

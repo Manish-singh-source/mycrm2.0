@@ -233,10 +233,3 @@ export function DataTable<TRow>({
     </section>
   );
 }
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
