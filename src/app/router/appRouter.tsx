@@ -6,6 +6,8 @@ import { TenantLayout } from '@/layouts/TenantLayout';
 import { PublicAuthRoute } from '@/features/auth/guards/PublicAuthRoute';
 import { AccountSettingsPage, ApiTokensPage, AuthLoginPage, ForgotPasswordPage, ResetPasswordPage } from '@/features/auth/pages';
 import { RequireAuth } from '@/features/auth/guards/RequireAuth';
+import { RequirePermission } from '@/features/auth/guards/RequirePermission';
+import { PlatformDashboardPage } from '@/features/platform/dashboard/pages/PlatformDashboardPage';
 import { ForbiddenPage } from '@/pages/ForbiddenPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { PlaceholderPage } from '@/pages/PlaceholderPage';
@@ -77,7 +79,14 @@ export const appRouter = createBrowserRouter([
     ),
     children: [
       { index: true, element: <Navigate to="dashboard" replace /> },
-      { path: 'dashboard', element: <ShellDashboardPage guard="platform" /> },
+      {
+        path: 'dashboard',
+        element: (
+          <RequirePermission guard="platform" anyOf={['dashboard.view']}>
+            <PlatformDashboardPage />
+          </RequirePermission>
+        )
+      },
       { path: 'sample-module', element: <SampleEnterpriseModulePage /> },
       { path: 'settings', element: <AccountSettingsPage guard="platform" /> },
       { path: 'api-tokens', element: <ApiTokensPage guard="platform" /> },

@@ -790,6 +790,14 @@ textarea:disabled {
   font-weight: 800;
 }
 
+.dashboard-table tr.is-clickable {
+  cursor: pointer;
+}
+
+.dashboard-table tr.is-clickable:hover td {
+  background: #f8fbff;
+}
+
 .dashboard-status {
   border-radius: 999px;
   display: inline-flex;
