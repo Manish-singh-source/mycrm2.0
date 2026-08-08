@@ -4,7 +4,14 @@ import { AuthLayout } from '@/layouts/AuthLayout';
 import { PlatformLayout } from '@/layouts/PlatformLayout';
 import { TenantLayout } from '@/layouts/TenantLayout';
 import { PublicAuthRoute } from '@/features/auth/guards/PublicAuthRoute';
-import { AccountSettingsPage, ApiTokensPage, AuthLoginPage, ForgotPasswordPage, ResetPasswordPage } from '@/features/auth/pages';
+import {
+  AccountSettingsPage,
+  ApiTokensPage,
+  AuthLoginPage,
+  ForgotPasswordPage,
+  ResetPasswordPage,
+  TenantRegistrationPage
+} from '@/features/auth/pages';
 import { RequireAuth } from '@/features/auth/guards/RequireAuth';
 import { RequirePermission } from '@/features/auth/guards/RequirePermission';
 import { PlatformDashboardPage } from '@/features/platform/dashboard/pages/PlatformDashboardPage';
@@ -45,6 +52,14 @@ export const appRouter = createBrowserRouter([
         element: (
           <PublicAuthRoute guard="tenant">
             <AuthLoginPage />
+          </PublicAuthRoute>
+        )
+      },
+      {
+        path: 'register',
+        element: (
+          <PublicAuthRoute guard="tenant">
+            <TenantRegistrationPage />
           </PublicAuthRoute>
         )
       },

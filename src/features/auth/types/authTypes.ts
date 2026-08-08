@@ -143,3 +143,71 @@ export type ResetPasswordRequest = {
   password: string;
   password_confirmation: string;
 };
+
+export type TenantRegistrationRequest = {
+  organization_name: string;
+  legal_name?: string;
+  display_name?: string;
+  organization_code?: string;
+  slug: string;
+  business_type_id?: number | string;
+  industry_id?: number | string;
+  company_size: string;
+  gst_number?: string;
+  pan_number?: string;
+  registration_number?: string;
+  website?: string;
+  default_currency: string;
+  default_timezone: string;
+  owner: {
+    first_name: string;
+    last_name: string;
+    display_name: string;
+    email: string;
+    mobile?: string;
+    password: string;
+    password_confirmation: string;
+  };
+  office: {
+    office_name: string;
+    address_line_1?: string;
+    address_line_2?: string;
+    landmark?: string;
+    country_id?: number | string;
+    state_id?: number | string;
+    city_id?: number | string;
+    postal_code?: string;
+    contact_phone?: string;
+  };
+};
+
+export type TenantRegistrationResponse = {
+  access_token?: string;
+  token_type?: string;
+  expires_at?: string | null;
+  tenant?: {
+    uuid?: string;
+    organization_name?: string;
+    display_name?: string;
+    organization_code?: string;
+    slug?: string;
+    default_currency?: string;
+    default_timezone?: string;
+    status?: string;
+    trial_ends_at?: string | null;
+  };
+  owner?: {
+    uuid?: string;
+    display_name?: string;
+    email?: string;
+    mobile?: string;
+    account_type?: string;
+    status?: string;
+  };
+  roles?: string[];
+  permissions?: Permission[];
+  registered?: boolean;
+  requires_email_verification?: boolean;
+  auto_login?: boolean;
+  message?: string;
+};

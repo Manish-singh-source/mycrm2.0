@@ -182,6 +182,10 @@ textarea:disabled {
   grid-template-columns: 1fr;
 }
 
+.auth-experience--register {
+  grid-template-columns: minmax(320px, 0.62fr) minmax(560px, 1.38fr);
+}
+
 .auth-hero {
   background: #101827;
   color: #ffffff;
@@ -245,11 +249,21 @@ textarea:disabled {
   min-height: 84px;
 }
 
+.auth-hero--compact h2 {
+  font-size: 44px;
+}
+
 .auth-stage {
   align-items: center;
   display: grid;
   min-height: 100vh;
   padding: 48px;
+}
+
+.auth-stage--scroll {
+  align-items: start;
+  overflow: auto;
+  padding-block: 30px;
 }
 
 .auth-stage__top {
@@ -272,6 +286,12 @@ textarea:disabled {
   max-width: 640px;
   padding: 56px;
   width: min(640px, 100%);
+}
+
+.auth-card--wide {
+  max-width: 980px;
+  padding: 34px;
+  width: min(980px, 100%);
 }
 
 .auth-card header {
@@ -485,6 +505,78 @@ textarea:disabled {
 
 .auth-card__footer a {
   color: #2f66f5;
+}
+
+.tenant-registration-form fieldset {
+  border: 1px solid #e6ebf2;
+  border-radius: 14px;
+  display: grid;
+  gap: 14px;
+  margin: 0;
+  padding: 16px;
+}
+
+.tenant-registration-form legend {
+  align-items: center;
+  color: #17202a;
+  display: inline-flex;
+  font-size: 15px;
+  font-weight: 800;
+  gap: 8px;
+  padding: 0 8px;
+}
+
+.tenant-registration-form input,
+.tenant-registration-form select {
+  min-height: 44px;
+}
+
+.form-grid--two,
+.registration-preferences {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.registration-inline {
+  align-self: end;
+  background: #f8fafc;
+  border: 1px solid #dfe4ea;
+  border-radius: 12px;
+  color: #5f6b7a;
+  display: grid;
+  gap: 4px;
+  min-height: 44px;
+  padding: 10px 12px;
+}
+
+.registration-inline strong {
+  color: #17202a;
+}
+
+.registration-inline--secure {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.registration-inline--secure svg {
+  color: #16a34a;
+}
+
+.registration-terms {
+  justify-content: flex-start !important;
+}
+
+.field-error {
+  color: #b42318;
+  font-size: 12px;
+}
+
+.auth-form__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .token-preview {
@@ -1839,7 +1931,9 @@ textarea:disabled {
   }
 
   .shell-dashboard__grid,
-  .settings-grid {
+  .settings-grid,
+  .form-grid--two,
+  .registration-preferences {
     grid-template-columns: 1fr;
   }
 

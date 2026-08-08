@@ -333,6 +333,7 @@ export function AuthLoginPage() {
 
           <footer className="auth-card__footer">
             <Link to="/auth/forgot-password">Forgot password?</Link>
+            <Link to="/auth/register">Register tenant</Link>
             <span>SSL Secured</span>
             <span>Enterprise Security</span>
           </footer>

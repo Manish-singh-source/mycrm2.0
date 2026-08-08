@@ -8,6 +8,8 @@ import type {
   LoginResponse,
   LoginResult,
   ResetPasswordRequest,
+  TenantRegistrationRequest,
+  TenantRegistrationResponse,
   TenantContext,
   TwoFactorChallenge,
   UnifiedLoginRequest,
@@ -230,6 +232,44 @@ export const authApi = {
     ),
   resetPassword: (body: ResetPasswordRequest) =>
     authClient.post<{ reset: boolean }, ResetPasswordRequest>('/password/reset', body),
+  registerTenant: async (body: TenantRegistrationRequest) => {
+    const response = await authClient.post<TenantRegistrationResponse, TenantRegistrationRequest>('/tenants/register', body);
+    const payload = response.data;
+
+    if (payload.access_token && payload.owner && payload.tenant) {
+      applyTenantSession({
+        access_token: payload.access_token,
+        token_type: payload.token_type,
+        expires_at: payload.expires_at,
+        user: {
+          uuid: payload.owner.uuid ?? '',
+          displayName: payload.owner.display_name ?? payload.owner.email ?? 'Owner',
+          email: payload.owner.email ?? '',
+          avatarUrl: null,
+          roles: payload.roles ?? [],
+          permissions: payload.permissions ?? []
+        },
+        roles: payload.roles ?? [],
+        permissions: payload.permissions ?? [],
+        tenant: {
+          uuid: payload.tenant.uuid ?? payload.tenant.slug ?? '',
+          slug: payload.tenant.slug ?? payload.tenant.uuid ?? '',
+          organizationName:
+            payload.tenant.organization_name ??
+            payload.tenant.display_name ??
+            payload.tenant.slug ??
+            'Tenant',
+          enabledModules: [],
+          status: payload.tenant.status,
+          defaultCurrency: payload.tenant.default_currency,
+          defaultTimezone: payload.tenant.default_timezone
+        },
+        office: null
+      });
+    }
+
+    return response;
+  },
   loginPlatform: async (body: UnifiedLoginRequest) => {
     const response = await authClient.post<RawLoginResult, UnifiedLoginRequest>(
       '/accounts/login',
