@@ -1,4 +1,4 @@
-import { Outlet, useParams } from 'react-router-dom';
+import { Outlet, useNavigate, useParams } from 'react-router-dom';
 import { BellPlus, CalendarPlus2, Plus, ReceiptText } from 'lucide-react';
 
 import { useAuth } from '@/features/auth/hooks/useAuth';
@@ -12,11 +12,12 @@ import {
   LayoutRouteTitle
 } from '@/shared/components/layout';
 import { AppSidebar } from '@/shared/components/navigation/AppSidebar';
-import { Button } from '@/shared/components/ui';
+import { PermissionButton } from '@/shared/components/ui';
 
 export function TenantLayout() {
+  const navigate = useNavigate();
   const { tenantSlug = ':tenantSlug' } = useParams();
-  const { user } = useAuth('tenant');
+  const { user, logout } = useAuth('tenant');
   const { locale, timezone } = useSessionPreferences('tenant');
   const { tenant } = useTenantContext();
   const badges = {
@@ -27,6 +28,11 @@ export function TenantLayout() {
     renewalsDueSoon: 5
   };
   const tenantNavigation = buildTenantNavigation(tenantSlug, badges);
+
+  async function handleLogout() {
+    await logout();
+    navigate('/auth/login', { replace: true });
+  }
 
   return (
     <AppShell
@@ -39,24 +45,25 @@ export function TenantLayout() {
           notificationCount={badges.unreadNotifications}
           profileName={user?.displayName}
           onToggleSidebar={toggleSidebar}
+          onLogout={handleLogout}
           quickActions={
             <>
-              <Button type="button" variant="secondary" size="sm">
+              <PermissionButton guard="tenant" permission="lead.create" type="button" variant="secondary" size="sm">
                 <Plus size={16} aria-hidden />
                 Lead
-              </Button>
-              <Button type="button" variant="secondary" size="sm">
+              </PermissionButton>
+              <PermissionButton guard="tenant" permission="calendar.create" type="button" variant="secondary" size="sm">
                 <CalendarPlus2 size={16} aria-hidden />
                 Event
-              </Button>
-              <Button type="button" variant="secondary" size="sm">
+              </PermissionButton>
+              <PermissionButton guard="tenant" permission="finance.invoice.create" type="button" variant="secondary" size="sm">
                 <ReceiptText size={16} aria-hidden />
                 Invoice
-              </Button>
-              <Button type="button" size="sm">
+              </PermissionButton>
+              <PermissionButton guard="tenant" permission="dashboard.view" type="button" size="sm">
                 <BellPlus size={16} aria-hidden />
                 Quick Actions
-              </Button>
+              </PermissionButton>
             </>
           }
         />

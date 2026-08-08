@@ -4,10 +4,13 @@ import { AuthLayout } from '@/layouts/AuthLayout';
 import { PlatformLayout } from '@/layouts/PlatformLayout';
 import { TenantLayout } from '@/layouts/TenantLayout';
 import { PublicAuthRoute } from '@/features/auth/guards/PublicAuthRoute';
+import { AccountSettingsPage, ApiTokensPage, AuthLoginPage, ForgotPasswordPage, ResetPasswordPage } from '@/features/auth/pages';
 import { RequireAuth } from '@/features/auth/guards/RequireAuth';
 import { ForbiddenPage } from '@/pages/ForbiddenPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { PlaceholderPage } from '@/pages/PlaceholderPage';
+import { SampleEnterpriseModulePage } from '@/pages/SampleEnterpriseModulePage';
+import { ShellDashboardPage } from '@/pages/ShellDashboardPage';
 import { PLATFORM_ROUTES } from '@/features/platform/routes/platformRoutes';
 
 export const appRouter = createBrowserRouter([
@@ -23,7 +26,7 @@ export const appRouter = createBrowserRouter([
         path: 'login',
         element: (
           <PublicAuthRoute>
-            <PlaceholderPage title="Sign in" description="Platform and tenant auth forms will be wired here." />
+            <AuthLoginPage />
           </PublicAuthRoute>
         )
       },
@@ -31,7 +34,7 @@ export const appRouter = createBrowserRouter([
         path: 'platform/login',
         element: (
           <PublicAuthRoute guard="platform">
-            <PlaceholderPage title="Platform sign in" description="Platform admin login will call /auth/login." />
+            <AuthLoginPage />
           </PublicAuthRoute>
         )
       },
@@ -39,7 +42,23 @@ export const appRouter = createBrowserRouter([
         path: 'tenant/login',
         element: (
           <PublicAuthRoute guard="tenant">
-            <PlaceholderPage title="Tenant sign in" description="Tenant login will call /auth/login with tenant context." />
+            <AuthLoginPage />
+          </PublicAuthRoute>
+        )
+      },
+      {
+        path: 'forgot-password',
+        element: (
+          <PublicAuthRoute>
+            <ForgotPasswordPage />
+          </PublicAuthRoute>
+        )
+      },
+      {
+        path: 'password/reset',
+        element: (
+          <PublicAuthRoute>
+            <ResetPasswordPage />
           </PublicAuthRoute>
         )
       }
@@ -58,6 +77,10 @@ export const appRouter = createBrowserRouter([
     ),
     children: [
       { index: true, element: <Navigate to="dashboard" replace /> },
+      { path: 'dashboard', element: <ShellDashboardPage guard="platform" /> },
+      { path: 'sample-module', element: <SampleEnterpriseModulePage /> },
+      { path: 'settings', element: <AccountSettingsPage guard="platform" /> },
+      { path: 'api-tokens', element: <ApiTokensPage guard="platform" /> },
       {
         path: '*',
         element: <PlaceholderPage title="Platform workspace" description="Platform routes are registered as constants first." />
@@ -73,6 +96,9 @@ export const appRouter = createBrowserRouter([
     ),
     children: [
       { index: true, element: <Navigate to="dashboard" replace /> },
+      { path: 'dashboard', element: <ShellDashboardPage guard="tenant" /> },
+      { path: 'profile', element: <AccountSettingsPage guard="tenant" /> },
+      { path: 'profile/api-tokens', element: <ApiTokensPage guard="tenant" /> },
       {
         path: '*',
         element: <PlaceholderPage title="Tenant workspace" description="Tenant CRM routes are registered as constants first." />

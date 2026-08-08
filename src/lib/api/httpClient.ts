@@ -18,8 +18,21 @@ type RequestOptions = ApiRequestOptions & {
 
 const readMethods = new Set<HttpMethod>(['GET']);
 const retryableStatuses = new Set([408, 429, 500, 502, 503, 504]);
+const sensitiveKeys = new Set([
+  'access_token',
+  'authorization',
+  'challenge_token',
+  'current_password',
+  'discovery_token',
+  'password',
+  'password_confirmation',
+  'refresh_token',
+  'reset_token',
+  'token'
+]);
 
 function baseUrlForGuard(guard: ApiGuard) {
+  if (guard === 'auth') return env.authApiBaseUrl;
   return guard === 'platform' ? env.platformApiBaseUrl : env.tenantApiBaseUrl;
 }
 
@@ -33,7 +46,7 @@ function createRequestId() {
 
 function normalizeHeaders(options: RequestOptions, body: unknown) {
   const auth = authStore.getSnapshot();
-  const session = options.guard === 'platform' ? auth.platform : auth.tenant;
+  const session = options.guard === 'tenant' ? auth.tenant : auth.platform;
   const token = session.accessToken;
   const headers = new Headers(options.headers);
 
@@ -45,7 +58,7 @@ function normalizeHeaders(options: RequestOptions, body: unknown) {
   headers.set('X-Request-Id', createRequestId());
   headers.set('X-Client-Version', env.clientVersion);
 
-  if (token) headers.set('Authorization', `Bearer ${token}`);
+  if (options.guard !== 'auth' && token) headers.set('Authorization', `Bearer ${token}`);
   if (options.idempotencyKey) headers.set('Idempotency-Key', options.idempotencyKey);
   if (options.timezone ?? session.timezone) headers.set('X-Timezone', options.timezone ?? session.timezone);
   if (options.locale ?? session.locale) headers.set('X-Locale', options.locale ?? session.locale);
@@ -68,6 +81,31 @@ function normalizeBody(body: unknown) {
   }
 
   return JSON.stringify(body);
+}
+
+function maskValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(maskValue);
+  if (!value || typeof value !== 'object') return value;
+
+  if (value instanceof FormData) return '[FormData]';
+
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
+      key,
+      sensitiveKeys.has(key.toLowerCase()) ? '[redacted]' : maskValue(entry)
+    ])
+  );
+}
+
+function logApiEvent(
+  level: 'debug' | 'error',
+  message: string,
+  details: Record<string, unknown>
+) {
+  if (!env.enableApiLogs) return;
+
+  const logger = level === 'error' ? console.error : console.debug;
+  logger(`[api] ${message}`, details);
 }
 
 function normalizeEnvelope<TData>(payload: unknown): NormalizedApiResponse<TData> {
@@ -119,14 +157,35 @@ async function runRequest<TData>(url: string, options: RequestOptions) {
   const { guard, tenant, query, body, retry, idempotencyKey, timezone, locale, impersonationReason, office, ...init } =
     options;
   const normalizedBody = normalizeBody(body);
+  const headers = normalizeHeaders(options, body);
+  const requestId = headers.get('X-Request-Id') ?? undefined;
+  const startedAt = performance.now();
+
+  logApiEvent('debug', 'request', {
+    guard,
+    method: options.method,
+    url,
+    requestId,
+    tenant,
+    body: maskValue(body)
+  });
+
   const response = await fetch(url, {
     ...init,
     method: options.method,
     body: normalizedBody,
-    headers: normalizeHeaders(options, body)
+    headers
   });
 
   if (response.status === 204) {
+    logApiEvent('debug', 'response', {
+      guard,
+      method: options.method,
+      url,
+      requestId,
+      status: response.status,
+      durationMs: Math.round(performance.now() - startedAt)
+    });
     return { data: undefined as TData };
   }
 
@@ -138,19 +197,47 @@ async function runRequest<TData>(url: string, options: RequestOptions) {
         ? {
             message:
               (payload as { message?: string }).message ?? 'Request failed.',
-            error_code: (payload as { error_code?: string }).error_code,
-            errors: (payload as { errors?: Record<string, string[]> }).errors,
-            request_id: (payload as { request_id?: string }).request_id
+            error_code:
+              (payload as { error_code?: string }).error_code ??
+              ((payload as { errors?: { code?: string } }).errors?.code),
+            errors:
+              (payload as { errors?: Record<string, string[]> }).errors ??
+              ((payload as { errors?: { details?: Record<string, string[]> } }).errors?.details),
+            request_id:
+              (payload as { request_id?: string }).request_id ??
+              ((payload as { meta?: { request_id?: string } }).meta?.request_id)
           }
         : { message: String(payload) };
     const error = new ApiError(response.status, errorPayload.message ?? 'Request failed.', errorPayload);
-    if (error.status === 401) {
+    logApiEvent('error', 'error', {
+      guard,
+      method: options.method,
+      url,
+      requestId: error.requestId ?? requestId,
+      status: response.status,
+      code: error.code,
+      message: error.message,
+      durationMs: Math.round(performance.now() - startedAt),
+      validationErrors: maskValue(error.validationErrors)
+    });
+    if (error.status === 401 && options.guard !== 'auth') {
       authStore.clear(options.guard);
     }
     throw error;
   }
 
-  return normalizeEnvelope<TData>(payload);
+  const normalized = normalizeEnvelope<TData>(payload);
+  logApiEvent('debug', 'response', {
+    guard,
+    method: options.method,
+    url,
+    requestId,
+    status: response.status,
+    durationMs: Math.round(performance.now() - startedAt),
+    data: maskValue(normalized.data)
+  });
+
+  return normalized;
 }
 
 export async function apiRequest<TData>(
@@ -171,6 +258,12 @@ export async function apiRequest<TData>(
         throw error;
       }
 
+      logApiEvent('debug', 'retry', {
+        guard: options.guard,
+        method: options.method,
+        url,
+        attempt: attempt + 1
+      });
       await sleep(retryDelay(attempt));
       attempt += 1;
     }

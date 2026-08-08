@@ -1,4 +1,4 @@
-import { Outlet } from 'react-router-dom';
+import { Outlet, useNavigate } from 'react-router-dom';
 import { Bolt, Plus, UserPlus } from 'lucide-react';
 
 import { useAuth } from '@/features/auth/hooks/useAuth';
@@ -11,11 +11,17 @@ import {
   LayoutRouteTitle
 } from '@/shared/components/layout';
 import { AppSidebar } from '@/shared/components/navigation/AppSidebar';
-import { Button } from '@/shared/components/ui';
+import { PermissionButton } from '@/shared/components/ui';
 
 export function PlatformLayout() {
-  const { user } = useAuth('platform');
+  const navigate = useNavigate();
+  const { user, logout } = useAuth('platform');
   const { locale, timezone } = useSessionPreferences('platform');
+
+  async function handleLogout() {
+    await logout();
+    navigate('/auth/login', { replace: true });
+  }
 
   return (
     <AppShell
@@ -28,20 +34,21 @@ export function PlatformLayout() {
           notificationCount={4}
           profileName={user?.displayName}
           onToggleSidebar={toggleSidebar}
+          onLogout={handleLogout}
           quickActions={
             <>
-              <Button type="button" variant="secondary" size="sm">
+              <PermissionButton guard="platform" permission="tenant.create" type="button" variant="secondary" size="sm">
                 <UserPlus size={16} aria-hidden />
                 Create Tenant
-              </Button>
-              <Button type="button" variant="secondary" size="sm">
+              </PermissionButton>
+              <PermissionButton guard="platform" permission="billing.invoice.create" type="button" variant="secondary" size="sm">
                 <Plus size={16} aria-hidden />
                 Create Invoice
-              </Button>
-              <Button type="button" size="sm">
+              </PermissionButton>
+              <PermissionButton guard="platform" permission="dashboard.view" type="button" size="sm">
                 <Bolt size={16} aria-hidden />
                 Quick Actions
-              </Button>
+              </PermissionButton>
             </>
           }
         />

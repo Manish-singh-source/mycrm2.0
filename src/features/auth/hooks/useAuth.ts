@@ -1,13 +1,20 @@
 import { useCallback } from 'react';
 
+import { authApi } from '@/features/auth/api/authApi';
 import { authStore, useAuthStore } from '@/features/auth/store/authStore';
 import type { AuthGuard } from '@/features/auth/types/authTypes';
 
 export function useAuth(guard?: AuthGuard) {
   const auth = useAuthStore();
 
-  const logout = useCallback((targetGuard?: AuthGuard) => {
-    authStore.clear(targetGuard ?? guard);
+  const logout = useCallback(async (targetGuard?: AuthGuard) => {
+    const logoutGuard = targetGuard ?? guard;
+    if (!logoutGuard) {
+      authStore.clear();
+      return;
+    }
+
+    await authApi.logout(logoutGuard);
   }, [guard]);
 
   if (!guard) {

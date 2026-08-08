@@ -1,4 +1,4 @@
-import { Bell, Clock3, Globe2, Plus, Search, UserCircle2 } from 'lucide-react';
+import { Bell, Clock3, Globe2, LogOut, Plus, Search, UserCircle2 } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { Button } from '@/shared/components/ui';
@@ -11,6 +11,7 @@ type AppTopbarProps = {
   notificationCount?: number;
   profileName?: string;
   onToggleSidebar: () => void;
+  onLogout?: () => void;
   quickActions?: ReactNode;
 };
 
@@ -22,6 +23,7 @@ export function AppTopbar({
   notificationCount = 0,
   profileName,
   onToggleSidebar,
+  onLogout,
   quickActions
 }: AppTopbarProps) {
   return (
@@ -59,6 +61,12 @@ export function AppTopbar({
           <UserCircle2 size={20} aria-hidden />
           <span>{profileName ?? 'User'}</span>
         </div>
+        {onLogout ? (
+          <Button type="button" variant="danger" size="sm" onClick={onLogout}>
+            <LogOut size={16} aria-hidden />
+            Logout
+          </Button>
+        ) : null}
       </div>
     </div>
   );
