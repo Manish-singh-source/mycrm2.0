@@ -396,10 +396,10 @@ function ResourceList({ kind }: { kind: ResourceKind }) {
     return (
       <section className="enterprise-module-page platform-access-page admin-master-page">
         {header}
+        <ResourceStats kind={kind} rows={rows} />
         <div className="admin-master-grid">
           <div className="admin-master-main">
             {table}
-            <ResourceStats kind={kind} rows={rows} />
           </div>
           <AuditRail rows={rows} />
         </div>
@@ -422,8 +422,8 @@ function ResourceList({ kind }: { kind: ResourceKind }) {
   return (
     <section className="enterprise-module-page platform-access-page">
       {header}
-      {table}
       <ResourceStats kind={kind} rows={rows} />
+      {table}
 
       <StandardListControls
         kind={kind}
