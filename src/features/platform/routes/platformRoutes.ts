@@ -7,6 +7,7 @@ export const PLATFORM_ROUTES = {
     permissions: `${platformBase}/access-control/permissions`
   },
   teams: `${platformBase}/teams`,
+  teamRoles: `${platformBase}/team-roles`,
   staff: `${platformBase}/staff`,
   tenants: `${platformBase}/tenants`,
   subscriptions: `${platformBase}/subscriptions`,

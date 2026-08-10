@@ -1,4 +1,4 @@
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, PanelLeftClose, Shield } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 
 import { hasPermission, isModuleEnabled } from '@/features/auth/permissions/permissions';
@@ -28,10 +28,14 @@ export function AppSidebar({ guard, title, groups }: AppSidebarProps) {
   return (
     <aside className="app-sidebar">
       <div className="app-sidebar__brand">
+        <span className="app-sidebar__brand-icon"><Shield size={20} aria-hidden /></span>
         <div>
           <strong>{title}</strong>
-          <span>{guard === 'platform' ? 'SaaS operations' : 'Tenant workspace'}</span>
+          <span>{guard === 'platform' ? 'Super Admin' : 'Tenant workspace'}</span>
         </div>
+        <button type="button" aria-label="Collapse sidebar">
+          <PanelLeftClose size={16} aria-hidden />
+        </button>
       </div>
       <nav aria-label={`${title} navigation`}>
         {groups.map((group) => {

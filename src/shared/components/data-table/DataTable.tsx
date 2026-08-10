@@ -1,4 +1,18 @@
 import { useMemo, useState, type ReactNode } from 'react';
+import {
+  ArrowDown,
+  ArrowUpDown,
+  ArrowUp,
+  ChevronLeft,
+  ChevronRight,
+  Columns3,
+  Download,
+  Filter,
+  FolderOpen,
+  Loader2,
+  Search,
+  Upload
+} from 'lucide-react';
 
 import { Button } from '@/shared/components/ui';
 
@@ -19,6 +33,7 @@ type DataTableProps<TRow> = {
   error?: ReactNode;
   emptyState?: ReactNode;
   searchValue?: string;
+  searchPlaceholder?: string;
   onSearchChange?: (value: string) => void;
   onOpenFilters?: () => void;
   onOpenColumns?: () => void;
@@ -42,6 +57,7 @@ export function DataTable<TRow>({
   error,
   emptyState,
   searchValue,
+  searchPlaceholder = 'Search',
   onSearchChange,
   onOpenFilters,
   onOpenColumns,
@@ -59,6 +75,9 @@ export function DataTable<TRow>({
   const [hiddenColumns, setHiddenColumns] = useState<string[]>([]);
   const [sort, setSort] = useState<{ id: string; direction: 'asc' | 'desc' } | null>(null);
   const selected = selectedRowIds ?? [];
+  const pageCount = Math.max(1, Math.ceil(total / perPage));
+  const startRecord = total === 0 ? 0 : (page - 1) * perPage + 1;
+  const endRecord = Math.min(page * perPage, total);
 
   const visibleColumns = useMemo(
     () => columns.filter((column) => !hiddenColumns.includes(column.id)),
@@ -99,33 +118,54 @@ export function DataTable<TRow>({
     });
   }
 
+  function renderSortIcon(column: DataTableColumn<TRow>) {
+    if (!column.enableSorting) return null;
+    if (sort?.id !== column.id) {
+      return <ArrowUpDown aria-hidden="true" className="table-sort-indicator" size={14} strokeWidth={2.2} />;
+    }
+    return sort.direction === 'asc' ? (
+      <ArrowUp aria-hidden="true" size={14} strokeWidth={2.4} />
+    ) : (
+      <ArrowDown aria-hidden="true" size={14} strokeWidth={2.4} />
+    );
+  }
+
   return (
     <section className="data-table-shell" aria-busy={loading}>
       <div className="data-table-toolbar">
-        <label className="table-search">
-          <span className="sr-only">Search records</span>
-          <input
-            type="search"
-            value={searchValue ?? ''}
-            placeholder="Search"
-            onChange={(event) => onSearchChange?.(event.target.value)}
-            disabled={loading}
-          />
-        </label>
+        <div className="table-toolbar-primary">
+          <label className="table-search">
+            <Search aria-hidden="true" size={17} />
+            <span className="sr-only">Search records</span>
+            <input
+              type="search"
+              value={searchValue ?? ''}
+              placeholder={searchPlaceholder}
+              onChange={(event) => onSearchChange?.(event.target.value)}
+              disabled={loading}
+            />
+          </label>
+          <span className="table-result-pill">{total} records</span>
+        </div>
         <div className="table-actions">
           <Button type="button" variant="secondary" size="sm" onClick={onOpenSavedViews} disabled={!onOpenSavedViews}>
+            <FolderOpen aria-hidden="true" size={15} />
             Views
           </Button>
           <Button type="button" variant="secondary" size="sm" onClick={onOpenFilters} disabled={!onOpenFilters}>
+            <Filter aria-hidden="true" size={15} />
             Filters
           </Button>
           <Button type="button" variant="secondary" size="sm" onClick={onOpenColumns} disabled={!onOpenColumns}>
+            <Columns3 aria-hidden="true" size={15} />
             Columns
           </Button>
           <Button type="button" variant="secondary" size="sm" onClick={onOpenExport} disabled={!onOpenExport}>
+            <Download aria-hidden="true" size={15} />
             Export
           </Button>
           <Button type="button" variant="secondary" size="sm" onClick={onOpenImport} disabled={!onOpenImport}>
+            <Upload aria-hidden="true" size={15} />
             Import
           </Button>
         </div>
@@ -139,7 +179,12 @@ export function DataTable<TRow>({
       ) : null}
 
       {error ? <div className="surface-error" role="alert">{error}</div> : null}
-      {loading ? <div className="surface-state" role="status">Loading records...</div> : null}
+      {loading ? (
+        <div className="surface-state table-loading-state" role="status">
+          <Loader2 aria-hidden="true" className="table-spinner" size={18} />
+          Loading records...
+        </div>
+      ) : null}
 
       {!loading && sortedData.length === 0 ? <>{emptyState ?? <div className="empty-state">No records found.</div>}</> : null}
 
@@ -167,7 +212,7 @@ export function DataTable<TRow>({
                       onClick={() => toggleSort(column)}
                     >
                       <span>{column.header}</span>
-                      {sort?.id === column.id ? <span>{sort.direction === 'asc' ? 'Asc' : 'Desc'}</span> : null}
+                      {renderSortIcon(column)}
                     </button>
                   </th>
                 ))}
@@ -201,15 +246,33 @@ export function DataTable<TRow>({
 
       <footer className="table-pagination">
         <span>
-          Page {page} of {Math.max(1, Math.ceil(total / perPage))}
+          Showing {startRecord} to {endRecord} of {total} results
         </span>
-        <div>
-          <Button type="button" variant="secondary" size="sm" onClick={() => onPageChange?.(page - 1)} disabled={!onPageChange || page <= 1}>
-            Previous
+        <div className="table-pagination-controls">
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => onPageChange?.(page - 1)}
+            disabled={!onPageChange || page <= 1}
+            aria-label="Previous page"
+          >
+            <ChevronLeft aria-hidden="true" size={15} />
           </Button>
-          <Button type="button" variant="secondary" size="sm" onClick={() => onPageChange?.(page + 1)} disabled={!onPageChange || page >= Math.ceil(total / perPage)}>
-            Next
+          <span className="table-page-current">Page {page} of {pageCount}</span>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={() => onPageChange?.(page + 1)}
+            disabled={!onPageChange || page >= pageCount}
+            aria-label="Next page"
+          >
+            <ChevronRight aria-hidden="true" size={15} />
           </Button>
+          <select aria-label="Rows per page" value={perPage} disabled>
+            <option>{perPage} / page</option>
+          </select>
         </div>
       </footer>
 

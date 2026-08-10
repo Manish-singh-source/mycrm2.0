@@ -49,7 +49,8 @@ export const platformNavigation: NavGroup[] = [
     id: 'teams',
     label: 'Platform Teams',
     items: [
-      { label: 'Platform Teams', to: PLATFORM_ROUTES.teams, icon: ShieldCheck, permission: 'platform_team.view' }
+      { label: 'Platform Teams', to: PLATFORM_ROUTES.teams, icon: ShieldCheck, permission: 'platform_team.view' },
+      { label: 'Team Roles', to: PLATFORM_ROUTES.teamRoles, icon: LockKeyhole, permission: 'platform_team.view' }
     ]
   },
   {

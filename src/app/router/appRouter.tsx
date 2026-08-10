@@ -14,7 +14,36 @@ import {
 } from '@/features/auth/pages';
 import { RequireAuth } from '@/features/auth/guards/RequireAuth';
 import { RequirePermission } from '@/features/auth/guards/RequirePermission';
+import {
+  PlatformPermissionCreatePage,
+  PlatformPermissionEditPage,
+  PlatformPermissionsListPage,
+  PlatformPermissionViewPage,
+  PlatformRoleCreatePage,
+  PlatformRoleEditPage,
+  PlatformRolesListPage,
+  PlatformRoleViewPage,
+  PlatformTeamCreatePage,
+  PlatformTeamEditPage,
+  PlatformTeamRoleCreatePage,
+  PlatformTeamRoleEditPage,
+  PlatformTeamRolesListPage,
+  PlatformTeamsListPage,
+  PlatformTeamViewPage
+} from '@/features/platform/access-control/pages/PlatformAccessPages';
 import { PlatformDashboardPage } from '@/features/platform/dashboard/pages/PlatformDashboardPage';
+import {
+  PlatformStaffCreatePage,
+  PlatformStaffEditPage,
+  PlatformStaffListPage,
+  PlatformStaffViewPage
+} from '@/features/platform/staff/pages/PlatformStaffPages';
+import {
+  PlatformTenantCreatePage,
+  PlatformTenantEditPage,
+  PlatformTenantsListPage,
+  PlatformTenantViewPage
+} from '@/features/platform/tenants/pages/PlatformTenantPages';
 import { ForbiddenPage } from '@/pages/ForbiddenPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { PlaceholderPage } from '@/pages/PlaceholderPage';
@@ -103,6 +132,190 @@ export const appRouter = createBrowserRouter([
         )
       },
       { path: 'sample-module', element: <SampleEnterpriseModulePage /> },
+      {
+        path: 'staff',
+        element: (
+          <RequirePermission guard="platform" anyOf={['platform_user.view']}>
+            <PlatformStaffListPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'staff/create',
+        element: (
+          <RequirePermission guard="platform" anyOf={['platform_user.create']}>
+            <PlatformStaffCreatePage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'staff/:id',
+        element: (
+          <RequirePermission guard="platform" anyOf={['platform_user.view']}>
+            <PlatformStaffViewPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'staff/:id/edit',
+        element: (
+          <RequirePermission guard="platform" anyOf={['platform_user.edit']}>
+            <PlatformStaffEditPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'access-control/roles',
+        element: (
+          <RequirePermission guard="platform" anyOf={['platform_role.view']}>
+            <PlatformRolesListPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'access-control/roles/create',
+        element: (
+          <RequirePermission guard="platform" anyOf={['platform_role.create']}>
+            <PlatformRoleCreatePage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'access-control/roles/:id',
+        element: (
+          <RequirePermission guard="platform" anyOf={['platform_role.view']}>
+            <PlatformRoleViewPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'access-control/roles/:id/edit',
+        element: (
+          <RequirePermission guard="platform" anyOf={['platform_role.edit']}>
+            <PlatformRoleEditPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'access-control/permissions',
+        element: (
+          <RequirePermission guard="platform" anyOf={['platform_permission.view']}>
+            <PlatformPermissionsListPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'access-control/permissions/create',
+        element: (
+          <RequirePermission guard="platform" anyOf={['platform_permission.create']}>
+            <PlatformPermissionCreatePage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'access-control/permissions/:id',
+        element: (
+          <RequirePermission guard="platform" anyOf={['platform_permission.view']}>
+            <PlatformPermissionViewPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'access-control/permissions/:id/edit',
+        element: (
+          <RequirePermission guard="platform" anyOf={['platform_permission.edit']}>
+            <PlatformPermissionEditPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'teams',
+        element: (
+          <RequirePermission guard="platform" anyOf={['platform_team.view']}>
+            <PlatformTeamsListPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'teams/create',
+        element: (
+          <RequirePermission guard="platform" anyOf={['platform_team.create']}>
+            <PlatformTeamCreatePage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'teams/:id',
+        element: (
+          <RequirePermission guard="platform" anyOf={['platform_team.view']}>
+            <PlatformTeamViewPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'teams/:id/edit',
+        element: (
+          <RequirePermission guard="platform" anyOf={['platform_team.edit']}>
+            <PlatformTeamEditPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'team-roles',
+        element: (
+          <RequirePermission guard="platform" anyOf={['platform_team.view']}>
+            <PlatformTeamRolesListPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'team-roles/create',
+        element: (
+          <RequirePermission guard="platform" anyOf={['platform_team.create']}>
+            <PlatformTeamRoleCreatePage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'team-roles/:id/edit',
+        element: (
+          <RequirePermission guard="platform" anyOf={['platform_team.edit']}>
+            <PlatformTeamRoleEditPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'tenants',
+        element: (
+          <RequirePermission guard="platform" anyOf={['tenant.view']}>
+            <PlatformTenantsListPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'tenants/create',
+        element: (
+          <RequirePermission guard="platform" anyOf={['tenant.create']}>
+            <PlatformTenantCreatePage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'tenants/:id',
+        element: (
+          <RequirePermission guard="platform" anyOf={['tenant.view']}>
+            <PlatformTenantViewPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'tenants/:id/edit',
+        element: (
+          <RequirePermission guard="platform" anyOf={['tenant.edit']}>
+            <PlatformTenantEditPage />
+          </RequirePermission>
+        )
+      },
       { path: 'settings', element: <AccountSettingsPage guard="platform" /> },
       { path: 'api-tokens', element: <ApiTokensPage guard="platform" /> },
       {
