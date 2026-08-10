@@ -38,7 +38,13 @@ import { AppDrawer } from '@/shared/components/drawer';
 import { PageHeader, StatusBadge, Tabs } from '@/shared/components/layout';
 import { AppModal } from '@/shared/components/modal';
 import { Button, PermissionButton } from '@/shared/components/ui';
-import { AdvancedFiltersDrawer, ColumnManagerModal, ConfirmDialog, ExportModal, SavedViewsModal } from '@/shared/components/workflows';
+import {
+  AdvancedFiltersDrawer,
+  ColumnManagerModal,
+  ConfirmDialog,
+  ExportModal,
+  SavedViewsModal
+} from '@/shared/components/workflows';
 
 type ResourceKind = 'roles' | 'permissions' | 'teams' | 'teamRoles';
 type Mode = 'list' | 'create' | 'edit' | 'view';
@@ -166,7 +172,10 @@ function totalFromQuery(data?: { total: number; data: PlatformRecord[] }) {
 }
 
 function groupedPermissionIds(grouped?: GroupedPermissions) {
-  return Object.values(grouped ?? {}).flat().map((permission) => idOf(permission)).filter(Boolean);
+  return Object.values(grouped ?? {})
+    .flat()
+    .map((permission) => idOf(permission))
+    .filter(Boolean);
 }
 
 function selectedPermissionIds(record?: PlatformRecord | null) {
@@ -260,7 +269,15 @@ function PlatformResourcePage({ kind, mode }: { kind: ResourceKind; mode: Mode }
   return <ResourceForm kind={kind} title={`Create ${meta.singular}`} />;
 }
 
-function DetailLoader({ id, kind, children }: { id: string; kind: ResourceKind; children: (record: PlatformRecord) => ReactNode }) {
+function DetailLoader({
+  id,
+  kind,
+  children
+}: {
+  id: string;
+  kind: ResourceKind;
+  children: (record: PlatformRecord) => ReactNode;
+}) {
   const meta = resourceMeta[kind];
   const query = useQuery({
     queryKey: platformQueryKeys.detail(meta.resourceKey, id),
@@ -268,11 +285,14 @@ function DetailLoader({ id, kind, children }: { id: string; kind: ResourceKind; 
       if (kind === 'roles') return platformAccessApi.roles.detail(id);
       if (kind === 'permissions') return platformAccessApi.permissions.detail(id);
       if (kind === 'teams') return platformAccessApi.teams.detail(id);
-      throw new Error('Team role detail endpoint is not documented; edit from the list row instead.');
+      throw new Error(
+        'Team role detail endpoint is not documented; edit from the list row instead.'
+      );
     }
   });
 
-  if (query.isLoading) return <div className="surface-state">Loading {meta.singular.toLowerCase()}...</div>;
+  if (query.isLoading)
+    return <div className="surface-state">Loading {meta.singular.toLowerCase()}...</div>;
   if (query.isError) return <div className="surface-error">{errorMessage(query.error)}</div>;
   if (!query.data) return <div className="empty-state">Record not found.</div>;
   return <>{children(query.data)}</>;
@@ -284,11 +304,26 @@ function ResourceList({ kind }: { kind: ResourceKind }) {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [filters, setFilters] = useState<Record<string, string>>({});
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectedRecord, setSelectedRecord] = useState<PlatformRecord | null>(null);
   const [modal, setModal] = useState<ModalKind>(null);
   const [drawer, setDrawer] = useState<DrawerKind>(null);
-  const queryParams = createListQuery({ page, per_page: 25, search });
+  const [hiddenColumnIds, setHiddenColumnIds] = useState<string[]>([]);
+  const queryParams = createListQuery({
+    page,
+    per_page: 25,
+    search,
+    filter: {
+      status: filters.status || undefined,
+      ...(kind === 'roles'
+        ? {
+            type: filters.type || undefined,
+            guard_name: filters.guard_name || undefined
+          }
+        : {})
+    }
+  });
 
   const listQuery = useQuery({
     queryKey: platformQueryKeys.list(meta.resourceKey, queryParams),
@@ -301,34 +336,65 @@ function ResourceList({ kind }: { kind: ResourceKind }) {
   });
 
   const rows = listQuery.data?.data ?? [];
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource(meta.resourceKey) });
+  const invalidate = () =>
+    queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource(meta.resourceKey) });
   const actionMutation = useMutation({
-    mutationFn: async ({ action, record, payload }: { action: string; record: PlatformRecord; payload?: Record<string, unknown> }) => {
+    mutationFn: async ({
+      action,
+      record,
+      payload
+    }: {
+      action: string;
+      record: PlatformRecord;
+      payload?: Record<string, unknown>;
+    }) => {
       const id = idOf(record);
-      if (action === 'activate') return platformAccessApi.roles.activate(id, String(payload?.audit_reason ?? 'Role activated'));
-      if (action === 'deactivate') return platformAccessApi.roles.deactivate(id, String(payload?.audit_reason ?? 'Role deactivated'));
-      if (action === 'deleteRole') return platformAccessApi.roles.delete(id, { audit_reason: String(payload?.audit_reason ?? 'Role deleted') });
+      if (action === 'activate')
+        return platformAccessApi.roles.activate(
+          id,
+          String(payload?.audit_reason ?? 'Role activated')
+        );
+      if (action === 'deactivate')
+        return platformAccessApi.roles.deactivate(
+          id,
+          String(payload?.audit_reason ?? 'Role deactivated')
+        );
+      if (action === 'deleteRole')
+        return platformAccessApi.roles.delete(id, {
+          audit_reason: String(payload?.audit_reason ?? 'Role deleted')
+        });
       if (action === 'deletePermission') return platformAccessApi.permissions.delete(id);
-      if (action === 'archiveTeam') return platformAccessApi.teams.delete(id, { audit_reason: String(payload?.audit_reason ?? 'Team archived') });
-      if (action === 'deleteTeamRole') return platformAccessApi.teamRoles.delete(id, { audit_reason: String(payload?.audit_reason ?? 'Team role deleted') });
+      if (action === 'archiveTeam')
+        return platformAccessApi.teams.delete(id, {
+          audit_reason: String(payload?.audit_reason ?? 'Team archived')
+        });
+      if (action === 'deleteTeamRole')
+        return platformAccessApi.teamRoles.delete(id, {
+          audit_reason: String(payload?.audit_reason ?? 'Team role deleted')
+        });
       throw new Error(`Unsupported action ${action}`);
     },
     onSuccess: invalidate
   });
 
-  const columns = useMemo(() => columnsFor(kind, {
-    onView: (record) => navigate(`${meta.route}/${idOf(record)}`),
-    onEdit: (record) => navigate(`${meta.route}/${idOf(record)}/edit`),
-    onAction: (nextModal, record) => {
-      setSelectedRecord(record);
-      setModal(nextModal);
-    },
-    onDrawer: (nextDrawer, record) => {
-      setSelectedRecord(record);
-      setDrawer(nextDrawer);
-    },
-    onInlineAction: (action, record) => actionMutation.mutate({ action, record, payload: auditPayload(`${action} from list`) })
-  }), [actionMutation, kind, meta.route, navigate]);
+  const columns = useMemo(
+    () =>
+      columnsFor(kind, {
+        onView: (record) => navigate(`${meta.route}/${idOf(record)}`),
+        onEdit: (record) => navigate(`${meta.route}/${idOf(record)}/edit`),
+        onAction: (nextModal, record) => {
+          setSelectedRecord(record);
+          setModal(nextModal);
+        },
+        onDrawer: (nextDrawer, record) => {
+          setSelectedRecord(record);
+          setDrawer(nextDrawer);
+        },
+        onInlineAction: (action, record) =>
+          actionMutation.mutate({ action, record, payload: auditPayload(`${action} from list`) })
+      }),
+    [actionMutation, kind, meta.route, navigate]
+  );
 
   const header = (
     <PageHeader
@@ -338,16 +404,28 @@ function ResourceList({ kind }: { kind: ResourceKind }) {
       actions={
         <>
           {kind === 'roles' ? (
-            <Button type="button" variant="secondary" size="sm">Keyboard Shortcuts</Button>
+            <Button type="button" variant="secondary" size="sm">
+              Keyboard Shortcuts
+            </Button>
           ) : null}
           {kind === 'teamRoles' ? null : (
-            <PermissionButton guard="platform" permission={`${meta.permission}.create`} type="button" onClick={() => navigate(`${meta.route}/create`)}>
+            <PermissionButton
+              guard="platform"
+              permission={`${meta.permission}.create`}
+              type="button"
+              onClick={() => navigate(`${meta.route}/create`)}
+            >
               <Plus size={16} aria-hidden="true" />
               {kind === 'roles' ? 'Create Role' : 'Create'}
             </PermissionButton>
           )}
           {kind === 'teamRoles' ? (
-            <PermissionButton guard="platform" permission="platform_team.create" type="button" onClick={() => setModal('teamRoleEditor')}>
+            <PermissionButton
+              guard="platform"
+              permission="platform_team.create"
+              type="button"
+              onClick={() => setModal('teamRoleEditor')}
+            >
               <Plus size={16} aria-hidden="true" />
               Create Team Role
             </PermissionButton>
@@ -365,8 +443,12 @@ function ResourceList({ kind }: { kind: ResourceKind }) {
       loading={listQuery.isLoading}
       error={listQuery.isError ? errorMessage(listQuery.error) : ''}
       searchValue={search}
-      searchPlaceholder={kind === 'roles' ? 'Search roles...' : `Search ${meta.label.toLowerCase()}...`}
+      searchPlaceholder={
+        kind === 'roles' ? 'Search roles...' : `Search ${meta.label.toLowerCase()}...`
+      }
       onSearchChange={setSearch}
+      hiddenColumnIds={hiddenColumnIds}
+      onHiddenColumnIdsChange={setHiddenColumnIds}
       onOpenFilters={() => setDrawer('filters')}
       onOpenColumns={() => setModal('columns')}
       onOpenSavedViews={() => setModal('views')}
@@ -378,13 +460,32 @@ function ResourceList({ kind }: { kind: ResourceKind }) {
       onPageChange={setPage}
       bulkActions={
         <div className="table-actions">
-          <PermissionButton guard="platform" permission={`${meta.permission}.edit`} type="button" size="sm" variant="secondary">
+          <PermissionButton
+            guard="platform"
+            permission={`${meta.permission}.edit`}
+            type="button"
+            size="sm"
+            variant="secondary"
+          >
             Activate
           </PermissionButton>
-          <PermissionButton guard="platform" permission={`${meta.permission}.edit`} type="button" size="sm" variant="secondary">
+          <PermissionButton
+            guard="platform"
+            permission={`${meta.permission}.edit`}
+            type="button"
+            size="sm"
+            variant="secondary"
+          >
             Deactivate
           </PermissionButton>
-          <PermissionButton guard="platform" permission={`${meta.permission}.view`} type="button" size="sm" variant="secondary" onClick={() => setModal('export')}>
+          <PermissionButton
+            guard="platform"
+            permission={`${meta.permission}.view`}
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={() => setModal('export')}
+          >
             Export Selected
           </PermissionButton>
         </div>
@@ -398,9 +499,7 @@ function ResourceList({ kind }: { kind: ResourceKind }) {
         {header}
         <ResourceStats kind={kind} rows={rows} />
         <div className="admin-master-grid">
-          <div className="admin-master-main">
-            {table}
-          </div>
+          <div className="admin-master-main">{table}</div>
           <AuditRail rows={rows} />
         </div>
 
@@ -409,11 +508,22 @@ function ResourceList({ kind }: { kind: ResourceKind }) {
           modal={modal}
           drawer={drawer}
           selectedRecord={selectedRecord}
+          columns={columns}
+          filters={filters}
+          onFiltersChange={(nextFilters) => {
+            setFilters(nextFilters);
+            setPage(1);
+          }}
+          hiddenColumnIds={hiddenColumnIds}
+          selectedCount={selectedIds.length}
+          onHiddenColumnIdsChange={setHiddenColumnIds}
           onClose={() => {
             setModal(null);
             setDrawer(null);
           }}
-          onAction={(action, payload) => selectedRecord && actionMutation.mutate({ action, record: selectedRecord, payload })}
+          onAction={(action, payload) =>
+            selectedRecord && actionMutation.mutate({ action, record: selectedRecord, payload })
+          }
         />
       </section>
     );
@@ -430,11 +540,22 @@ function ResourceList({ kind }: { kind: ResourceKind }) {
         modal={modal}
         drawer={drawer}
         selectedRecord={selectedRecord}
+        columns={columns}
+        filters={filters}
+        onFiltersChange={(nextFilters) => {
+          setFilters(nextFilters);
+          setPage(1);
+        }}
+        hiddenColumnIds={hiddenColumnIds}
+        selectedCount={selectedIds.length}
+        onHiddenColumnIdsChange={setHiddenColumnIds}
         onClose={() => {
           setModal(null);
           setDrawer(null);
         }}
-        onAction={(action, payload) => selectedRecord && actionMutation.mutate({ action, record: selectedRecord, payload })}
+        onAction={(action, payload) =>
+          selectedRecord && actionMutation.mutate({ action, record: selectedRecord, payload })
+        }
       />
     </section>
   );
@@ -455,60 +576,193 @@ function columnsFor(
     header: 'Status',
     accessor: (row: PlatformRecord) => row.status,
     enableSorting: true,
-    cell: (row: PlatformRecord) => <CompactStatusBadge status={textOf(row, ['status'], 'inactive')} />
+    cell: (row: PlatformRecord) => (
+      <CompactStatusBadge status={textOf(row, ['status'], 'inactive')} />
+    )
   };
   const actionColumn = {
     id: 'actions',
     header: 'Actions',
     enableHiding: false,
-    cell: (row: PlatformRecord) => kind === 'roles'
-      ? <RoleActionsMenu row={row} handlers={handlers} />
-      : <ResourceActionsMenu kind={kind} row={row} handlers={handlers} />
+    cell: (row: PlatformRecord) =>
+      kind === 'roles' ? (
+        <RoleActionsMenu row={row} handlers={handlers} />
+      ) : (
+        <ResourceActionsMenu kind={kind} row={row} handlers={handlers} />
+      )
   } satisfies DataTableColumn<PlatformRecord>;
 
   if (kind === 'roles') {
     return [
-      { id: 'display_name', header: 'Display Name', accessor: (row) => row.display_name, enableSorting: true, cell: (row) => <RoleNameCell row={row} /> },
-      { id: 'name', header: 'Role Name', accessor: (row) => row.name, enableSorting: true, cell: (row) => <span className="muted-cell">{textOf(row, ['name'])}</span> },
-      { id: 'guard_name', header: 'Guard', accessor: (row) => row.guard_name, cell: (row) => textOf(row, ['guard_name']) },
-      { id: 'permissions_count', header: 'Permissions', accessor: (row) => row.permissions_count, cell: (row) => textOf(row, ['permissions_count'], '0') },
-      { id: 'users_count', header: 'Assigned Users', accessor: (row) => row.users_count, cell: (row) => textOf(row, ['users_count'], '0') },
-      { id: 'is_system', header: 'System', accessor: (row) => row.is_system, cell: (row) => <SystemRoleBadge system={Boolean(row.is_system)} /> },
+      {
+        id: 'display_name',
+        header: 'Display Name',
+        accessor: (row) => row.display_name,
+        enableSorting: true,
+        cell: (row) => <RoleNameCell row={row} />
+      },
+      {
+        id: 'name',
+        header: 'Role Name',
+        accessor: (row) => row.name,
+        enableSorting: true,
+        cell: (row) => <span className="muted-cell">{textOf(row, ['name'])}</span>
+      },
+      {
+        id: 'guard_name',
+        header: 'Guard',
+        accessor: (row) => row.guard_name,
+        cell: (row) => textOf(row, ['guard_name'])
+      },
+      {
+        id: 'permissions_count',
+        header: 'Permissions',
+        accessor: (row) => row.permissions_count,
+        cell: (row) => textOf(row, ['permissions_count'], '0')
+      },
+      {
+        id: 'users_count',
+        header: 'Assigned Users',
+        accessor: (row) => row.users_count,
+        cell: (row) => textOf(row, ['users_count'], '0')
+      },
+      {
+        id: 'is_system',
+        header: 'System',
+        accessor: (row) => row.is_system,
+        cell: (row) => <SystemRoleBadge system={Boolean(row.is_system)} />
+      },
       statusColumn,
-      { id: 'created_at', header: 'Created At', accessor: (row) => row.created_at, enableSorting: true, cell: (row) => <DateCell value={row.created_at} /> },
-      { id: 'updated_at', header: 'Updated At', accessor: (row) => row.updated_at, enableSorting: true, cell: (row) => <DateCell value={row.updated_at} /> },
+      {
+        id: 'created_at',
+        header: 'Created At',
+        accessor: (row) => row.created_at,
+        enableSorting: true,
+        cell: (row) => <DateCell value={row.created_at} />
+      },
+      {
+        id: 'updated_at',
+        header: 'Updated At',
+        accessor: (row) => row.updated_at,
+        enableSorting: true,
+        cell: (row) => <DateCell value={row.updated_at} />
+      },
       actionColumn
     ];
   }
   if (kind === 'permissions') {
     return [
-      { id: 'module', header: 'Module', accessor: (row) => row.module, enableSorting: true, cell: (row) => textOf(row, ['module']) },
-      { id: 'name', header: 'Permission Name', accessor: (row) => row.name, enableSorting: true, cell: (row) => textOf(row, ['name']) },
-      { id: 'display_name', header: 'Display Name', accessor: (row) => row.display_name, cell: (row) => textOf(row, ['display_name']) },
-      { id: 'guard_name', header: 'Guard', accessor: (row) => row.guard_name, cell: (row) => textOf(row, ['guard_name']) },
-      { id: 'roles_count', header: 'Roles', accessor: (row) => row.roles_count, cell: (row) => textOf(row, ['roles_count'], '0') },
-      { id: 'is_system', header: 'System', accessor: (row) => row.is_system, cell: (row) => row.is_system ? 'Yes' : 'No' },
+      {
+        id: 'module',
+        header: 'Module',
+        accessor: (row) => row.module,
+        enableSorting: true,
+        cell: (row) => textOf(row, ['module'])
+      },
+      {
+        id: 'name',
+        header: 'Permission Name',
+        accessor: (row) => row.name,
+        enableSorting: true,
+        cell: (row) => textOf(row, ['name'])
+      },
+      {
+        id: 'display_name',
+        header: 'Display Name',
+        accessor: (row) => row.display_name,
+        cell: (row) => textOf(row, ['display_name'])
+      },
+      {
+        id: 'guard_name',
+        header: 'Guard',
+        accessor: (row) => row.guard_name,
+        cell: (row) => textOf(row, ['guard_name'])
+      },
+      {
+        id: 'roles_count',
+        header: 'Roles',
+        accessor: (row) => row.roles_count,
+        cell: (row) => textOf(row, ['roles_count'], '0')
+      },
+      {
+        id: 'is_system',
+        header: 'System',
+        accessor: (row) => row.is_system,
+        cell: (row) => (row.is_system ? 'Yes' : 'No')
+      },
       statusColumn,
       actionColumn
     ];
   }
   if (kind === 'teams') {
     return [
-      { id: 'name', header: 'Team', accessor: (row) => row.name, enableSorting: true, cell: (row) => textOf(row, ['name']) },
-      { id: 'code', header: 'Code', accessor: (row) => row.code, cell: (row) => textOf(row, ['code']) },
-      { id: 'lead', header: 'Lead', accessor: (row) => row.lead_name as string, cell: (row) => textOf(row, ['lead_name', 'lead_platform_user_id']) },
-      { id: 'members_count', header: 'Members', accessor: (row) => row.members_count, cell: (row) => textOf(row, ['members_count'], '0') },
-      { id: 'assigned_tenants_count', header: 'Tenants', accessor: (row) => row.assigned_tenants_count, cell: (row) => textOf(row, ['assigned_tenants_count'], '0') },
-      { id: 'visibility', header: 'Visibility', accessor: (row) => row.visibility, cell: (row) => textOf(row, ['visibility']) },
+      {
+        id: 'name',
+        header: 'Team',
+        accessor: (row) => row.name,
+        enableSorting: true,
+        cell: (row) => textOf(row, ['name'])
+      },
+      {
+        id: 'code',
+        header: 'Code',
+        accessor: (row) => row.code,
+        cell: (row) => textOf(row, ['code'])
+      },
+      {
+        id: 'lead',
+        header: 'Lead',
+        accessor: (row) => row.lead_name as string,
+        cell: (row) => textOf(row, ['lead_name', 'lead_platform_user_id'])
+      },
+      {
+        id: 'members_count',
+        header: 'Members',
+        accessor: (row) => row.members_count,
+        cell: (row) => textOf(row, ['members_count'], '0')
+      },
+      {
+        id: 'assigned_tenants_count',
+        header: 'Tenants',
+        accessor: (row) => row.assigned_tenants_count,
+        cell: (row) => textOf(row, ['assigned_tenants_count'], '0')
+      },
+      {
+        id: 'visibility',
+        header: 'Visibility',
+        accessor: (row) => row.visibility,
+        cell: (row) => textOf(row, ['visibility'])
+      },
       statusColumn,
       actionColumn
     ];
   }
   return [
-    { id: 'name', header: 'Name', accessor: (row) => row.name, enableSorting: true, cell: (row) => textOf(row, ['name']) },
-    { id: 'code', header: 'Code', accessor: (row) => row.code, cell: (row) => textOf(row, ['code']) },
-    { id: 'sort_order', header: 'Sort', accessor: (row) => row.sort_order as number, cell: (row) => textOf(row, ['sort_order'], '0') },
-    { id: 'is_system', header: 'System', accessor: (row) => row.is_system, cell: (row) => row.is_system ? 'Yes' : 'No' },
+    {
+      id: 'name',
+      header: 'Name',
+      accessor: (row) => row.name,
+      enableSorting: true,
+      cell: (row) => textOf(row, ['name'])
+    },
+    {
+      id: 'code',
+      header: 'Code',
+      accessor: (row) => row.code,
+      cell: (row) => textOf(row, ['code'])
+    },
+    {
+      id: 'sort_order',
+      header: 'Sort',
+      accessor: (row) => row.sort_order as number,
+      cell: (row) => textOf(row, ['sort_order'], '0')
+    },
+    {
+      id: 'is_system',
+      header: 'System',
+      accessor: (row) => row.is_system,
+      cell: (row) => (row.is_system ? 'Yes' : 'No')
+    },
     statusColumn,
     actionColumn
   ];
@@ -535,7 +789,9 @@ function RoleNameCell({ row }: { row: PlatformRecord }) {
 
   return (
     <span className="role-name-cell">
-      <span className="role-avatar" aria-hidden="true">{initials || 'R'}</span>
+      <span className="role-avatar" aria-hidden="true">
+        {initials || 'R'}
+      </span>
       <span>
         <strong>{name}</strong>
         {row.description ? <small>{String(row.description)}</small> : null}
@@ -555,7 +811,11 @@ function CompactStatusBadge({ status }: { status: string }) {
 }
 
 function SystemRoleBadge({ system }: { system: boolean }) {
-  return <span className={`system-badge ${system ? 'system-badge--yes' : 'system-badge--no'}`}>{system ? 'Yes' : 'No'}</span>;
+  return (
+    <span className={`system-badge ${system ? 'system-badge--yes' : 'system-badge--no'}`}>
+      {system ? 'Yes' : 'No'}
+    </span>
+  );
 }
 
 function DateCell({ value }: { value: unknown }) {
@@ -564,7 +824,9 @@ function DateCell({ value }: { value: unknown }) {
   if (Number.isNaN(date.getTime())) return <span className="muted-cell">{String(value)}</span>;
   return (
     <span className="date-cell">
-      <strong>{date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</strong>
+      <strong>
+        {date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+      </strong>
       <small>{date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</small>
     </span>
   );
@@ -594,22 +856,106 @@ function RoleActionsMenu({
 
   return (
     <div className="action-dropdown">
-      <button ref={triggerRef} type="button" className="action-menu-trigger" aria-label={`Open actions for ${textOf(row, ['display_name', 'name'])}`} aria-expanded={open} onClick={() => setOpen((current) => !current)}>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="action-menu-trigger"
+        aria-label={`Open actions for ${textOf(row, ['display_name', 'name'])}`}
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
         <MoreVertical size={16} aria-hidden="true" />
       </button>
       <PortalActionMenu open={open} anchorRef={triggerRef} onClose={() => setOpen(false)}>
         <div className="action-menu" role="menu">
-          <button type="button" role="menuitem" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => handlers.onView(row))}><Eye size={15} aria-hidden="true" /> View</button>
-          <PermissionButton guard="platform" permission="platform_role.edit" type="button" role="menuitem" variant="ghost" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => handlers.onEdit(row))}><Pencil size={15} aria-hidden="true" /> Edit</PermissionButton>
-          <PermissionButton guard="platform" permission="platform_role.create" type="button" role="menuitem" variant="ghost" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => handlers.onAction('cloneRole', row))}><Copy size={15} aria-hidden="true" /> Clone</PermissionButton>
+          <button
+            type="button"
+            role="menuitem"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => run(() => handlers.onView(row))}
+          >
+            <Eye size={15} aria-hidden="true" /> View
+          </button>
+          <PermissionButton
+            guard="platform"
+            permission="platform_role.edit"
+            type="button"
+            role="menuitem"
+            variant="ghost"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => run(() => handlers.onEdit(row))}
+          >
+            <Pencil size={15} aria-hidden="true" /> Edit
+          </PermissionButton>
+          <PermissionButton
+            guard="platform"
+            permission="platform_role.create"
+            type="button"
+            role="menuitem"
+            variant="ghost"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => run(() => handlers.onAction('cloneRole', row))}
+          >
+            <Copy size={15} aria-hidden="true" /> Clone
+          </PermissionButton>
           <hr />
-          <PermissionButton guard="platform" permission="platform_role.edit" type="button" role="menuitem" variant="ghost" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => handlers.onInlineAction(isActive ? 'deactivate' : 'activate', row))}><RotateCcw size={15} aria-hidden="true" /> {isActive ? 'Deactivate' : 'Activate'}</PermissionButton>
+          <PermissionButton
+            guard="platform"
+            permission="platform_role.edit"
+            type="button"
+            role="menuitem"
+            variant="ghost"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() =>
+              run(() => handlers.onInlineAction(isActive ? 'deactivate' : 'activate', row))
+            }
+          >
+            <RotateCcw size={15} aria-hidden="true" /> {isActive ? 'Deactivate' : 'Activate'}
+          </PermissionButton>
           <hr />
-          <PermissionButton guard="platform" permission="platform_role.view" type="button" role="menuitem" variant="ghost" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => handlers.onAction('assignUsers', row))}><Users size={15} aria-hidden="true" /> View Assigned Users</PermissionButton>
-          <PermissionButton guard="platform" permission="platform_role.view" type="button" role="menuitem" variant="ghost" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => handlers.onDrawer('assignPermissions', row))}><ShieldCheck size={15} aria-hidden="true" /> View Permissions</PermissionButton>
-          <button type="button" role="menuitem" onMouseDown={(event) => event.preventDefault()} onClick={() => setOpen(false)}><KeyRound size={15} aria-hidden="true" /> Audit History</button>
+          <PermissionButton
+            guard="platform"
+            permission="platform_role.view"
+            type="button"
+            role="menuitem"
+            variant="ghost"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => run(() => handlers.onAction('assignUsers', row))}
+          >
+            <Users size={15} aria-hidden="true" /> View Assigned Users
+          </PermissionButton>
+          <PermissionButton
+            guard="platform"
+            permission="platform_role.view"
+            type="button"
+            role="menuitem"
+            variant="ghost"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => run(() => handlers.onDrawer('assignPermissions', row))}
+          >
+            <ShieldCheck size={15} aria-hidden="true" /> View Permissions
+          </PermissionButton>
+          <button
+            type="button"
+            role="menuitem"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => setOpen(false)}
+          >
+            <KeyRound size={15} aria-hidden="true" /> Audit History
+          </button>
           <hr />
-          <PermissionButton guard="platform" permission="platform_role.delete" type="button" role="menuitem" variant="ghost" className="is-danger" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => handlers.onAction('deleteRole', row))}><Trash2 size={15} aria-hidden="true" /> Delete Role</PermissionButton>
+          <PermissionButton
+            guard="platform"
+            permission="platform_role.delete"
+            type="button"
+            role="menuitem"
+            variant="ghost"
+            className="is-danger"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => run(() => handlers.onAction('deleteRole', row))}
+          >
+            <Trash2 size={15} aria-hidden="true" /> Delete Role
+          </PermissionButton>
         </div>
       </PortalActionMenu>
     </div>
@@ -642,22 +988,64 @@ function ResourceActionsMenu({
 
   return (
     <div className="action-dropdown">
-      <button ref={triggerRef} type="button" className="action-menu-trigger" aria-label={`Open actions for ${title}`} aria-expanded={open} onClick={() => setOpen((current) => !current)}>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="action-menu-trigger"
+        aria-label={`Open actions for ${title}`}
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >
         <MoreVertical size={16} aria-hidden="true" />
       </button>
       <PortalActionMenu open={open} anchorRef={triggerRef} onClose={() => setOpen(false)}>
         <div className="action-menu" role="menu">
-          <button type="button" role="menuitem" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => handlers.onView(row))}><Eye size={15} aria-hidden="true" /> View</button>
-          <PermissionButton guard="platform" permission={permissionFor(kind, 'edit')} type="button" role="menuitem" variant="ghost" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => handlers.onEdit(row))}><Pencil size={15} aria-hidden="true" /> Edit</PermissionButton>
+          <button
+            type="button"
+            role="menuitem"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => run(() => handlers.onView(row))}
+          >
+            <Eye size={15} aria-hidden="true" /> View
+          </button>
+          <PermissionButton
+            guard="platform"
+            permission={permissionFor(kind, 'edit')}
+            type="button"
+            role="menuitem"
+            variant="ghost"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => run(() => handlers.onEdit(row))}
+          >
+            <Pencil size={15} aria-hidden="true" /> Edit
+          </PermissionButton>
 
           {kind === 'permissions' ? (
             <>
               <hr />
-              <button type="button" role="menuitem" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => handlers.onDrawer('permissionDetail', row))}><ShieldCheck size={15} aria-hidden="true" /> Permission Detail</button>
+              <button
+                type="button"
+                role="menuitem"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => run(() => handlers.onDrawer('permissionDetail', row))}
+              >
+                <ShieldCheck size={15} aria-hidden="true" /> Permission Detail
+              </button>
               {!row.is_system ? (
                 <>
                   <hr />
-                  <PermissionButton guard="platform" permission="platform_permission.delete" type="button" role="menuitem" variant="ghost" className="is-danger" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => handlers.onAction('deletePermission', row))}><Trash2 size={15} aria-hidden="true" /> Delete Permission</PermissionButton>
+                  <PermissionButton
+                    guard="platform"
+                    permission="platform_permission.delete"
+                    type="button"
+                    role="menuitem"
+                    variant="ghost"
+                    className="is-danger"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => run(() => handlers.onAction('deletePermission', row))}
+                  >
+                    <Trash2 size={15} aria-hidden="true" /> Delete Permission
+                  </PermissionButton>
                 </>
               ) : null}
             </>
@@ -666,19 +1054,71 @@ function ResourceActionsMenu({
           {kind === 'teams' ? (
             <>
               <hr />
-              <PermissionButton guard="platform" permission="platform_team.assign" type="button" role="menuitem" variant="ghost" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => handlers.onAction('addMember', row))}><Users size={15} aria-hidden="true" /> Add Member</PermissionButton>
-              <PermissionButton guard="platform" permission="platform_team.assign" type="button" role="menuitem" variant="ghost" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => handlers.onAction('assignRecord', row))}><ShieldCheck size={15} aria-hidden="true" /> Assign Records</PermissionButton>
+              <PermissionButton
+                guard="platform"
+                permission="platform_team.assign"
+                type="button"
+                role="menuitem"
+                variant="ghost"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => run(() => handlers.onAction('addMember', row))}
+              >
+                <Users size={15} aria-hidden="true" /> Add Member
+              </PermissionButton>
+              <PermissionButton
+                guard="platform"
+                permission="platform_team.assign"
+                type="button"
+                role="menuitem"
+                variant="ghost"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => run(() => handlers.onAction('assignRecord', row))}
+              >
+                <ShieldCheck size={15} aria-hidden="true" /> Assign Records
+              </PermissionButton>
               <hr />
-              <PermissionButton guard="platform" permission="platform_team.delete" type="button" role="menuitem" variant="ghost" className="is-danger" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => handlers.onAction('archiveTeam', row))}><Archive size={15} aria-hidden="true" /> Archive Team</PermissionButton>
+              <PermissionButton
+                guard="platform"
+                permission="platform_team.delete"
+                type="button"
+                role="menuitem"
+                variant="ghost"
+                className="is-danger"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => run(() => handlers.onAction('archiveTeam', row))}
+              >
+                <Archive size={15} aria-hidden="true" /> Archive Team
+              </PermissionButton>
             </>
           ) : null}
 
           {kind === 'teamRoles' ? (
             <>
               <hr />
-              <PermissionButton guard="platform" permission="platform_team.edit" type="button" role="menuitem" variant="ghost" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => handlers.onAction('teamRoleEditor', row))}><KeyRound size={15} aria-hidden="true" /> Team Role Editor</PermissionButton>
+              <PermissionButton
+                guard="platform"
+                permission="platform_team.edit"
+                type="button"
+                role="menuitem"
+                variant="ghost"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => run(() => handlers.onAction('teamRoleEditor', row))}
+              >
+                <KeyRound size={15} aria-hidden="true" /> Team Role Editor
+              </PermissionButton>
               <hr />
-              <PermissionButton guard="platform" permission="platform_team.delete" type="button" role="menuitem" variant="ghost" className="is-danger" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => handlers.onInlineAction('deleteTeamRole', row))}><Trash2 size={15} aria-hidden="true" /> Delete Team Role</PermissionButton>
+              <PermissionButton
+                guard="platform"
+                permission="platform_team.delete"
+                type="button"
+                role="menuitem"
+                variant="ghost"
+                className="is-danger"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => run(() => handlers.onInlineAction('deleteTeamRole', row))}
+              >
+                <Trash2 size={15} aria-hidden="true" /> Delete Team Role
+              </PermissionButton>
             </>
           ) : null}
         </div>
@@ -732,14 +1172,27 @@ function PortalActionMenu({
 
   return createPortal(
     <div className="action-menu-portal" style={{ left: position.left, top: position.top }}>
-      <button type="button" className="action-menu-backdrop" aria-label="Close actions menu" onClick={onClose} />
+      <button
+        type="button"
+        className="action-menu-backdrop"
+        aria-label="Close actions menu"
+        onClick={onClose}
+      />
       {children}
     </div>,
     document.body
   );
 }
 
-function ResourceForm({ kind, record, title }: { kind: ResourceKind; record?: PlatformRecord; title?: string }) {
+function ResourceForm({
+  kind,
+  record,
+  title
+}: {
+  kind: ResourceKind;
+  record?: PlatformRecord;
+  title?: string;
+}) {
   if (kind === 'roles') return <RoleFormPage record={record} title={title} />;
   if (kind === 'permissions') return <PermissionFormPage record={record} title={title} />;
   if (kind === 'teams') return <TeamFormPage record={record} title={title} />;
@@ -750,7 +1203,9 @@ function RoleFormPage({ record, title }: { record?: PlatformRecord; title?: stri
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [selectedPermissionIdsState, setSelectedPermissionIdsState] = useState(selectedPermissionIds(record));
+  const [selectedPermissionIdsState, setSelectedPermissionIdsState] = useState(
+    selectedPermissionIds(record)
+  );
   const form = useForm<RoleForm>({
     resolver: zodResolver(roleSchema),
     defaultValues: {
@@ -768,13 +1223,23 @@ function RoleFormPage({ record, title }: { record?: PlatformRecord; title?: stri
     mutationFn: (values: RoleForm) => {
       const payload: RolePayload = {
         ...values,
-        permission_ids: selectedPermissionIdsState.length > 0 ? selectedPermissionIdsState : values.permission_ids?.split(',').map((item) => item.trim()).filter(Boolean),
+        permission_ids:
+          selectedPermissionIdsState.length > 0
+            ? selectedPermissionIdsState
+            : values.permission_ids
+                ?.split(',')
+                .map((item) => item.trim())
+                .filter(Boolean),
         audit_reason: values.audit_reason
       };
-      return record ? platformAccessApi.roles.update(idOf(record), payload) : platformAccessApi.roles.create(payload);
+      return record
+        ? platformAccessApi.roles.update(idOf(record), payload)
+        : platformAccessApi.roles.create(payload);
     },
     onSuccess: async (saved) => {
-      await queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource(resourceMeta.roles.resourceKey) });
+      await queryClient.invalidateQueries({
+        queryKey: platformQueryKeys.resource(resourceMeta.roles.resourceKey)
+      });
       navigate(`${resourceMeta.roles.route}/${idOf(saved) || idOf(record)}`);
     }
   });
@@ -788,11 +1253,20 @@ function RoleFormPage({ record, title }: { record?: PlatformRecord; title?: stri
       title={title ?? `Edit ${textOf(record, ['display_name', 'name'])}`}
       permission={record ? 'platform_role.edit' : 'platform_role.create'}
       side={<RoleSummary record={record} selectedCount={selectedPermissionIdsState.length} />}
-      footerExtra={<Button type="button" variant="secondary" onClick={() => setDrawerOpen(true)}>Assign permissions</Button>}
+      footerExtra={
+        <Button type="button" variant="secondary" onClick={() => setDrawerOpen(true)}>
+          Assign permissions
+        </Button>
+      }
     >
       <FormGrid>
         <InputField form={form} name="name" label="Role name" placeholder="billing_manager" />
-        <InputField form={form} name="display_name" label="Display name" placeholder="Billing Manager" />
+        <InputField
+          form={form}
+          name="display_name"
+          label="Display name"
+          placeholder="Billing Manager"
+        />
         <InputField form={form} name="guard_name" label="Guard name" placeholder="platform" />
         <InputField form={form} name="description" label="Description" type="textarea" />
         <SelectField form={form} name="status" label="Status" options={['active', 'inactive']} />
@@ -828,9 +1302,13 @@ function PermissionFormPage({ record, title }: { record?: PlatformRecord; title?
   });
   const mutation = useMutation({
     mutationFn: (values: PermissionForm) =>
-      record ? platformAccessApi.permissions.update(idOf(record), values as PermissionPayload) : platformAccessApi.permissions.create(values as PermissionPayload),
+      record
+        ? platformAccessApi.permissions.update(idOf(record), values as PermissionPayload)
+        : platformAccessApi.permissions.create(values as PermissionPayload),
     onSuccess: async (saved) => {
-      await queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource(resourceMeta.permissions.resourceKey) });
+      await queryClient.invalidateQueries({
+        queryKey: platformQueryKeys.resource(resourceMeta.permissions.resourceKey)
+      });
       navigate(`${resourceMeta.permissions.route}/${idOf(saved) || idOf(record)}`);
     }
   });
@@ -847,7 +1325,12 @@ function PermissionFormPage({ record, title }: { record?: PlatformRecord; title?
     >
       <FormGrid>
         <InputField form={form} name="module" label="Module" placeholder="billing" />
-        <InputField form={form} name="name" label="Permission name" placeholder="billing.invoice.view" />
+        <InputField
+          form={form}
+          name="name"
+          label="Permission name"
+          placeholder="billing.invoice.view"
+        />
         <InputField form={form} name="display_name" label="Display name" />
         <InputField form={form} name="guard_name" label="Guard name" placeholder="platform" />
         <InputField form={form} name="description" label="Description" type="textarea" />
@@ -880,9 +1363,13 @@ function TeamFormPage({ record, title }: { record?: PlatformRecord; title?: stri
   });
   const mutation = useMutation({
     mutationFn: (values: TeamForm) =>
-      record ? platformAccessApi.teams.update(idOf(record), values as TeamPayload) : platformAccessApi.teams.create(values as TeamPayload),
+      record
+        ? platformAccessApi.teams.update(idOf(record), values as TeamPayload)
+        : platformAccessApi.teams.create(values as TeamPayload),
     onSuccess: async (saved) => {
-      await queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource(resourceMeta.teams.resourceKey) });
+      await queryClient.invalidateQueries({
+        queryKey: platformQueryKeys.resource(resourceMeta.teams.resourceKey)
+      });
       navigate(`${resourceMeta.teams.route}/${idOf(saved) || idOf(record)}`);
     }
   });
@@ -901,13 +1388,27 @@ function TeamFormPage({ record, title }: { record?: PlatformRecord; title?: stri
         <InputField form={form} name="name" label="Team name" />
         <InputField form={form} name="code" label="Team code" />
         <InputField form={form} name="lead_platform_user_id" label="Lead platform user ID" />
-        <InputField form={form} name="assistant_lead_platform_user_id" label="Assistant lead user ID" />
+        <InputField
+          form={form}
+          name="assistant_lead_platform_user_id"
+          label="Assistant lead user ID"
+        />
         <InputField form={form} name="email" label="Team email" />
         <InputField form={form} name="phone" label="Phone" />
         <InputField form={form} name="color" label="Color" type="color" />
         <InputField form={form} name="icon" label="Icon" />
-        <SelectField form={form} name="visibility" label="Visibility" options={['internal', 'private']} />
-        <SelectField form={form} name="status" label="Status" options={['active', 'inactive', 'archived']} />
+        <SelectField
+          form={form}
+          name="visibility"
+          label="Visibility"
+          options={['internal', 'private']}
+        />
+        <SelectField
+          form={form}
+          name="status"
+          label="Status"
+          options={['active', 'inactive', 'archived']}
+        />
         <InputField form={form} name="description" label="Description" type="textarea" />
         <InputField form={form} name="audit_reason" label="Audit reason" />
       </FormGrid>
@@ -943,10 +1444,14 @@ function TeamRoleFormPage({ record, title }: { record?: PlatformRecord; title?: 
         status: values.status,
         audit_reason: values.audit_reason
       };
-      return record ? platformAccessApi.teamRoles.update(idOf(record), payload) : platformAccessApi.teamRoles.create(payload);
+      return record
+        ? platformAccessApi.teamRoles.update(idOf(record), payload)
+        : platformAccessApi.teamRoles.create(payload);
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource(resourceMeta.teamRoles.resourceKey) });
+      await queryClient.invalidateQueries({
+        queryKey: platformQueryKeys.resource(resourceMeta.teamRoles.resourceKey)
+      });
       navigate(resourceMeta.teamRoles.route);
     }
   });
@@ -993,28 +1498,98 @@ function ResourceView({ kind, record }: { kind: ResourceKind; record: PlatformRe
     <section className="enterprise-module-page platform-access-page">
       <PageHeader
         title={textOf(record, ['display_name', 'name'])}
-        description={textOf(record, ['description'], 'Manage details, assignments, permissions, and activity.')}
-        meta={<StatusBadge tone={record.status === 'active' ? 'success' : 'neutral'}>{textOf(record, ['status'])}</StatusBadge>}
-        tabs={<Tabs tabs={tabs} activeId={activeTab} onChange={setActiveTab} ariaLabel={`${meta.label} tabs`} />}
+        description={textOf(
+          record,
+          ['description'],
+          'Manage details, assignments, permissions, and activity.'
+        )}
+        meta={
+          <StatusBadge tone={record.status === 'active' ? 'success' : 'neutral'}>
+            {textOf(record, ['status'])}
+          </StatusBadge>
+        }
+        tabs={
+          <Tabs
+            tabs={tabs}
+            activeId={activeTab}
+            onChange={setActiveTab}
+            ariaLabel={`${meta.label} tabs`}
+          />
+        }
         actions={
           <>
-            <Button type="button" variant="secondary" onClick={() => navigate(meta.route)}>Back</Button>
-            <PermissionButton guard="platform" permission={`${meta.permission}.edit`} type="button" onClick={() => navigate(`${meta.route}/${idOf(record)}/edit`)}>
+            <Button type="button" variant="secondary" onClick={() => navigate(meta.route)}>
+              Back
+            </Button>
+            <PermissionButton
+              guard="platform"
+              permission={`${meta.permission}.edit`}
+              type="button"
+              onClick={() => navigate(`${meta.route}/${idOf(record)}/edit`)}
+            >
               <Pencil size={16} aria-hidden="true" />
               Edit
             </PermissionButton>
             {kind === 'roles' ? (
               <>
-                <PermissionButton guard="platform" permission="platform_role.edit" type="button" variant="secondary" onClick={() => setDrawer('assignPermissions')}>Assign Permissions</PermissionButton>
-                <PermissionButton guard="platform" permission="platform_role.edit" type="button" variant="secondary" onClick={() => setModal('assignUsers')}>Assign Users</PermissionButton>
-                <PermissionButton guard="platform" permission="platform_role.create" type="button" variant="secondary" onClick={() => setModal('cloneRole')}>Clone</PermissionButton>
+                <PermissionButton
+                  guard="platform"
+                  permission="platform_role.edit"
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setDrawer('assignPermissions')}
+                >
+                  Assign Permissions
+                </PermissionButton>
+                <PermissionButton
+                  guard="platform"
+                  permission="platform_role.edit"
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setModal('assignUsers')}
+                >
+                  Assign Users
+                </PermissionButton>
+                <PermissionButton
+                  guard="platform"
+                  permission="platform_role.create"
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setModal('cloneRole')}
+                >
+                  Clone
+                </PermissionButton>
               </>
             ) : null}
             {kind === 'teams' ? (
               <>
-                <PermissionButton guard="platform" permission="platform_team.assign" type="button" variant="secondary" onClick={() => setModal('addMember')}>Add Member</PermissionButton>
-                <PermissionButton guard="platform" permission="platform_team.assign" type="button" variant="secondary" onClick={() => setModal('assignRecord')}>Assign Records</PermissionButton>
-                <PermissionButton guard="platform" permission="platform_team.assign" type="button" variant="secondary" onClick={() => setModal('releaseAssignment')}>Release Assignment</PermissionButton>
+                <PermissionButton
+                  guard="platform"
+                  permission="platform_team.assign"
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setModal('addMember')}
+                >
+                  Add Member
+                </PermissionButton>
+                <PermissionButton
+                  guard="platform"
+                  permission="platform_team.assign"
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setModal('assignRecord')}
+                >
+                  Assign Records
+                </PermissionButton>
+                <PermissionButton
+                  guard="platform"
+                  permission="platform_team.assign"
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setModal('releaseAssignment')}
+                >
+                  Release Assignment
+                </PermissionButton>
               </>
             ) : null}
           </>
@@ -1022,19 +1597,55 @@ function ResourceView({ kind, record }: { kind: ResourceKind; record: PlatformRe
       />
 
       <div className="platform-access-summary">
-        <SummaryTile icon={<ShieldCheck />} label="Permissions" value={textOf(record, ['permissions_count'], selectedPermissionIds(record).length ? String(selectedPermissionIds(record).length) : '0')} />
-        <SummaryTile icon={<Users />} label={kind === 'teams' ? 'Members' : 'Assigned Users'} value={textOf(record, ['users_count', 'members_count'], '0')} />
-        <SummaryTile icon={<KeyRound />} label="Guard" value={textOf(record, ['guard_name'], kind === 'teams' ? 'platform_team' : '-')} />
-        <SummaryTile icon={<CheckCircle2 />} label="System" value={record.is_system ? 'Yes' : 'No'} />
+        <SummaryTile
+          icon={<ShieldCheck />}
+          label="Permissions"
+          value={textOf(
+            record,
+            ['permissions_count'],
+            selectedPermissionIds(record).length
+              ? String(selectedPermissionIds(record).length)
+              : '0'
+          )}
+        />
+        <SummaryTile
+          icon={<Users />}
+          label={kind === 'teams' ? 'Members' : 'Assigned Users'}
+          value={textOf(record, ['users_count', 'members_count'], '0')}
+        />
+        <SummaryTile
+          icon={<KeyRound />}
+          label="Guard"
+          value={textOf(record, ['guard_name'], kind === 'teams' ? 'platform_team' : '-')}
+        />
+        <SummaryTile
+          icon={<CheckCircle2 />}
+          label="System"
+          value={record.is_system ? 'Yes' : 'No'}
+        />
       </div>
 
       <article className="enterprise-view-panel">
         {activeTab === 'details' ? <RecordDetails record={record} /> : null}
-        {activeTab === 'permissions' ? <PermissionGroups groups={record.permissions as GroupedPermissions | undefined} /> : null}
+        {activeTab === 'permissions' ? (
+          <PermissionGroups groups={record.permissions as GroupedPermissions | undefined} />
+        ) : null}
         {activeTab === 'users' && kind === 'teams' ? <TeamMembersPanel team={record} /> : null}
-        {activeTab === 'users' && kind !== 'teams' ? <RecordList rows={(record.users as PlatformRecord[] | undefined) ?? (record.members as PlatformRecord[] | undefined) ?? []} /> : null}
-        {activeTab === 'assignments' && kind === 'teams' ? <TeamAssignmentsPanel team={record} /> : null}
-        {activeTab === 'assignments' && kind !== 'teams' ? <RecordList rows={(record.assignments as PlatformRecord[] | undefined) ?? []} /> : null}
+        {activeTab === 'users' && kind !== 'teams' ? (
+          <RecordList
+            rows={
+              (record.users as PlatformRecord[] | undefined) ??
+              (record.members as PlatformRecord[] | undefined) ??
+              []
+            }
+          />
+        ) : null}
+        {activeTab === 'assignments' && kind === 'teams' ? (
+          <TeamAssignmentsPanel team={record} />
+        ) : null}
+        {activeTab === 'assignments' && kind !== 'teams' ? (
+          <RecordList rows={(record.assignments as PlatformRecord[] | undefined) ?? []} />
+        ) : null}
         {activeTab === 'activity' ? <AuditRail rows={[record]} compact /> : null}
       </article>
 
@@ -1057,6 +1668,12 @@ function StandardListControls({
   modal,
   drawer,
   selectedRecord,
+  columns = [],
+  filters = {},
+  onFiltersChange,
+  hiddenColumnIds = [],
+  selectedCount = 0,
+  onHiddenColumnIdsChange,
   onClose,
   onAction
 }: {
@@ -1064,9 +1681,68 @@ function StandardListControls({
   modal: ModalKind;
   drawer: DrawerKind;
   selectedRecord: PlatformRecord | null;
+  columns?: DataTableColumn<PlatformRecord>[];
+  filters?: Record<string, string>;
+  onFiltersChange?: (filters: Record<string, string>) => void;
+  hiddenColumnIds?: string[];
+  selectedCount?: number;
+  onHiddenColumnIdsChange?: (ids: string[]) => void;
   onClose: () => void;
   onAction?: (action: string, payload: Record<string, unknown>) => void;
 }) {
+  const [draftFilters, setDraftFilters] = useState(filters);
+  const filterFields = [
+    {
+      name: 'status',
+      label: 'Status',
+      input: (
+        <select
+          value={draftFilters.status ?? ''}
+          onChange={(event) => setDraftFilters({ ...draftFilters, status: event.target.value })}
+        >
+          <option value="">Any status</option>
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+        </select>
+      )
+    },
+    ...(kind === 'roles'
+      ? [
+          {
+            name: 'type',
+            label: 'Role type',
+            input: (
+              <select
+                value={draftFilters.type ?? ''}
+                onChange={(event) => setDraftFilters({ ...draftFilters, type: event.target.value })}
+              >
+                <option value="">Any type</option>
+                <option value="custom">Custom</option>
+                <option value="system">System</option>
+              </select>
+            )
+          },
+          {
+            name: 'guard_name',
+            label: 'Guard name',
+            input: (
+              <input
+                value={draftFilters.guard_name ?? ''}
+                onChange={(event) =>
+                  setDraftFilters({ ...draftFilters, guard_name: event.target.value })
+                }
+                placeholder="platform"
+              />
+            )
+          }
+        ]
+      : [])
+  ];
+
+  useEffect(() => {
+    if (drawer === 'filters') setDraftFilters(filters);
+  }, [drawer, filters]);
+
   return (
     <>
       <AdvancedFiltersDrawer
@@ -1074,18 +1750,32 @@ function StandardListControls({
         onClose={onClose}
         guard="platform"
         permission={`${resourceMeta[kind].permission}.view`}
-        fields={[{ name: 'status', label: 'Status', input: <select><option>Any</option><option>Active</option><option>Inactive</option></select> }]}
-        onApply={onClose}
-        onReset={() => undefined}
+        fields={filterFields}
+        onApply={() => {
+          onFiltersChange?.(draftFilters);
+          onClose();
+        }}
+        onReset={() => setDraftFilters({})}
       />
       <ColumnManagerModal
         open={modal === 'columns'}
         onClose={onClose}
         guard="platform"
         permission={`${resourceMeta[kind].permission}.view`}
-        columns={[{ id: 'name', label: 'Name', visible: true }, { id: 'status', label: 'Status', visible: true }]}
-        onToggle={() => undefined}
-        onReset={() => undefined}
+        columns={columns.map((column) => ({
+          id: column.id,
+          label: column.header,
+          visible: !hiddenColumnIds.includes(column.id),
+          locked: column.enableHiding === false
+        }))}
+        onToggle={(id) =>
+          onHiddenColumnIdsChange?.(
+            hiddenColumnIds.includes(id)
+              ? hiddenColumnIds.filter((columnId) => columnId !== id)
+              : [...hiddenColumnIds, id]
+          )
+        }
+        onReset={() => onHiddenColumnIdsChange?.([])}
         onSave={onClose}
       />
       <SavedViewsModal
@@ -1093,7 +1783,11 @@ function StandardListControls({
         onClose={onClose}
         guard="platform"
         permission={`${resourceMeta[kind].permission}.view`}
-        views={[{ id: 'active', name: 'Active records', visibility: 'shared', isDefault: true }]}
+        views={[
+          { id: 'active', name: 'Active records', visibility: 'shared', isDefault: true },
+          { id: 'system', name: 'System records', visibility: 'shared' },
+          { id: 'mine', name: 'My saved scope', visibility: 'personal' }
+        ]}
         activeViewId="active"
         onSelect={onClose}
         onSaveCurrent={onClose}
@@ -1103,16 +1797,36 @@ function StandardListControls({
         onClose={onClose}
         guard="platform"
         permission={`${resourceMeta[kind].permission}.view`}
-        columns={['Name', 'Status', 'Created At', 'Updated At']}
-        selectedCount={selectedRecord ? 1 : 0}
+        columns={columns
+          .filter((column) => !hiddenColumnIds.includes(column.id) && column.id !== 'actions')
+          .map((column) => String(column.header))}
+        selectedCount={selectedCount}
         onExport={onClose}
       />
-      <AssignPermissionsDrawer open={drawer === 'assignPermissions'} role={selectedRecord} onClose={onClose} onSaved={onClose} />
-      <PermissionDetailDrawer open={drawer === 'permissionDetail'} record={selectedRecord} onClose={onClose} />
+      <AssignPermissionsDrawer
+        open={drawer === 'assignPermissions'}
+        role={selectedRecord}
+        onClose={onClose}
+        onSaved={onClose}
+      />
+      <PermissionDetailDrawer
+        open={drawer === 'permissionDetail'}
+        record={selectedRecord}
+        onClose={onClose}
+      />
       <AssignUsersModal open={modal === 'assignUsers'} role={selectedRecord} onClose={onClose} />
       <CloneRoleModal open={modal === 'cloneRole'} role={selectedRecord} onClose={onClose} />
-      <DeleteRoleDialog open={modal === 'deleteRole'} role={selectedRecord} onClose={onClose} onConfirm={(payload) => onAction?.('deleteRole', payload)} />
-      <PermissionEditorModal open={modal === 'permissionEditor'} permission={selectedRecord} onClose={onClose} />
+      <DeleteRoleDialog
+        open={modal === 'deleteRole'}
+        role={selectedRecord}
+        onClose={onClose}
+        onConfirm={(payload) => onAction?.('deleteRole', payload)}
+      />
+      <PermissionEditorModal
+        open={modal === 'permissionEditor'}
+        permission={selectedRecord}
+        onClose={onClose}
+      />
       <ConfirmDialog
         open={modal === 'deletePermission'}
         onClose={onClose}
@@ -1129,8 +1843,16 @@ function StandardListControls({
       />
       <AddMemberModal open={modal === 'addMember'} team={selectedRecord} onClose={onClose} />
       <AssignRecordModal open={modal === 'assignRecord'} team={selectedRecord} onClose={onClose} />
-      <ReleaseAssignmentModal open={modal === 'releaseAssignment'} team={selectedRecord} onClose={onClose} />
-      <TeamRoleEditorModal open={modal === 'teamRoleEditor'} role={selectedRecord} onClose={onClose} />
+      <ReleaseAssignmentModal
+        open={modal === 'releaseAssignment'}
+        team={selectedRecord}
+        onClose={onClose}
+      />
+      <TeamRoleEditorModal
+        open={modal === 'teamRoleEditor'}
+        role={selectedRecord}
+        onClose={onClose}
+      />
       <ConfirmDialog
         open={modal === 'archiveTeam'}
         onClose={onClose}
@@ -1174,29 +1896,44 @@ function AssignPermissionsDrawer({
     queryFn: platformAccessApi.permissions.grouped,
     enabled: open
   });
+  const rolePermissionsQuery = useQuery({
+    queryKey: platformQueryKeys.related(resourceMeta.roles.resourceKey, idOf(role), 'permissions'),
+    queryFn: () => platformAccessApi.roles.permissions(idOf(role)),
+    enabled: open && Boolean(role)
+  });
   const mutation = useMutation({
     mutationFn: () => {
       if (!role) return Promise.resolve({ data: null });
-      return platformAccessApi.roles.replacePermissions(idOf(role), { permission_ids: localIds, audit_reason: auditReason });
+      return platformAccessApi.roles.replacePermissions(idOf(role), {
+        permission_ids: localIds,
+        audit_reason: auditReason
+      });
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource(resourceMeta.roles.resourceKey) });
+      await queryClient.invalidateQueries({
+        queryKey: platformQueryKeys.resource(resourceMeta.roles.resourceKey)
+      });
       onSelectedIdsChange?.(localIds);
       onSaved();
     }
   });
   const groups = groupedQuery.data?.data.permissions ?? {};
   const modules = Object.keys(groups);
-  const original = selectedPermissionIds(role);
+  const rolePermissionGroups = rolePermissionsQuery.data?.data.permissions;
+  const original = rolePermissionGroups
+    ? groupedPermissionIds(rolePermissionGroups)
+    : selectedPermissionIds(role);
   const added = localIds.filter((id) => !original.includes(id)).length;
   const removed = original.filter((id) => !localIds.includes(id)).length;
 
   useEffect(() => {
-    if (open) setLocalIds(selectedIds ?? selectedPermissionIds(role));
-  }, [open, role, selectedIds]);
+    if (open) setLocalIds(selectedIds ?? original);
+  }, [open, role, selectedIds, rolePermissionsQuery.data]);
 
   function toggle(id: string) {
-    setLocalIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+    setLocalIds((current) =>
+      current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
+    );
   }
 
   return (
@@ -1207,15 +1944,40 @@ function AssignPermissionsDrawer({
       guard="platform"
       permission="platform_role.edit"
       size="xl"
-      loading={groupedQuery.isLoading || mutation.isPending}
-      error={groupedQuery.isError ? errorMessage(groupedQuery.error) : mutation.error ? errorMessage(mutation.error) : null}
-      footer={<><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="button" onClick={() => mutation.mutate()}>Save permissions</Button></>}
+      loading={groupedQuery.isLoading || rolePermissionsQuery.isLoading || mutation.isPending}
+      error={
+        groupedQuery.isError
+          ? errorMessage(groupedQuery.error)
+          : rolePermissionsQuery.isError
+            ? errorMessage(rolePermissionsQuery.error)
+            : mutation.error
+              ? errorMessage(mutation.error)
+              : null
+      }
+      footer={
+        <>
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="button" onClick={() => mutation.mutate()}>
+            Save permissions
+          </Button>
+        </>
+      }
     >
       <div className="rbac-toolbar">
-        <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search permissions" />
+        <input
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Search permissions"
+        />
         <select value={moduleFilter} onChange={(event) => setModuleFilter(event.target.value)}>
           <option value="">All modules</option>
-          {modules.map((module) => <option key={module} value={module}>{module}</option>)}
+          {modules.map((module) => (
+            <option key={module} value={module}>
+              {module}
+            </option>
+          ))}
         </select>
       </div>
       <div className="permission-diff">
@@ -1228,16 +1990,26 @@ function AssignPermissionsDrawer({
           .filter(([module]) => !moduleFilter || module === moduleFilter)
           .map(([module, permissions]) => {
             const filtered = permissions.filter((permission) =>
-              [permission.name, permission.display_name].join(' ').toLowerCase().includes(search.toLowerCase())
+              [permission.name, permission.display_name]
+                .join(' ')
+                .toLowerCase()
+                .includes(search.toLowerCase())
             );
             if (filtered.length === 0) return null;
             return (
               <section key={module}>
-                <header><strong>{module}</strong><span>{filtered.length} permissions</span></header>
+                <header>
+                  <strong>{module}</strong>
+                  <span>{filtered.length} permissions</span>
+                </header>
                 <div>
                   {filtered.map((permission) => (
                     <label key={idOf(permission)}>
-                      <input checked={localIds.includes(idOf(permission))} type="checkbox" onChange={() => toggle(idOf(permission))} />
+                      <input
+                        checked={localIds.includes(idOf(permission))}
+                        type="checkbox"
+                        onChange={() => toggle(idOf(permission))}
+                      />
                       <span>{textOf(permission, ['display_name', 'name'])}</span>
                       <small>{textOf(permission, ['name'])}</small>
                     </label>
@@ -1255,41 +2027,172 @@ function AssignPermissionsDrawer({
   );
 }
 
-function AssignUsersModal({ open, role, onClose }: { open: boolean; role?: PlatformRecord | null; onClose: () => void }) {
+function AssignUsersModal({
+  open,
+  role,
+  onClose
+}: {
+  open: boolean;
+  role?: PlatformRecord | null;
+  onClose: () => void;
+}) {
   const queryClient = useQueryClient();
   const [ids, setIds] = useState('');
   const [effectiveDate, setEffectiveDate] = useState('');
   const [notifyUsers, setNotifyUsers] = useState(true);
   const [auditReason, setAuditReason] = useState('Role assignment update');
+  const [removeAuditReason, setRemoveAuditReason] = useState('User moved teams');
+  const usersQuery = useQuery({
+    queryKey: platformQueryKeys.related(resourceMeta.roles.resourceKey, idOf(role), 'users'),
+    queryFn: () => platformAccessApi.roles.users(idOf(role)),
+    enabled: open && Boolean(role)
+  });
   const mutation = useMutation({
-    mutationFn: () => platformAccessApi.roles.assignUsers(idOf(role), {
-      platform_user_ids: ids.split(',').map((item) => item.trim()).filter(Boolean),
-      effective_date: effectiveDate || undefined,
-      notify_users: notifyUsers,
-      audit_reason: auditReason
-    }),
+    mutationFn: () =>
+      platformAccessApi.roles.assignUsers(idOf(role), {
+        platform_user_ids: ids
+          .split(',')
+          .map((item) => item.trim())
+          .filter(Boolean),
+        effective_date: effectiveDate || undefined,
+        notify_users: notifyUsers,
+        audit_reason: auditReason
+      }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource(resourceMeta.roles.resourceKey) });
-      onClose();
+      await queryClient.invalidateQueries({
+        queryKey: platformQueryKeys.resource(resourceMeta.roles.resourceKey)
+      });
+      await queryClient.invalidateQueries({
+        queryKey: platformQueryKeys.related(resourceMeta.roles.resourceKey, idOf(role), 'users')
+      });
+      setIds('');
     }
   });
+  const removeMutation = useMutation({
+    mutationFn: (userId: string) =>
+      platformAccessApi.roles.removeUser(idOf(role), userId, removeAuditReason),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: platformQueryKeys.resource(resourceMeta.roles.resourceKey)
+      });
+      await queryClient.invalidateQueries({
+        queryKey: platformQueryKeys.related(resourceMeta.roles.resourceKey, idOf(role), 'users')
+      });
+    }
+  });
+  const users = usersQuery.data?.data.users ?? role?.users ?? [];
 
   return (
-    <AppModal open={open} onClose={onClose} title="Assign users" guard="platform" permission="platform_role.edit" loading={mutation.isPending} error={mutation.error ? errorMessage(mutation.error) : null} footer={<><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="button" onClick={() => mutation.mutate()}>Assign users</Button></>}>
+    <AppModal
+      open={open}
+      onClose={onClose}
+      title="Assign users"
+      guard="platform"
+      permission="platform_role.edit"
+      loading={usersQuery.isLoading || mutation.isPending || removeMutation.isPending}
+      error={
+        usersQuery.error
+          ? errorMessage(usersQuery.error)
+          : mutation.error
+            ? errorMessage(mutation.error)
+            : removeMutation.error
+              ? errorMessage(removeMutation.error)
+              : null
+      }
+      footer={
+        <>
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="button" onClick={() => mutation.mutate()}>
+            Assign users
+          </Button>
+        </>
+      }
+    >
+      <section className="role-users-section">
+        <div className="section-heading">
+          <strong>Assigned users</strong>
+          <span>{users.length} current</span>
+        </div>
+        <div className="role-user-list">
+          {users.length === 0 ? (
+            <p>No users are assigned to this role.</p>
+          ) : (
+            users.map((user) => (
+              <div className="role-user-row" key={idOf(user)}>
+                <div>
+                  <strong>{textOf(user, ['display_name', 'name', 'email'])}</strong>
+                  <small>{textOf(user, ['email', 'department', 'status'], '')}</small>
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => removeMutation.mutate(idOf(user))}
+                  disabled={removeMutation.isPending}
+                >
+                  Remove
+                </Button>
+              </div>
+            ))
+          )}
+        </div>
+      </section>
       <div className="form-grid">
-        <label>Platform user IDs<input value={ids} onChange={(event) => setIds(event.target.value)} placeholder="uuid_1, uuid_2" /></label>
-        <label>Effective date<input type="date" value={effectiveDate} onChange={(event) => setEffectiveDate(event.target.value)} /></label>
-        <label className="check-row"><input checked={notifyUsers} type="checkbox" onChange={(event) => setNotifyUsers(event.target.checked)} /> Notify users</label>
-        <label>Audit reason<textarea value={auditReason} onChange={(event) => setAuditReason(event.target.value)} /></label>
+        <label>
+          Platform user IDs
+          <input
+            value={ids}
+            onChange={(event) => setIds(event.target.value)}
+            placeholder="uuid_1, uuid_2"
+          />
+        </label>
+        <label>
+          Effective date
+          <input
+            type="date"
+            value={effectiveDate}
+            onChange={(event) => setEffectiveDate(event.target.value)}
+          />
+        </label>
+        <label className="check-row">
+          <input
+            checked={notifyUsers}
+            type="checkbox"
+            onChange={(event) => setNotifyUsers(event.target.checked)}
+          />{' '}
+          Notify users
+        </label>
+        <label>
+          Audit reason
+          <textarea value={auditReason} onChange={(event) => setAuditReason(event.target.value)} />
+        </label>
+        <label>
+          Remove audit reason
+          <textarea
+            value={removeAuditReason}
+            onChange={(event) => setRemoveAuditReason(event.target.value)}
+          />
+        </label>
       </div>
     </AppModal>
   );
 }
 
-function CloneRoleModal({ open, role, onClose }: { open: boolean; role?: PlatformRecord | null; onClose: () => void }) {
+function CloneRoleModal({
+  open,
+  role,
+  onClose
+}: {
+  open: boolean;
+  role?: PlatformRecord | null;
+  onClose: () => void;
+}) {
   const queryClient = useQueryClient();
   const [name, setName] = useState(`${textOf(role, ['name'], 'role')}_copy`);
-  const [displayName, setDisplayName] = useState(`${textOf(role, ['display_name', 'name'], 'Role')} Copy`);
+  const [displayName, setDisplayName] = useState(
+    `${textOf(role, ['display_name', 'name'], 'Role')} Copy`
+  );
   const [copyPermissions, setCopyPermissions] = useState(true);
   const [copyUsers, setCopyUsers] = useState(false);
   const [status, setStatus] = useState('inactive');
@@ -1306,28 +2209,96 @@ function CloneRoleModal({ open, role, onClose }: { open: boolean; role?: Platfor
   }, [open, role]);
 
   const mutation = useMutation({
-    mutationFn: () => platformAccessApi.roles.clone(idOf(role), { name, display_name: displayName, copy_permissions: copyPermissions, copy_users: copyUsers, copy_description: true, status, audit_reason: auditReason }),
+    mutationFn: () =>
+      platformAccessApi.roles.clone(idOf(role), {
+        name,
+        display_name: displayName,
+        copy_permissions: copyPermissions,
+        copy_users: copyUsers,
+        copy_description: true,
+        status,
+        audit_reason: auditReason
+      }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource(resourceMeta.roles.resourceKey) });
+      await queryClient.invalidateQueries({
+        queryKey: platformQueryKeys.resource(resourceMeta.roles.resourceKey)
+      });
       onClose();
     }
   });
 
   return (
-    <AppModal open={open} onClose={onClose} title="Clone role" guard="platform" permission="platform_role.create" loading={mutation.isPending} error={mutation.error ? errorMessage(mutation.error) : null} footer={<><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="button" onClick={() => mutation.mutate()}>Clone role</Button></>}>
+    <AppModal
+      open={open}
+      onClose={onClose}
+      title="Clone role"
+      guard="platform"
+      permission="platform_role.create"
+      loading={mutation.isPending}
+      error={mutation.error ? errorMessage(mutation.error) : null}
+      footer={
+        <>
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="button" onClick={() => mutation.mutate()}>
+            Clone role
+          </Button>
+        </>
+      }
+    >
       <div className="form-grid">
-        <label>New name<input value={name} onChange={(event) => setName(event.target.value)} /></label>
-        <label>Display name<input value={displayName} onChange={(event) => setDisplayName(event.target.value)} /></label>
-        <label>Status<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="inactive">Inactive</option><option value="active">Active</option></select></label>
-        <label className="check-row"><input checked={copyPermissions} type="checkbox" onChange={(event) => setCopyPermissions(event.target.checked)} /> Copy permissions</label>
-        <label className="check-row"><input checked={copyUsers} type="checkbox" onChange={(event) => setCopyUsers(event.target.checked)} /> Copy users</label>
-        <label>Audit reason<textarea value={auditReason} onChange={(event) => setAuditReason(event.target.value)} /></label>
+        <label>
+          New name
+          <input value={name} onChange={(event) => setName(event.target.value)} />
+        </label>
+        <label>
+          Display name
+          <input value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
+        </label>
+        <label>
+          Status
+          <select value={status} onChange={(event) => setStatus(event.target.value)}>
+            <option value="inactive">Inactive</option>
+            <option value="active">Active</option>
+          </select>
+        </label>
+        <label className="check-row">
+          <input
+            checked={copyPermissions}
+            type="checkbox"
+            onChange={(event) => setCopyPermissions(event.target.checked)}
+          />{' '}
+          Copy permissions
+        </label>
+        <label className="check-row">
+          <input
+            checked={copyUsers}
+            type="checkbox"
+            onChange={(event) => setCopyUsers(event.target.checked)}
+          />{' '}
+          Copy users
+        </label>
+        <label>
+          Audit reason
+          <textarea value={auditReason} onChange={(event) => setAuditReason(event.target.value)} />
+        </label>
       </div>
     </AppModal>
   );
 }
 
-function DeleteRoleDialog({ open, role, onClose, onConfirm }: { open: boolean; role?: PlatformRecord | null; onClose: () => void; onConfirm: (payload: Record<string, unknown>) => void }) {
+function DeleteRoleDialog({
+  open,
+  role,
+  onClose,
+  onConfirm
+}: {
+  open: boolean;
+  role?: PlatformRecord | null;
+  onClose: () => void;
+  onConfirm: (payload: Record<string, unknown>) => void;
+}) {
   return (
     <ConfirmDialog
       open={open}
@@ -1347,7 +2318,15 @@ function DeleteRoleDialog({ open, role, onClose, onConfirm }: { open: boolean; r
   );
 }
 
-function PermissionEditorModal({ open, permission, onClose }: { open: boolean; permission?: PlatformRecord | null; onClose: () => void }) {
+function PermissionEditorModal({
+  open,
+  permission,
+  onClose
+}: {
+  open: boolean;
+  permission?: PlatformRecord | null;
+  onClose: () => void;
+}) {
   const queryClient = useQueryClient();
   const form = useForm<PermissionForm>({
     resolver: zodResolver(permissionSchema),
@@ -1367,7 +2346,9 @@ function PermissionEditorModal({ open, permission, onClose }: { open: boolean; p
         ? platformAccessApi.permissions.update(idOf(permission), values as PermissionPayload)
         : platformAccessApi.permissions.create(values as PermissionPayload),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource(resourceMeta.permissions.resourceKey) });
+      await queryClient.invalidateQueries({
+        queryKey: platformQueryKeys.resource(resourceMeta.permissions.resourceKey)
+      });
       onClose();
     }
   });
@@ -1396,14 +2377,23 @@ function PermissionEditorModal({ open, permission, onClose }: { open: boolean; p
       error={mutation.error ? errorMessage(mutation.error) : null}
       footer={
         <>
-          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button type="button" onClick={form.handleSubmit((values) => mutation.mutate(values))}>Save permission</Button>
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="button" onClick={form.handleSubmit((values) => mutation.mutate(values))}>
+            Save permission
+          </Button>
         </>
       }
     >
       <div className="form-grid form-grid--two">
         <InputField form={form} name="module" label="Module" placeholder="billing" />
-        <InputField form={form} name="name" label="Permission name" placeholder="billing.invoice.view" />
+        <InputField
+          form={form}
+          name="name"
+          label="Permission name"
+          placeholder="billing.invoice.view"
+        />
         <InputField form={form} name="display_name" label="Display name" />
         <InputField form={form} name="guard_name" label="Guard name" />
         <SelectField form={form} name="status" label="Status" options={['active', 'inactive']} />
@@ -1416,7 +2406,15 @@ function PermissionEditorModal({ open, permission, onClose }: { open: boolean; p
   );
 }
 
-function AddMemberModal({ open, team, onClose }: { open: boolean; team?: PlatformRecord | null; onClose: () => void }) {
+function AddMemberModal({
+  open,
+  team,
+  onClose
+}: {
+  open: boolean;
+  team?: PlatformRecord | null;
+  onClose: () => void;
+}) {
   const queryClient = useQueryClient();
   const [platformUserId, setPlatformUserId] = useState('');
   const [teamRoleId, setTeamRoleId] = useState('');
@@ -1424,75 +2422,214 @@ function AddMemberModal({ open, team, onClose }: { open: boolean; team?: Platfor
   const [isPrimary, setIsPrimary] = useState(true);
   const [effectiveFrom, setEffectiveFrom] = useState('');
   const mutation = useMutation({
-    mutationFn: () => platformAccessApi.teams.addMembers(idOf(team), {
-      members: [{ platform_user_id: platformUserId, platform_team_role_id: teamRoleId, allocation_percent: allocation, is_primary: isPrimary, effective_from: effectiveFrom || undefined, status: 'active' }]
-    }),
+    mutationFn: () =>
+      platformAccessApi.teams.addMembers(idOf(team), {
+        members: [
+          {
+            platform_user_id: platformUserId,
+            platform_team_role_id: teamRoleId,
+            allocation_percent: allocation,
+            is_primary: isPrimary,
+            effective_from: effectiveFrom || undefined,
+            status: 'active'
+          }
+        ]
+      }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource(resourceMeta.teams.resourceKey) });
+      await queryClient.invalidateQueries({
+        queryKey: platformQueryKeys.resource(resourceMeta.teams.resourceKey)
+      });
       onClose();
     }
   });
   const allocationWarning = allocation > 100;
 
   return (
-    <AppModal open={open} onClose={onClose} title="Add team member" guard="platform" permission="platform_team.assign" loading={mutation.isPending} error={mutation.error ? errorMessage(mutation.error) : null} footer={<><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="button" onClick={() => mutation.mutate()}>Add member</Button></>}>
+    <AppModal
+      open={open}
+      onClose={onClose}
+      title="Add team member"
+      guard="platform"
+      permission="platform_team.assign"
+      loading={mutation.isPending}
+      error={mutation.error ? errorMessage(mutation.error) : null}
+      footer={
+        <>
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="button" onClick={() => mutation.mutate()}>
+            Add member
+          </Button>
+        </>
+      }
+    >
       <div className="form-grid">
-        {allocationWarning ? <div className="surface-error">Allocation exceeds 100%. Review workload before saving.</div> : null}
-        <label>Platform user ID<input value={platformUserId} onChange={(event) => setPlatformUserId(event.target.value)} /></label>
-        <label>Team role ID<input value={teamRoleId} onChange={(event) => setTeamRoleId(event.target.value)} /></label>
-        <label>Allocation percent<input type="number" value={allocation} onChange={(event) => setAllocation(Number(event.target.value))} /></label>
-        <label>Effective from<input type="date" value={effectiveFrom} onChange={(event) => setEffectiveFrom(event.target.value)} /></label>
-        <label className="check-row"><input checked={isPrimary} type="checkbox" onChange={(event) => setIsPrimary(event.target.checked)} /> Primary member</label>
+        {allocationWarning ? (
+          <div className="surface-error">
+            Allocation exceeds 100%. Review workload before saving.
+          </div>
+        ) : null}
+        <label>
+          Platform user ID
+          <input
+            value={platformUserId}
+            onChange={(event) => setPlatformUserId(event.target.value)}
+          />
+        </label>
+        <label>
+          Team role ID
+          <input value={teamRoleId} onChange={(event) => setTeamRoleId(event.target.value)} />
+        </label>
+        <label>
+          Allocation percent
+          <input
+            type="number"
+            value={allocation}
+            onChange={(event) => setAllocation(Number(event.target.value))}
+          />
+        </label>
+        <label>
+          Effective from
+          <input
+            type="date"
+            value={effectiveFrom}
+            onChange={(event) => setEffectiveFrom(event.target.value)}
+          />
+        </label>
+        <label className="check-row">
+          <input
+            checked={isPrimary}
+            type="checkbox"
+            onChange={(event) => setIsPrimary(event.target.checked)}
+          />{' '}
+          Primary member
+        </label>
       </div>
     </AppModal>
   );
 }
 
-function AssignRecordModal({ open, team, onClose }: { open: boolean; team?: PlatformRecord | null; onClose: () => void }) {
+function AssignRecordModal({
+  open,
+  team,
+  onClose
+}: {
+  open: boolean;
+  team?: PlatformRecord | null;
+  onClose: () => void;
+}) {
   const queryClient = useQueryClient();
   const [assignableType, setAssignableType] = useState('tenant');
   const [assignableId, setAssignableId] = useState('');
   const [assignmentRole, setAssignmentRole] = useState('support_owner');
   const [remarks, setRemarks] = useState('');
   const mutation = useMutation({
-    mutationFn: () => platformAccessApi.teams.assignRecord(idOf(team), {
-      assignable_type: assignableType,
-      assignable_id: assignableId,
-      assignment_role: assignmentRole,
-      assigned_at: new Date().toISOString(),
-      status: 'active',
-      remarks
-    }),
+    mutationFn: () =>
+      platformAccessApi.teams.assignRecord(idOf(team), {
+        assignable_type: assignableType,
+        assignable_id: assignableId,
+        assignment_role: assignmentRole,
+        assigned_at: new Date().toISOString(),
+        status: 'active',
+        remarks
+      }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource(resourceMeta.teams.resourceKey) });
+      await queryClient.invalidateQueries({
+        queryKey: platformQueryKeys.resource(resourceMeta.teams.resourceKey)
+      });
       onClose();
     }
   });
 
   return (
-    <AppModal open={open} onClose={onClose} title="Assign records" guard="platform" permission="platform_team.assign" loading={mutation.isPending} error={mutation.error ? errorMessage(mutation.error) : null} footer={<><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="button" onClick={() => mutation.mutate()}>Assign record</Button></>}>
+    <AppModal
+      open={open}
+      onClose={onClose}
+      title="Assign records"
+      guard="platform"
+      permission="platform_team.assign"
+      loading={mutation.isPending}
+      error={mutation.error ? errorMessage(mutation.error) : null}
+      footer={
+        <>
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="button" onClick={() => mutation.mutate()}>
+            Assign record
+          </Button>
+        </>
+      }
+    >
       <div className="form-grid">
-        <label>Record type<select value={assignableType} onChange={(event) => setAssignableType(event.target.value)}><option value="tenant">Tenant</option><option value="platform_ticket">Ticket</option><option value="system_incident">Incident</option><option value="monitoring_alert">Alert</option></select></label>
-        <label>Record ID<input value={assignableId} onChange={(event) => setAssignableId(event.target.value)} /></label>
-        <label>Assignment role<input value={assignmentRole} onChange={(event) => setAssignmentRole(event.target.value)} /></label>
-        <label>Remarks<textarea value={remarks} onChange={(event) => setRemarks(event.target.value)} /></label>
+        <label>
+          Record type
+          <select
+            value={assignableType}
+            onChange={(event) => setAssignableType(event.target.value)}
+          >
+            <option value="tenant">Tenant</option>
+            <option value="platform_ticket">Ticket</option>
+            <option value="system_incident">Incident</option>
+            <option value="monitoring_alert">Alert</option>
+          </select>
+        </label>
+        <label>
+          Record ID
+          <input value={assignableId} onChange={(event) => setAssignableId(event.target.value)} />
+        </label>
+        <label>
+          Assignment role
+          <input
+            value={assignmentRole}
+            onChange={(event) => setAssignmentRole(event.target.value)}
+          />
+        </label>
+        <label>
+          Remarks
+          <textarea value={remarks} onChange={(event) => setRemarks(event.target.value)} />
+        </label>
       </div>
     </AppModal>
   );
 }
 
-function ReleaseAssignmentModal({ open, team, assignment, onClose }: { open: boolean; team?: PlatformRecord | null; assignment?: PlatformRecord | null; onClose: () => void }) {
+function ReleaseAssignmentModal({
+  open,
+  team,
+  assignment,
+  onClose
+}: {
+  open: boolean;
+  team?: PlatformRecord | null;
+  assignment?: PlatformRecord | null;
+  onClose: () => void;
+}) {
   const queryClient = useQueryClient();
   const [assignmentId, setAssignmentId] = useState('');
   const [releaseDate, setReleaseDate] = useState('');
   const [reason, setReason] = useState('Assignment released');
   const [notifyLead, setNotifyLead] = useState(true);
   const mutation = useMutation({
-    mutationFn: () => platformAccessApi.teams.releaseAssignment(idOf(team), assignmentId, { released_at: releaseDate || new Date().toISOString(), reason, notify_team_lead: notifyLead }),
+    mutationFn: () =>
+      platformAccessApi.teams.releaseAssignment(idOf(team), assignmentId, {
+        released_at: releaseDate || new Date().toISOString(),
+        reason,
+        notify_team_lead: notifyLead
+      }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource(resourceMeta.teams.resourceKey) });
+      await queryClient.invalidateQueries({
+        queryKey: platformQueryKeys.resource(resourceMeta.teams.resourceKey)
+      });
       if (team) {
-        await queryClient.invalidateQueries({ queryKey: platformQueryKeys.related(resourceMeta.teams.resourceKey, idOf(team), 'assignments') });
+        await queryClient.invalidateQueries({
+          queryKey: platformQueryKeys.related(
+            resourceMeta.teams.resourceKey,
+            idOf(team),
+            'assignments'
+          )
+        });
       }
       onClose();
     }
@@ -1503,18 +2640,64 @@ function ReleaseAssignmentModal({ open, team, assignment, onClose }: { open: boo
   }, [assignment, open]);
 
   return (
-    <AppModal open={open} onClose={onClose} title="Release assignment" guard="platform" permission="platform_team.assign" loading={mutation.isPending} error={mutation.error ? errorMessage(mutation.error) : null} footer={<><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="button" variant="danger" onClick={() => mutation.mutate()}>Release</Button></>}>
+    <AppModal
+      open={open}
+      onClose={onClose}
+      title="Release assignment"
+      guard="platform"
+      permission="platform_team.assign"
+      loading={mutation.isPending}
+      error={mutation.error ? errorMessage(mutation.error) : null}
+      footer={
+        <>
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="button" variant="danger" onClick={() => mutation.mutate()}>
+            Release
+          </Button>
+        </>
+      }
+    >
       <div className="form-grid">
-        <label>Assignment ID<input value={assignmentId} onChange={(event) => setAssignmentId(event.target.value)} /></label>
-        <label>Release date<input type="datetime-local" value={releaseDate} onChange={(event) => setReleaseDate(event.target.value)} /></label>
-        <label>Reason<textarea value={reason} onChange={(event) => setReason(event.target.value)} /></label>
-        <label className="check-row"><input checked={notifyLead} type="checkbox" onChange={(event) => setNotifyLead(event.target.checked)} /> Notify team lead</label>
+        <label>
+          Assignment ID
+          <input value={assignmentId} onChange={(event) => setAssignmentId(event.target.value)} />
+        </label>
+        <label>
+          Release date
+          <input
+            type="datetime-local"
+            value={releaseDate}
+            onChange={(event) => setReleaseDate(event.target.value)}
+          />
+        </label>
+        <label>
+          Reason
+          <textarea value={reason} onChange={(event) => setReason(event.target.value)} />
+        </label>
+        <label className="check-row">
+          <input
+            checked={notifyLead}
+            type="checkbox"
+            onChange={(event) => setNotifyLead(event.target.checked)}
+          />{' '}
+          Notify team lead
+        </label>
       </div>
     </AppModal>
   );
 }
 
-function TeamRoleEditorModal({ open, role, onClose }: { open: boolean; role?: PlatformRecord | null; onClose: () => void }) {
+function TeamRoleEditorModal({
+  open,
+  role,
+  onClose
+}: {
+  open: boolean;
+  role?: PlatformRecord | null;
+  onClose: () => void;
+}) {
   const queryClient = useQueryClient();
   const form = useForm<TeamRoleForm>({
     resolver: zodResolver(teamRoleSchema),
@@ -1542,10 +2725,14 @@ function TeamRoleEditorModal({ open, role, onClose }: { open: boolean; role?: Pl
         audit_reason: values.audit_reason
       };
 
-      return role ? platformAccessApi.teamRoles.update(idOf(role), payload) : platformAccessApi.teamRoles.create(payload);
+      return role
+        ? platformAccessApi.teamRoles.update(idOf(role), payload)
+        : platformAccessApi.teamRoles.create(payload);
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource(resourceMeta.teamRoles.resourceKey) });
+      await queryClient.invalidateQueries({
+        queryKey: platformQueryKeys.resource(resourceMeta.teamRoles.resourceKey)
+      });
       onClose();
     }
   });
@@ -1585,8 +2772,12 @@ function TeamRoleEditorModal({ open, role, onClose }: { open: boolean; role?: Pl
       error={mutation.error ? errorMessage(mutation.error) : null}
       footer={
         <>
-          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button type="button" onClick={form.handleSubmit(save)}>Save team role</Button>
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="button" onClick={form.handleSubmit(save)}>
+            Save team role
+          </Button>
         </>
       }
     >
@@ -1601,16 +2792,35 @@ function TeamRoleEditorModal({ open, role, onClose }: { open: boolean; role?: Pl
           <InputField form={form} name="description" label="Description" type="textarea" />
         </div>
         <div className="modal-form-span">
-          <InputField form={form} name="permissions_json" label="Permissions JSON" type="textarea" />
+          <InputField
+            form={form}
+            name="permissions_json"
+            label="Permissions JSON"
+            type="textarea"
+          />
         </div>
       </div>
     </AppModal>
   );
 }
 
-function PermissionDetailDrawer({ open, record, onClose }: { open: boolean; record?: PlatformRecord | null; onClose: () => void }) {
+function PermissionDetailDrawer({
+  open,
+  record,
+  onClose
+}: {
+  open: boolean;
+  record?: PlatformRecord | null;
+  onClose: () => void;
+}) {
   return (
-    <AppDrawer open={open} onClose={onClose} title="Permission detail" guard="platform" permission="platform_permission.view">
+    <AppDrawer
+      open={open}
+      onClose={onClose}
+      title="Permission detail"
+      guard="platform"
+      permission="platform_permission.view"
+    >
       <RecordDetails record={record ?? {}} />
     </AppDrawer>
   );
@@ -1645,16 +2855,33 @@ function FormShell({
       <PageHeader
         title={title}
         description="Permission-aware create/edit flow with audit reason support."
-        actions={<Button type="button" variant="secondary" onClick={() => navigate(backTo)}>Back</Button>}
+        actions={
+          <Button type="button" variant="secondary" onClick={() => navigate(backTo)}>
+            Back
+          </Button>
+        }
       />
       {error ? <div className="surface-error">{errorMessage(error)}</div> : null}
-      <form className="rbac-form-shell" onSubmit={(event) => { event.preventDefault(); onSubmit(); }}>
+      <form
+        className="rbac-form-shell"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmit();
+        }}
+      >
         <article className="enterprise-form">{children}</article>
         {side ? <aside className="rbac-side-panel">{side}</aside> : null}
         <footer className="enterprise-form__footer rbac-sticky-footer">
-          <Button type="button" variant="secondary" onClick={() => setConfirmCancel(true)}>Cancel</Button>
+          <Button type="button" variant="secondary" onClick={() => setConfirmCancel(true)}>
+            Cancel
+          </Button>
           {footerExtra}
-          <PermissionButton guard="platform" permission={permission} type="submit" disabled={isSaving}>
+          <PermissionButton
+            guard="platform"
+            permission={permission}
+            type="submit"
+            disabled={isSaving}
+          >
             {isSaving ? 'Saving...' : 'Save'}
           </PermissionButton>
         </footer>
@@ -1676,23 +2903,53 @@ function FormGrid({ children }: { children: ReactNode }) {
   return <div className="enterprise-form__grid">{children}</div>;
 }
 
-function InputField({ form, name, label, placeholder, type = 'text' }: { form: any; name: string; label: string; placeholder?: string; type?: string }) {
+function InputField({
+  form,
+  name,
+  label,
+  placeholder,
+  type = 'text'
+}: {
+  form: any;
+  name: string;
+  label: string;
+  placeholder?: string;
+  type?: string;
+}) {
   const error = form.formState.errors[name]?.message;
   return (
     <label>
       <span>{label}</span>
-      {type === 'textarea' ? <textarea placeholder={placeholder} {...form.register(name)} /> : <input type={type} placeholder={placeholder} {...form.register(name)} />}
+      {type === 'textarea' ? (
+        <textarea placeholder={placeholder} {...form.register(name)} />
+      ) : (
+        <input type={type} placeholder={placeholder} {...form.register(name)} />
+      )}
       {error ? <strong role="alert">{String(error)}</strong> : null}
     </label>
   );
 }
 
-function SelectField({ form, name, label, options }: { form: any; name: string; label: string; options: string[] }) {
+function SelectField({
+  form,
+  name,
+  label,
+  options
+}: {
+  form: any;
+  name: string;
+  label: string;
+  options: string[];
+}) {
   return (
     <label>
       <span>{label}</span>
       <select {...form.register(name)}>
-        {options.map((option) => <option key={option} value={option}>{option}</option>)}
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
       </select>
     </label>
   );
@@ -1721,13 +2978,23 @@ function RecordDetails({ record }: { record: Record<string, unknown> }) {
 }
 
 function PermissionGroups({ groups }: { groups?: GroupedPermissions }) {
-  if (!groups || Object.keys(groups).length === 0) return <div className="empty-state">No grouped permissions returned.</div>;
+  if (!groups || Object.keys(groups).length === 0)
+    return <div className="empty-state">No grouped permissions returned.</div>;
   return (
     <div className="permission-groups permission-groups--compact">
       {Object.entries(groups).map(([module, permissions]) => (
         <section key={module}>
-          <header><strong>{module}</strong><span>{permissions.length}</span></header>
-          <div>{permissions.map((permission) => <span className="permission-pill" key={idOf(permission)}>{textOf(permission, ['display_name', 'name'])}</span>)}</div>
+          <header>
+            <strong>{module}</strong>
+            <span>{permissions.length}</span>
+          </header>
+          <div>
+            {permissions.map((permission) => (
+              <span className="permission-pill" key={idOf(permission)}>
+                {textOf(permission, ['display_name', 'name'])}
+              </span>
+            ))}
+          </div>
         </section>
       ))}
     </div>
@@ -1736,7 +3003,16 @@ function PermissionGroups({ groups }: { groups?: GroupedPermissions }) {
 
 function RecordList({ rows }: { rows: PlatformRecord[] }) {
   if (rows.length === 0) return <div className="empty-state">No related records returned.</div>;
-  return <div className="record-list">{rows.map((row) => <article key={idOf(row)}><strong>{textOf(row, ['display_name', 'name', 'email', 'assignable_type'])}</strong><p>{textOf(row, ['email', 'status', 'assignment_role'])}</p></article>)}</div>;
+  return (
+    <div className="record-list">
+      {rows.map((row) => (
+        <article key={idOf(row)}>
+          <strong>{textOf(row, ['display_name', 'name', 'email', 'assignable_type'])}</strong>
+          <p>{textOf(row, ['email', 'status', 'assignment_role'])}</p>
+        </article>
+      ))}
+    </div>
+  );
 }
 
 function TeamMembersPanel({ team }: { team: PlatformRecord }) {
@@ -1751,12 +3027,16 @@ function TeamMembersPanel({ team }: { team: PlatformRecord }) {
   const removeMutation = useMutation({
     mutationFn: ({ memberId, reason }: { memberId: string; reason: string }) =>
       platformAccessApi.teams.removeMember(teamId, memberId, { audit_reason: reason }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: platformQueryKeys.related(resourceMeta.teams.resourceKey, teamId, 'members') })
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: platformQueryKeys.related(resourceMeta.teams.resourceKey, teamId, 'members')
+      })
   });
   const rows = membersQuery.data?.data.members ?? [];
 
   if (membersQuery.isLoading) return <div className="surface-state">Loading team members...</div>;
-  if (membersQuery.isError) return <div className="surface-error">{errorMessage(membersQuery.error)}</div>;
+  if (membersQuery.isError)
+    return <div className="surface-error">{errorMessage(membersQuery.error)}</div>;
 
   return (
     <>
@@ -1764,18 +3044,46 @@ function TeamMembersPanel({ team }: { team: PlatformRecord }) {
         {rows.map((member) => (
           <article key={idOf(member)}>
             <header>
-              <strong>{textOf(member, ['display_name', 'name', 'platform_user_name', 'email'])}</strong>
+              <strong>
+                {textOf(member, ['display_name', 'name', 'platform_user_name', 'email'])}
+              </strong>
               <span className="table-actions">
-                <PermissionButton guard="platform" permission="platform_team.assign" type="button" size="sm" variant="secondary" onClick={() => setEditingMember(member)}>Update</PermissionButton>
-                <PermissionButton guard="platform" permission="platform_team.assign" type="button" size="sm" variant="danger" onClick={() => setRemovingMember(member)}>Remove</PermissionButton>
+                <PermissionButton
+                  guard="platform"
+                  permission="platform_team.assign"
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setEditingMember(member)}
+                >
+                  Update
+                </PermissionButton>
+                <PermissionButton
+                  guard="platform"
+                  permission="platform_team.assign"
+                  type="button"
+                  size="sm"
+                  variant="danger"
+                  onClick={() => setRemovingMember(member)}
+                >
+                  Remove
+                </PermissionButton>
               </span>
             </header>
-            <p>{textOf(member, ['role_name', 'platform_team_role_id', 'status'])} / {textOf(member, ['allocation_percent'], '100')}%</p>
+            <p>
+              {textOf(member, ['role_name', 'platform_team_role_id', 'status'])} /{' '}
+              {textOf(member, ['allocation_percent'], '100')}%
+            </p>
           </article>
         ))}
         {rows.length === 0 ? <div className="empty-state">No team members returned.</div> : null}
       </div>
-      <TeamMemberEditorModal team={team} member={editingMember} open={Boolean(editingMember)} onClose={() => setEditingMember(null)} />
+      <TeamMemberEditorModal
+        team={team}
+        member={editingMember}
+        open={Boolean(editingMember)}
+        onClose={() => setEditingMember(null)}
+      />
       <ConfirmDialog
         open={Boolean(removingMember)}
         onClose={() => setRemovingMember(null)}
@@ -1789,7 +3097,10 @@ function TeamMembersPanel({ team }: { team: PlatformRecord }) {
         loading={removeMutation.isPending}
         onConfirm={(payload) => {
           if (!removingMember) return;
-          removeMutation.mutate({ memberId: idOf(removingMember), reason: payload.reason ?? 'Member removed from team' });
+          removeMutation.mutate({
+            memberId: idOf(removingMember),
+            reason: payload.reason ?? 'Member removed from team'
+          });
           setRemovingMember(null);
         }}
       />
@@ -1806,8 +3117,10 @@ function TeamAssignmentsPanel({ team }: { team: PlatformRecord }) {
   });
   const rows = assignmentsQuery.data?.data.assignments ?? [];
 
-  if (assignmentsQuery.isLoading) return <div className="surface-state">Loading team assignments...</div>;
-  if (assignmentsQuery.isError) return <div className="surface-error">{errorMessage(assignmentsQuery.error)}</div>;
+  if (assignmentsQuery.isLoading)
+    return <div className="surface-state">Loading team assignments...</div>;
+  if (assignmentsQuery.isError)
+    return <div className="surface-error">{errorMessage(assignmentsQuery.error)}</div>;
 
   return (
     <>
@@ -1815,20 +3128,51 @@ function TeamAssignmentsPanel({ team }: { team: PlatformRecord }) {
         {rows.map((assignment) => (
           <article key={idOf(assignment)}>
             <header>
-              <strong>{textOf(assignment, ['assignable_type', 'type'])}: {textOf(assignment, ['assignable_id', 'record_id'])}</strong>
-              <PermissionButton guard="platform" permission="platform_team.assign" type="button" size="sm" variant="secondary" onClick={() => setReleasingAssignment(assignment)}>Release</PermissionButton>
+              <strong>
+                {textOf(assignment, ['assignable_type', 'type'])}:{' '}
+                {textOf(assignment, ['assignable_id', 'record_id'])}
+              </strong>
+              <PermissionButton
+                guard="platform"
+                permission="platform_team.assign"
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={() => setReleasingAssignment(assignment)}
+              >
+                Release
+              </PermissionButton>
             </header>
-            <p>{textOf(assignment, ['assignment_role'])} / {textOf(assignment, ['status'])}</p>
+            <p>
+              {textOf(assignment, ['assignment_role'])} / {textOf(assignment, ['status'])}
+            </p>
           </article>
         ))}
-        {rows.length === 0 ? <div className="empty-state">No team assignments returned.</div> : null}
+        {rows.length === 0 ? (
+          <div className="empty-state">No team assignments returned.</div>
+        ) : null}
       </div>
-      <ReleaseAssignmentModal open={Boolean(releasingAssignment)} team={team} assignment={releasingAssignment} onClose={() => setReleasingAssignment(null)} />
+      <ReleaseAssignmentModal
+        open={Boolean(releasingAssignment)}
+        team={team}
+        assignment={releasingAssignment}
+        onClose={() => setReleasingAssignment(null)}
+      />
     </>
   );
 }
 
-function TeamMemberEditorModal({ open, team, member, onClose }: { open: boolean; team: PlatformRecord; member: PlatformRecord | null; onClose: () => void }) {
+function TeamMemberEditorModal({
+  open,
+  team,
+  member,
+  onClose
+}: {
+  open: boolean;
+  team: PlatformRecord;
+  member: PlatformRecord | null;
+  onClose: () => void;
+}) {
   const queryClient = useQueryClient();
   const [teamRoleId, setTeamRoleId] = useState('');
   const [allocation, setAllocation] = useState(100);
@@ -1860,40 +3204,125 @@ function TeamMemberEditorModal({ open, team, member, onClose }: { open: boolean;
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: platformQueryKeys.related(resourceMeta.teams.resourceKey, idOf(team), 'members') });
+      queryClient.invalidateQueries({
+        queryKey: platformQueryKeys.related(resourceMeta.teams.resourceKey, idOf(team), 'members')
+      });
       onClose();
     }
   });
 
   return (
-    <AppModal open={open} onClose={onClose} title="Update team member" guard="platform" permission="platform_team.assign" loading={mutation.isPending} error={mutation.error ? errorMessage(mutation.error) : null} footer={<><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="button" onClick={() => mutation.mutate()}>Update member</Button></>}>
+    <AppModal
+      open={open}
+      onClose={onClose}
+      title="Update team member"
+      guard="platform"
+      permission="platform_team.assign"
+      loading={mutation.isPending}
+      error={mutation.error ? errorMessage(mutation.error) : null}
+      footer={
+        <>
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="button" onClick={() => mutation.mutate()}>
+            Update member
+          </Button>
+        </>
+      }
+    >
       <div className="form-grid">
-        <label>Team role ID<input value={teamRoleId} onChange={(event) => setTeamRoleId(event.target.value)} /></label>
-        <label>Allocation percent<input type="number" value={allocation} onChange={(event) => setAllocation(Number(event.target.value))} /></label>
-        <label>Effective from<input type="date" value={effectiveFrom} onChange={(event) => setEffectiveFrom(event.target.value)} /></label>
-        <label>Effective to<input type="date" value={effectiveTo} onChange={(event) => setEffectiveTo(event.target.value)} /></label>
-        <label>Status<select value={status} onChange={(event) => setStatus(event.target.value)}><option value="active">Active</option><option value="inactive">Inactive</option><option value="left">Left</option></select></label>
-        <label className="check-row"><input checked={isPrimary} type="checkbox" onChange={(event) => setIsPrimary(event.target.checked)} /> Primary member</label>
+        <label>
+          Team role ID
+          <input value={teamRoleId} onChange={(event) => setTeamRoleId(event.target.value)} />
+        </label>
+        <label>
+          Allocation percent
+          <input
+            type="number"
+            value={allocation}
+            onChange={(event) => setAllocation(Number(event.target.value))}
+          />
+        </label>
+        <label>
+          Effective from
+          <input
+            type="date"
+            value={effectiveFrom}
+            onChange={(event) => setEffectiveFrom(event.target.value)}
+          />
+        </label>
+        <label>
+          Effective to
+          <input
+            type="date"
+            value={effectiveTo}
+            onChange={(event) => setEffectiveTo(event.target.value)}
+          />
+        </label>
+        <label>
+          Status
+          <select value={status} onChange={(event) => setStatus(event.target.value)}>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+            <option value="left">Left</option>
+          </select>
+        </label>
+        <label className="check-row">
+          <input
+            checked={isPrimary}
+            type="checkbox"
+            onChange={(event) => setIsPrimary(event.target.checked)}
+          />{' '}
+          Primary member
+        </label>
       </div>
     </AppModal>
   );
 }
 
 function SummaryTile({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
-  return <article className="summary-card"><span>{icon}</span><p>{label}</p><strong>{value}</strong></article>;
+  return (
+    <article className="summary-card">
+      <span>{icon}</span>
+      <p>{label}</p>
+      <strong>{value}</strong>
+    </article>
+  );
 }
 
 function ResourceStats({ kind, rows }: { kind: ResourceKind; rows: PlatformRecord[] }) {
   const permissions = rows.reduce((sum, row) => sum + Number(row.permissions_count ?? 0), 0);
-  const assigned = rows.reduce((sum, row) => sum + Number(row.users_count ?? row.members_count ?? 0), 0);
+  const assigned = rows.reduce(
+    (sum, row) => sum + Number(row.users_count ?? row.members_count ?? 0),
+    0
+  );
 
   return (
     <section className="platform-access-summary">
-      <SummaryTile icon={<ShieldCheck />} label={`Total ${resourceMeta[kind].label}`} value={String(rows.length)} />
-      <SummaryTile icon={<CheckCircle2 />} label="Active" value={String(rows.filter((row) => row.status === 'active').length)} />
-      <SummaryTile icon={<KeyRound />} label="System" value={String(rows.filter((row) => row.is_system).length)} />
-      <SummaryTile icon={<Users />} label={kind === 'roles' ? 'Assigned Users' : 'Assignments'} value={String(assigned)} />
-      {kind === 'roles' ? <SummaryTile icon={<ShieldCheck />} label="Total Permissions" value={String(permissions)} /> : null}
+      <SummaryTile
+        icon={<ShieldCheck />}
+        label={`Total ${resourceMeta[kind].label}`}
+        value={String(rows.length)}
+      />
+      <SummaryTile
+        icon={<CheckCircle2 />}
+        label="Active"
+        value={String(rows.filter((row) => row.status === 'active').length)}
+      />
+      <SummaryTile
+        icon={<KeyRound />}
+        label="System"
+        value={String(rows.filter((row) => row.is_system).length)}
+      />
+      <SummaryTile
+        icon={<Users />}
+        label={kind === 'roles' ? 'Assigned Users' : 'Assignments'}
+        value={String(assigned)}
+      />
+      {kind === 'roles' ? (
+        <SummaryTile icon={<ShieldCheck />} label="Total Permissions" value={String(permissions)} />
+      ) : null}
     </section>
   );
 }
@@ -1903,15 +3332,23 @@ function AuditRail({ rows, compact = false }: { rows: PlatformRecord[]; compact?
     <aside className={compact ? 'audit-rail audit-rail--compact' : 'audit-rail'}>
       <header>
         <h2>Audit Log</h2>
-        <button type="button" aria-label="Close audit log">x</button>
+        <button type="button" aria-label="Close audit log">
+          x
+        </button>
       </header>
       <div className="audit-tabs" role="tablist" aria-label="Audit views">
-        <button type="button" role="tab" aria-selected="true">Activity</button>
-        <button type="button" role="tab" aria-selected="false">Details</button>
+        <button type="button" role="tab" aria-selected="true">
+          Activity
+        </button>
+        <button type="button" role="tab" aria-selected="false">
+          Details
+        </button>
       </div>
       {rows.slice(0, 6).map((row) => (
         <article key={idOf(row) || textOf(row, ['name'])}>
-          <span className="audit-avatar" aria-hidden="true">{textOf(row, ['updated_by', 'created_by'], 'System').slice(0, 1).toUpperCase()}</span>
+          <span className="audit-avatar" aria-hidden="true">
+            {textOf(row, ['updated_by', 'created_by'], 'System').slice(0, 1).toUpperCase()}
+          </span>
           <div>
             <strong>{textOf(row, ['updated_by', 'created_by'], 'System')}</strong>
             <small>{textOf(row, ['guard_name', 'module', 'visibility'], 'Platform')}</small>
@@ -1921,7 +3358,9 @@ function AuditRail({ rows, compact = false }: { rows: PlatformRecord[]; compact?
         </article>
       ))}
       {rows.length === 0 ? <div className="empty-state">No audit activity loaded.</div> : null}
-      <Button type="button" variant="secondary" size="sm">View Full Audit Logs</Button>
+      <Button type="button" variant="secondary" size="sm">
+        View Full Audit Logs
+      </Button>
     </aside>
   );
 }
@@ -1939,11 +3378,24 @@ function formatDateTime(value: unknown) {
   });
 }
 
-function RoleSummary({ record, selectedCount }: { record?: PlatformRecord; selectedCount: number }) {
+function RoleSummary({
+  record,
+  selectedCount
+}: {
+  record?: PlatformRecord;
+  selectedCount: number;
+}) {
   return (
     <>
       <h2>Role Summary</h2>
-      <RecordDetails record={{ status: textOf(record, ['status'], 'active'), guard_name: textOf(record, ['guard_name'], 'platform'), selected_permissions: selectedCount, system_role: Boolean(record?.is_system) }} />
+      <RecordDetails
+        record={{
+          status: textOf(record, ['status'], 'active'),
+          guard_name: textOf(record, ['guard_name'], 'platform'),
+          selected_permissions: selectedCount,
+          system_role: Boolean(record?.is_system)
+        }}
+      />
       <div className="surface-state">Select at least one permission for a production role.</div>
     </>
   );
@@ -1954,7 +3406,12 @@ function PermissionTip({ record }: { record?: PlatformRecord }) {
     <>
       <h2>Permission Tip</h2>
       <p>Custom permission actions are enabled only for non-system permissions.</p>
-      <RecordDetails record={{ system: Boolean(record?.is_system), roles_count: textOf(record, ['roles_count'], '0') }} />
+      <RecordDetails
+        record={{
+          system: Boolean(record?.is_system),
+          roles_count: textOf(record, ['roles_count'], '0')
+        }}
+      />
     </>
   );
 }
@@ -1963,7 +3420,13 @@ function TeamSummary({ record }: { record?: PlatformRecord }) {
   return (
     <>
       <h2>Team Summary</h2>
-      <RecordDetails record={{ members: textOf(record, ['members_count'], '0'), tenants: textOf(record, ['assigned_tenants_count'], '0'), visibility: textOf(record, ['visibility'], 'internal') }} />
+      <RecordDetails
+        record={{
+          members: textOf(record, ['members_count'], '0'),
+          tenants: textOf(record, ['assigned_tenants_count'], '0'),
+          visibility: textOf(record, ['visibility'], 'internal')
+        }}
+      />
     </>
   );
 }
@@ -1975,8 +3438,11 @@ function permissionFor(kind: ResourceKind, action: 'view' | 'create' | 'edit' | 
 }
 
 function descriptionFor(kind: ResourceKind) {
-  if (kind === 'roles') return 'Manage platform-wide roles, permissions, assigned users, audit-safe clone and delete workflows.';
-  if (kind === 'permissions') return 'Review platform permissions and create or edit custom permissions where supported.';
-  if (kind === 'teams') return 'Manage internal platform teams, members, record assignments, and releases.';
+  if (kind === 'roles')
+    return 'Manage platform-wide roles, permissions, assigned users, audit-safe clone and delete workflows.';
+  if (kind === 'permissions')
+    return 'Review platform permissions and create or edit custom permissions where supported.';
+  if (kind === 'teams')
+    return 'Manage internal platform teams, members, record assignments, and releases.';
   return 'Create and maintain reusable roles for platform team members.';
 }

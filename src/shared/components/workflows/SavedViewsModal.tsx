@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+﻿import { useEffect, useState, type ReactNode } from 'react';
 
 import { AppModal } from '@/shared/components/modal';
 import { Button } from '@/shared/components/ui';
@@ -17,7 +17,7 @@ type SavedViewsModalProps = {
   views: SavedView[];
   activeViewId?: string;
   onSelect: (id: string) => void;
-  onSaveCurrent: () => void;
+  onSaveCurrent: (name?: string) => void;
   onDelete?: (id: string) => void;
   guard?: AuthGuard;
   permission?: Permission;
@@ -26,22 +26,136 @@ type SavedViewsModalProps = {
 };
 
 export function SavedViewsModal(props: SavedViewsModalProps) {
+  const [localViews, setLocalViews] = useState<SavedView[]>(props.views);
+  const [activeId, setActiveId] = useState<string | undefined>(
+    props.activeViewId ?? props.views[0]?.id
+  );
+  const [draftId, setDraftId] = useState<string | undefined>(
+    props.activeViewId ?? props.views[0]?.id
+  );
+  const [viewName, setViewName] = useState('');
+
+  useEffect(() => {
+    setLocalViews((current) => {
+      const customViews = current.filter(
+        (view) => !props.views.some((item) => item.id === view.id)
+      );
+      return [...props.views, ...customViews];
+    });
+  }, [props.views]);
+
+  useEffect(() => {
+    if (props.open) {
+      const nextActiveId = props.activeViewId ?? activeId ?? props.views[0]?.id;
+      setActiveId(nextActiveId);
+      setDraftId(nextActiveId);
+    }
+  }, [activeId, props.activeViewId, props.open, props.views]);
+
+  function applySelectedView() {
+    if (!draftId) return;
+    setActiveId(draftId);
+    props.onSelect(draftId);
+  }
+
+  function saveCurrentView() {
+    const name =
+      viewName.trim() ||
+      `Custom view ${localViews.filter((view) => view.visibility === 'personal').length + 1}`;
+    const id = `custom-${Date.now()}`;
+    setLocalViews((current) => [...current, { id, name, visibility: 'personal' }]);
+    setDraftId(id);
+    setViewName('');
+    props.onSaveCurrent(name);
+  }
+
+  function deleteView(id: string) {
+    const view = localViews.find((item) => item.id === id);
+    if (!view || view.isDefault) return;
+    const nextViews = localViews.filter((item) => item.id !== id);
+    setLocalViews(nextViews);
+    props.onDelete?.(id);
+    if (draftId === id) setDraftId(activeId && activeId !== id ? activeId : nextViews[0]?.id);
+    if (activeId === id) setActiveId(nextViews[0]?.id);
+  }
+
   return (
-    <AppModal open={props.open} onClose={props.onClose} title="Saved views" guard={props.guard} permission={props.permission} loading={props.loading} error={props.error}>
-      <div className="option-list">
-        {props.views.map((view) => (
-          <div className="view-row" key={view.id}>
-            <button type="button" onClick={() => props.onSelect(view.id)} aria-current={view.id === props.activeViewId}>
-              <strong>{view.name}</strong>
-              <span>{view.visibility}{view.isDefault ? ' default' : ''}</span>
-            </button>
-            {props.onDelete ? <button type="button" onClick={() => props.onDelete?.(view.id)}>Delete</button> : null}
-          </div>
-        ))}
+    <AppModal
+      open={props.open}
+      onClose={props.onClose}
+      title="Saved views"
+      guard={props.guard}
+      permission={props.permission}
+      loading={props.loading}
+      error={props.error}
+      footer={
+        <>
+          <Button type="button" variant="secondary" onClick={props.onClose}>
+            Cancel
+          </Button>
+          <Button type="button" variant="secondary" onClick={applySelectedView} disabled={!draftId}>
+            Apply view
+          </Button>
+          <Button type="button" onClick={saveCurrentView}>
+            Save current view
+          </Button>
+        </>
+      }
+    >
+      <div className="table-popup-intro">
+        <strong>Switch table layouts quickly</strong>
+        <span>Select a view, then apply it when you are ready.</span>
       </div>
-      <div className="surface-actions">
-        <Button type="button" onClick={props.onSaveCurrent}>Save current view</Button>
-      </div>
+      <label className="saved-view-name-field">
+        <span>View name</span>
+        <input
+          value={viewName}
+          onChange={(event) => setViewName(event.target.value)}
+          placeholder="Name this table view"
+        />
+      </label>
+      {localViews.length > 0 ? (
+        <div className="option-list saved-view-list">
+          {localViews.map((view) => {
+            const active = view.id === activeId;
+            const selected = view.id === draftId;
+            return (
+              <div
+                className="view-row"
+                key={view.id}
+                data-active={active || undefined}
+                data-selected={selected || undefined}
+              >
+                <button
+                  type="button"
+                  onClick={() => setDraftId(view.id)}
+                  aria-current={active ? 'true' : undefined}
+                  aria-pressed={selected}
+                >
+                  <strong>{view.name}</strong>
+                  <span>
+                    {view.visibility}
+                    {view.isDefault ? ' default' : ''}
+                    {active ? ' active' : ''}
+                  </span>
+                </button>
+                {!view.isDefault ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => deleteView(view.id)}
+                  >
+                    Delete
+                  </Button>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="empty-state">No saved views yet.</div>
+      )}
     </AppModal>
   );
 }

@@ -19,11 +19,37 @@ type ApprovalModalProps = {
 
 export function ApprovalModal(props: ApprovalModalProps) {
   return (
-    <AppModal open={props.open} onClose={props.onClose} title={props.title ?? 'Approval'} guard={props.guard} permission={props.permission} loading={props.loading} error={props.error} footer={<><Button type="button" variant="danger" onClick={props.onReject}>Reject</Button><Button type="button" onClick={props.onApprove}>Approve</Button></>}>
+    <AppModal
+      open={props.open}
+      onClose={props.onClose}
+      title={props.title ?? 'Approval'}
+      guard={props.guard}
+      permission={props.permission}
+      loading={props.loading}
+      error={props.error}
+      footer={
+        <>
+          <Button type="button" variant="secondary" onClick={props.onClose}>
+            Cancel
+          </Button>
+          <Button type="button" variant="danger" onClick={props.onReject}>
+            Reject
+          </Button>
+          <Button type="button" onClick={props.onApprove}>
+            Approve
+          </Button>
+        </>
+      }
+    >
       <div className="form-grid">
-        <label>Remarks<textarea required /></label>
+        <label>
+          Remarks
+          <textarea required />
+        </label>
         {props.nextApproverSelect ? <label>Next approver{props.nextApproverSelect}</label> : null}
-        <label><input type="checkbox" /> Notify requester</label>
+        <label>
+          <input type="checkbox" /> Notify requester
+        </label>
       </div>
     </AppModal>
   );

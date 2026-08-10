@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 
 import { AppModal } from '@/shared/components/modal';
 import { Button } from '@/shared/components/ui';
@@ -26,6 +26,13 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
   const typedOk = !props.typedConfirmation || typed === props.typedConfirmation;
   const reasonOk = !props.reasonRequired || reason.trim().length > 0;
 
+  useEffect(() => {
+    if (!props.open) {
+      setTyped('');
+      setReason('');
+    }
+  }, [props.open]);
+
   return (
     <AppModal
       open={props.open}
@@ -37,8 +44,15 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
       error={props.error}
       footer={
         <>
-          <Button type="button" variant="secondary" onClick={props.onClose}>Cancel</Button>
-          <Button type="button" variant={props.confirmTone ?? 'danger'} disabled={!typedOk || !reasonOk} onClick={() => props.onConfirm({ reason })}>
+          <Button type="button" variant="secondary" onClick={props.onClose}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant={props.confirmTone ?? 'danger'}
+            disabled={!typedOk || !reasonOk}
+            onClick={() => props.onConfirm({ reason })}
+          >
             {props.confirmLabel ?? 'Confirm'}
           </Button>
         </>
@@ -46,8 +60,18 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
     >
       <div className="form-grid">
         <p>{props.description}</p>
-        {props.typedConfirmation ? <label>Type {props.typedConfirmation}<input value={typed} onChange={(event) => setTyped(event.target.value)} /></label> : null}
-        {props.reasonRequired ? <label>Reason<textarea value={reason} onChange={(event) => setReason(event.target.value)} /></label> : null}
+        {props.typedConfirmation ? (
+          <label>
+            Type {props.typedConfirmation}
+            <input value={typed} onChange={(event) => setTyped(event.target.value)} />
+          </label>
+        ) : null}
+        {props.reasonRequired ? (
+          <label>
+            Reason
+            <textarea value={reason} onChange={(event) => setReason(event.target.value)} />
+          </label>
+        ) : null}
       </div>
     </AppModal>
   );

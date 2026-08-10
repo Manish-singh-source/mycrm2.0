@@ -21,7 +21,33 @@ type TagsModalProps = {
 
 export function TagsModal(props: TagsModalProps) {
   return (
-    <AppModal open={props.open} onClose={props.onClose} title="Tags" guard={props.guard} permission={props.permission} loading={props.loading} error={props.error} footer={<><Button type="button" variant="secondary" onClick={props.onCreateTag} disabled={!props.onCreateTag}>Create tag</Button><Button type="button" onClick={props.onSave}>Save tags</Button></>}>
+    <AppModal
+      open={props.open}
+      onClose={props.onClose}
+      title="Tags"
+      guard={props.guard}
+      permission={props.permission}
+      loading={props.loading}
+      error={props.error}
+      footer={
+        <>
+          <Button type="button" variant="secondary" onClick={props.onClose}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={props.onCreateTag}
+            disabled={!props.onCreateTag}
+          >
+            Create tag
+          </Button>
+          <Button type="button" onClick={props.onSave}>
+            Save tags
+          </Button>
+        </>
+      }
+    >
       <div className="option-list">
         {props.tags.map((tag) => (
           <label key={tag.id}>

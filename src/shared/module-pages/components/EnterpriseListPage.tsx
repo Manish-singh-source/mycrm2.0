@@ -5,10 +5,18 @@ import { DataTable } from '@/shared/components/data-table';
 import { PageHeader } from '@/shared/components/layout';
 import { Button, PermissionButton } from '@/shared/components/ui';
 import { BulkActionBar } from '@/shared/components/data-table';
-import { AdvancedFiltersDrawer, ColumnManagerModal, SavedViewsModal } from '@/shared/components/workflows';
+import {
+  AdvancedFiltersDrawer,
+  ColumnManagerModal,
+  SavedViewsModal
+} from '@/shared/components/workflows';
 import { EnterpriseModalActions } from '@/shared/module-pages/components/EnterpriseModalActions';
 import { useEnterpriseListState } from '@/shared/module-pages/hooks/useEnterpriseListState';
-import type { EnterpriseActionKey, EnterpriseModuleAdapter, EnterpriseRecord } from '@/shared/module-pages/types';
+import type {
+  EnterpriseActionKey,
+  EnterpriseModuleAdapter,
+  EnterpriseRecord
+} from '@/shared/module-pages/types';
 import type { FieldValues } from 'react-hook-form';
 
 type EnterpriseListPageProps<TRow extends EnterpriseRecord, TForm extends FieldValues> = {
@@ -31,6 +39,7 @@ export function EnterpriseListPage<TRow extends EnterpriseRecord, TForm extends 
   const [error, setError] = useState('');
   const [drawer, setDrawer] = useState<'filters' | null>(null);
   const [modal, setModal] = useState<'columns' | 'views' | EnterpriseActionKey | null>(null);
+  const [hiddenColumnIds, setHiddenColumnIds] = useState<string[]>([]);
 
   const columns = useMemo(
     () => [
@@ -44,10 +53,23 @@ export function EnterpriseListPage<TRow extends EnterpriseRecord, TForm extends 
             <Button type="button" size="sm" variant="ghost" onClick={() => onView(row)}>
               View
             </Button>
-            <PermissionButton guard={adapter.guard} permission={adapter.permissions?.edit ?? ''} type="button" size="sm" variant="ghost" onClick={() => onEdit(row)}>
+            <PermissionButton
+              guard={adapter.guard}
+              permission={adapter.permissions?.edit ?? ''}
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => onEdit(row)}
+            >
               Edit
             </PermissionButton>
-            <Button type="button" size="sm" variant="ghost" onClick={() => setModal('activity')} aria-label="Open row action menu">
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => setModal('activity')}
+              aria-label="Open row action menu"
+            >
               <MoreHorizontal size={16} aria-hidden="true" />
             </Button>
           </div>
@@ -88,8 +110,12 @@ export function EnterpriseListPage<TRow extends EnterpriseRecord, TForm extends 
       onClear={listState.clearSelection}
       actions={
         <div className="table-actions">
-          <Button type="button" size="sm" variant="secondary" onClick={() => setModal('assign')}>Assign</Button>
-          <Button type="button" size="sm" variant="secondary" onClick={() => setModal('status')}>Status</Button>
+          <Button type="button" size="sm" variant="secondary" onClick={() => setModal('assign')}>
+            Assign
+          </Button>
+          <Button type="button" size="sm" variant="secondary" onClick={() => setModal('status')}>
+            Status
+          </Button>
           <Button type="button" size="sm" variant="secondary" onClick={() => setModal('clone')}>
             <Copy size={14} aria-hidden="true" />
             Clone
@@ -119,7 +145,12 @@ export function EnterpriseListPage<TRow extends EnterpriseRecord, TForm extends 
               <RefreshCw size={16} aria-hidden="true" />
               Refresh
             </Button>
-            <PermissionButton guard={adapter.guard} permission={adapter.permissions?.create ?? ''} type="button" onClick={onCreate}>
+            <PermissionButton
+              guard={adapter.guard}
+              permission={adapter.permissions?.create ?? ''}
+              type="button"
+              onClick={onCreate}
+            >
               <Plus size={16} aria-hidden="true" />
               Create
             </PermissionButton>
@@ -135,6 +166,8 @@ export function EnterpriseListPage<TRow extends EnterpriseRecord, TForm extends 
         error={error}
         searchValue={listState.search}
         onSearchChange={listState.setSearch}
+        hiddenColumnIds={hiddenColumnIds}
+        onHiddenColumnIdsChange={setHiddenColumnIds}
         onOpenFilters={() => setDrawer('filters')}
         onOpenColumns={() => setModal('columns')}
         onOpenSavedViews={() => setModal('views')}
@@ -155,7 +188,17 @@ export function EnterpriseListPage<TRow extends EnterpriseRecord, TForm extends 
         guard={adapter.guard}
         permission={adapter.permissions?.view}
         fields={[
-          { name: 'status', label: 'Status', input: <select><option>Any status</option><option>Active</option><option>Archived</option></select> },
+          {
+            name: 'status',
+            label: 'Status',
+            input: (
+              <select>
+                <option>Any status</option>
+                <option>Active</option>
+                <option>Archived</option>
+              </select>
+            )
+          },
           { name: 'updated_at', label: 'Updated after', input: <input type="date" /> }
         ]}
         onApply={() => setDrawer(null)}
@@ -179,9 +222,18 @@ export function EnterpriseListPage<TRow extends EnterpriseRecord, TForm extends 
         onClose={() => setModal(null)}
         guard={adapter.guard}
         permission={adapter.permissions?.view}
-        columns={adapter.columns.map((column) => ({ id: column.id, label: column.header, visible: true, locked: column.enableHiding === false }))}
-        onToggle={() => undefined}
-        onReset={() => undefined}
+        columns={columns.map((column) => ({
+          id: column.id,
+          label: column.header,
+          visible: !hiddenColumnIds.includes(column.id),
+          locked: column.enableHiding === false
+        }))}
+        onToggle={(id) =>
+          setHiddenColumnIds((current) =>
+            current.includes(id) ? current.filter((columnId) => columnId !== id) : [...current, id]
+          )
+        }
+        onReset={() => setHiddenColumnIds([])}
         onSave={() => setModal(null)}
       />
       <EnterpriseModalActions

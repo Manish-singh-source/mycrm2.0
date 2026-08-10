@@ -26,7 +26,11 @@ import { z } from 'zod';
 
 import { platformQueryKeys } from '@/features/platform/api/platformQueryKeys';
 import { PLATFORM_ROUTES } from '@/features/platform/routes/platformRoutes';
-import { platformTenantsApi, type PlatformTenantRecord, type TenantCreatePayload } from '@/features/platform/tenants/api/platformTenantsApi';
+import {
+  platformTenantsApi,
+  type PlatformTenantRecord,
+  type TenantCreatePayload
+} from '@/features/platform/tenants/api/platformTenantsApi';
 import { ApiError } from '@/lib/api/apiError';
 import { createListQuery } from '@/lib/api/listQuery';
 import { DataTable, type DataTableColumn } from '@/shared/components/data-table';
@@ -34,7 +38,13 @@ import { AppDrawer } from '@/shared/components/drawer';
 import { PageHeader, StatusBadge, Tabs } from '@/shared/components/layout';
 import { AppModal } from '@/shared/components/modal';
 import { Button, PermissionButton } from '@/shared/components/ui';
-import { AdvancedFiltersDrawer, ColumnManagerModal, ConfirmDialog, ExportModal, SavedViewsModal } from '@/shared/components/workflows';
+import {
+  AdvancedFiltersDrawer,
+  ColumnManagerModal,
+  ConfirmDialog,
+  ExportModal,
+  SavedViewsModal
+} from '@/shared/components/workflows';
 
 type TenantModal =
   | 'changePlan'
@@ -238,7 +248,9 @@ function cleanTenantPayload(values: TenantForm, includeNested: boolean): TenantC
   payload.owner = {
     first_name: values.owner_first_name,
     last_name: values.owner_last_name,
-    display_name: values.owner_display_name || `${values.owner_first_name ?? ''} ${values.owner_last_name ?? ''}`.trim(),
+    display_name:
+      values.owner_display_name ||
+      `${values.owner_first_name ?? ''} ${values.owner_last_name ?? ''}`.trim(),
     email: values.owner_email,
     mobile: values.owner_mobile || undefined,
     password: values.owner_password || undefined,
@@ -291,6 +303,7 @@ export function PlatformTenantsListPage() {
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [modal, setModal] = useState<TenantModal>(null);
   const [drawer, setDrawer] = useState<TenantDrawer>(null);
+  const [hiddenColumnIds, setHiddenColumnIds] = useState<string[]>([]);
   const query = createListQuery({
     page,
     per_page: 25,
@@ -313,38 +326,135 @@ export function PlatformTenantsListPage() {
   });
   const rows = listQuery.data?.data ?? [];
   const actionMutation = useMutation({
-    mutationFn: ({ action, tenant, payload }: { action: string; tenant: PlatformTenantRecord; payload: Record<string, unknown> }) => {
+    mutationFn: ({
+      action,
+      tenant,
+      payload
+    }: {
+      action: string;
+      tenant: PlatformTenantRecord;
+      payload: Record<string, unknown>;
+    }) => {
       const id = idOf(tenant);
       if (action === 'activate') return platformTenantsApi.activate(id, payload);
       if (action === 'archive') return platformTenantsApi.archive(id, payload);
       if (action === 'delete') return platformTenantsApi.delete(id, payload);
       throw new Error(`Unsupported tenant action ${action}`);
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource('platform-tenants') })
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource('platform-tenants') })
   });
 
-  const columns = useMemo<DataTableColumn<PlatformTenantRecord>[]>(() => [
-    { id: 'organization_name', header: 'Tenant', accessor: (row) => row.organization_name, enableSorting: true, enableHiding: false, cell: (row) => <TenantIdentity row={row} /> },
-    { id: 'organization_code', header: 'Code', accessor: (row) => row.organization_code, cell: (row) => <span className="muted-cell">{textOf(row, ['organization_code'])}</span> },
-    { id: 'owner', header: 'Owner', accessor: (row) => textOf(row, ['owner_email']), cell: (row) => <OwnerCell row={row} /> },
-    { id: 'business', header: 'Business', accessor: (row) => row.industry, cell: (row) => <span className="date-cell"><strong>{textOf(row, ['industry'])}</strong><small>{textOf(row, ['business_type'])}</small></span> },
-    { id: 'plan', header: 'Plan', accessor: (row) => row.current_plan ?? row.plan_name, cell: (row) => textOf(row, ['current_plan', 'plan_name']) },
-    { id: 'subscription_status', header: 'Subscription', accessor: (row) => row.subscription_status, cell: (row) => <CompactStatus status={textOf(row, ['subscription_status'], 'unknown')} /> },
-    { id: 'status', header: 'Tenant Status', accessor: (row) => row.status ?? row.tenant_status, enableSorting: true, cell: (row) => <StatusBadge tone={statusTone(textOf(row, ['status', 'tenant_status'], 'inactive'))}>{textOf(row, ['status', 'tenant_status'])}</StatusBadge> },
-    { id: 'trial_ends_at', header: 'Trial Ends', accessor: (row) => row.trial_ends_at, enableSorting: true, cell: (row) => formatDate(row.trial_ends_at) },
-    { id: 'usage', header: 'Usage', cell: (row) => <span className="date-cell"><strong>{textOf(row, ['users_count'], '0')} users</strong><small>{textOf(row, ['storage_used'], '0')} storage</small></span> },
-    { id: 'created_at', header: 'Created', accessor: (row) => row.created_at, enableSorting: true, cell: (row) => formatDate(row.created_at) },
-    { id: 'actions', header: 'Actions', enableHiding: false, cell: (row) => (
-      <TenantActionsMenu
-        row={row}
-        onView={() => navigate(`${PLATFORM_ROUTES.tenants}/${idOf(row)}`)}
-        onEdit={() => navigate(`${PLATFORM_ROUTES.tenants}/${idOf(row)}/edit`)}
-        onModal={(next) => { setSelectedTenant(row); setModal(next); }}
-        onDrawer={(next) => { setSelectedTenant(row); setDrawer(next); }}
-        onActivate={() => actionMutation.mutate({ action: 'activate', tenant: row, payload: { reason: 'Tenant activated from list', notify_owner: true } })}
-      />
-    ) }
-  ], [actionMutation, navigate]);
+  const columns = useMemo<DataTableColumn<PlatformTenantRecord>[]>(
+    () => [
+      {
+        id: 'organization_name',
+        header: 'Tenant',
+        accessor: (row) => row.organization_name,
+        enableSorting: true,
+        enableHiding: false,
+        cell: (row) => <TenantIdentity row={row} />
+      },
+      {
+        id: 'organization_code',
+        header: 'Code',
+        accessor: (row) => row.organization_code,
+        cell: (row) => <span className="muted-cell">{textOf(row, ['organization_code'])}</span>
+      },
+      {
+        id: 'owner',
+        header: 'Owner',
+        accessor: (row) => textOf(row, ['owner_email']),
+        cell: (row) => <OwnerCell row={row} />
+      },
+      {
+        id: 'business',
+        header: 'Business',
+        accessor: (row) => row.industry,
+        cell: (row) => (
+          <span className="date-cell">
+            <strong>{textOf(row, ['industry'])}</strong>
+            <small>{textOf(row, ['business_type'])}</small>
+          </span>
+        )
+      },
+      {
+        id: 'plan',
+        header: 'Plan',
+        accessor: (row) => row.current_plan ?? row.plan_name,
+        cell: (row) => textOf(row, ['current_plan', 'plan_name'])
+      },
+      {
+        id: 'subscription_status',
+        header: 'Subscription',
+        accessor: (row) => row.subscription_status,
+        cell: (row) => <CompactStatus status={textOf(row, ['subscription_status'], 'unknown')} />
+      },
+      {
+        id: 'status',
+        header: 'Tenant Status',
+        accessor: (row) => row.status ?? row.tenant_status,
+        enableSorting: true,
+        cell: (row) => (
+          <StatusBadge tone={statusTone(textOf(row, ['status', 'tenant_status'], 'inactive'))}>
+            {textOf(row, ['status', 'tenant_status'])}
+          </StatusBadge>
+        )
+      },
+      {
+        id: 'trial_ends_at',
+        header: 'Trial Ends',
+        accessor: (row) => row.trial_ends_at,
+        enableSorting: true,
+        cell: (row) => formatDate(row.trial_ends_at)
+      },
+      {
+        id: 'usage',
+        header: 'Usage',
+        cell: (row) => (
+          <span className="date-cell">
+            <strong>{textOf(row, ['users_count'], '0')} users</strong>
+            <small>{textOf(row, ['storage_used'], '0')} storage</small>
+          </span>
+        )
+      },
+      {
+        id: 'created_at',
+        header: 'Created',
+        accessor: (row) => row.created_at,
+        enableSorting: true,
+        cell: (row) => formatDate(row.created_at)
+      },
+      {
+        id: 'actions',
+        header: 'Actions',
+        enableHiding: false,
+        cell: (row) => (
+          <TenantActionsMenu
+            row={row}
+            onView={() => navigate(`${PLATFORM_ROUTES.tenants}/${idOf(row)}`)}
+            onEdit={() => navigate(`${PLATFORM_ROUTES.tenants}/${idOf(row)}/edit`)}
+            onModal={(next) => {
+              setSelectedTenant(row);
+              setModal(next);
+            }}
+            onDrawer={(next) => {
+              setSelectedTenant(row);
+              setDrawer(next);
+            }}
+            onActivate={() =>
+              actionMutation.mutate({
+                action: 'activate',
+                tenant: row,
+                payload: { reason: 'Tenant activated from list', notify_owner: true }
+              })
+            }
+          />
+        )
+      }
+    ],
+    [actionMutation, navigate]
+  );
 
   return (
     <section className="enterprise-module-page platform-access-page admin-master-page">
@@ -353,7 +463,12 @@ export function PlatformTenantsListPage() {
         title="Tenants"
         description="Manage SaaS tenant organizations, owners, offices, subscriptions, usage, modules, security and lifecycle actions."
         actions={
-          <PermissionButton guard="platform" permission="tenant.create" type="button" onClick={() => navigate(`${PLATFORM_ROUTES.tenants}/create`)}>
+          <PermissionButton
+            guard="platform"
+            permission="tenant.create"
+            type="button"
+            onClick={() => navigate(`${PLATFORM_ROUTES.tenants}/create`)}
+          >
             <Plus size={16} aria-hidden />
             Create Tenant
           </PermissionButton>
@@ -371,6 +486,8 @@ export function PlatformTenantsListPage() {
         searchValue={search}
         searchPlaceholder="Search tenants..."
         onSearchChange={setSearch}
+        hiddenColumnIds={hiddenColumnIds}
+        onHiddenColumnIdsChange={setHiddenColumnIds}
         onOpenFilters={() => setDrawer('filters')}
         onOpenColumns={() => setModal('columns')}
         onOpenSavedViews={() => setModal('views')}
@@ -380,7 +497,13 @@ export function PlatformTenantsListPage() {
         page={page}
         total={listQuery.data?.total ?? rows.length}
         onPageChange={setPage}
-        bulkActions={<div className="table-actions"><Button type="button" size="sm" variant="secondary" onClick={() => setModal('export')}>Export Selected</Button></div>}
+        bulkActions={
+          <div className="table-actions">
+            <Button type="button" size="sm" variant="secondary" onClick={() => setModal('export')}>
+              Export Selected
+            </Button>
+          </div>
+        }
       />
 
       <TenantControls
@@ -388,9 +511,18 @@ export function PlatformTenantsListPage() {
         drawer={drawer}
         tenant={selectedTenant}
         filters={filters}
+        columns={columns}
+        hiddenColumnIds={hiddenColumnIds}
+        selectedCount={selectedIds.length}
+        onHiddenColumnIdsChange={setHiddenColumnIds}
         onFiltersChange={setFilters}
-        onClose={() => { setModal(null); setDrawer(null); }}
-        onAction={(action, payload) => selectedTenant && actionMutation.mutate({ action, tenant: selectedTenant, payload })}
+        onClose={() => {
+          setModal(null);
+          setDrawer(null);
+        }}
+        onAction={(action, payload) =>
+          selectedTenant && actionMutation.mutate({ action, tenant: selectedTenant, payload })
+        }
       />
     </section>
   );
@@ -409,13 +541,19 @@ function TenantFormPage({ tenant }: { tenant?: PlatformTenantRecord }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [step, setStep] = useState(0);
-  const form = useForm<TenantForm>({ resolver: zodResolver(tenantSchema), defaultValues: tenantDefaults(tenant) });
+  const form = useForm<TenantForm>({
+    resolver: zodResolver(tenantSchema),
+    defaultValues: tenantDefaults(tenant)
+  });
   const mutation = useMutation({
-    mutationFn: (values: TenantForm) => tenant
-      ? platformTenantsApi.update(idOf(tenant), cleanTenantPayload(values, false))
-      : platformTenantsApi.create(cleanTenantPayload(values, true)),
+    mutationFn: (values: TenantForm) =>
+      tenant
+        ? platformTenantsApi.update(idOf(tenant), cleanTenantPayload(values, false))
+        : platformTenantsApi.create(cleanTenantPayload(values, true)),
     onSuccess: async (saved) => {
-      await queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource('platform-tenants') });
+      await queryClient.invalidateQueries({
+        queryKey: platformQueryKeys.resource('platform-tenants')
+      });
       navigate(`${PLATFORM_ROUTES.tenants}/${idOf(saved) || idOf(tenant)}`);
     }
   });
@@ -437,16 +575,34 @@ function TenantFormPage({ tenant }: { tenant?: PlatformTenantRecord }) {
   return (
     <section className="enterprise-module-page platform-access-page">
       <PageHeader
-        breadcrumbs={<AdminBreadcrumbs items={['Platform', 'Tenants', isEdit ? 'Edit Tenant' : 'Create Tenant']} />}
-        title={isEdit ? `Edit ${textOf(tenant, ['organization_name', 'display_name'])}` : 'Create Tenant'}
-        description={isEdit ? 'Update organization defaults and legal metadata.' : 'Organization, owner, head office, subscription, then review before creation.'}
-        actions={<Button type="button" variant="secondary" onClick={() => navigate(PLATFORM_ROUTES.tenants)}>Back</Button>}
+        breadcrumbs={
+          <AdminBreadcrumbs
+            items={['Platform', 'Tenants', isEdit ? 'Edit Tenant' : 'Create Tenant']}
+          />
+        }
+        title={
+          isEdit ? `Edit ${textOf(tenant, ['organization_name', 'display_name'])}` : 'Create Tenant'
+        }
+        description={
+          isEdit
+            ? 'Update organization defaults and legal metadata.'
+            : 'Organization, owner, head office, subscription, then review before creation.'
+        }
+        actions={
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => navigate(PLATFORM_ROUTES.tenants)}
+          >
+            Back
+          </Button>
+        }
       />
       {!isEdit ? <WizardSteps steps={steps} active={step} onSelect={setStep} /> : null}
       {mutation.error ? <div className="surface-error">{errorMessage(mutation.error)}</div> : null}
       <form className="rbac-form-shell" onSubmit={form.handleSubmit(submit)}>
         <article className="enterprise-form">
-          {(isEdit || step === 0) ? <OrganizationStep form={form} /> : null}
+          {isEdit || step === 0 ? <OrganizationStep form={form} /> : null}
           {!isEdit && step === 1 ? <OwnerStep form={form} /> : null}
           {!isEdit && step === 2 ? <OfficeStep form={form} /> : null}
           {!isEdit && step === 3 ? <SubscriptionStep form={form} /> : null}
@@ -454,15 +610,39 @@ function TenantFormPage({ tenant }: { tenant?: PlatformTenantRecord }) {
         </article>
         <aside className="rbac-side-panel">
           <h2>{isEdit ? 'Edit Scope' : steps[step]}</h2>
-          <p>{isEdit ? 'Nested owner, office and subscription changes use their dedicated APIs once available.' : 'The create request uses the completed API curl shape with top-level tenant fields plus owner, office and subscription sections.'}</p>
-          <RecordDetails record={{ status: form.watch('status'), slug: form.watch('slug'), plan_uuid: form.watch('plan_uuid'), trial_days: form.watch('trial_days') }} />
+          <p>
+            {isEdit
+              ? 'Nested owner, office and subscription changes use their dedicated APIs once available.'
+              : 'The create request uses the completed API curl shape with top-level tenant fields plus owner, office and subscription sections.'}
+          </p>
+          <RecordDetails
+            record={{
+              status: form.watch('status'),
+              slug: form.watch('slug'),
+              plan_uuid: form.watch('plan_uuid'),
+              trial_days: form.watch('trial_days')
+            }}
+          />
         </aside>
         <footer className="enterprise-form__footer rbac-sticky-footer">
-          <Button type="button" variant="secondary" onClick={() => step > 0 && !isEdit ? setStep(step - 1) : navigate(PLATFORM_ROUTES.tenants)}>Cancel</Button>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() =>
+              step > 0 && !isEdit ? setStep(step - 1) : navigate(PLATFORM_ROUTES.tenants)
+            }
+          >
+            Cancel
+          </Button>
           {!isEdit && step < steps.length - 1 ? (
             <Button type="submit">Next</Button>
           ) : (
-            <PermissionButton guard="platform" permission={isEdit ? 'tenant.edit' : 'tenant.create'} type="submit" disabled={mutation.isPending}>
+            <PermissionButton
+              guard="platform"
+              permission={isEdit ? 'tenant.edit' : 'tenant.create'}
+              type="submit"
+              disabled={mutation.isPending}
+            >
               {mutation.isPending ? 'Saving...' : 'Save Tenant'}
             </PermissionButton>
           )}
@@ -477,7 +657,13 @@ export function PlatformTenantViewPage() {
   return <TenantLoader id={id}>{(tenant) => <TenantView tenant={tenant} />}</TenantLoader>;
 }
 
-function TenantLoader({ id, children }: { id: string; children: (tenant: PlatformTenantRecord) => ReactNode }) {
+function TenantLoader({
+  id,
+  children
+}: {
+  id: string;
+  children: (tenant: PlatformTenantRecord) => ReactNode;
+}) {
   const query = useQuery({
     queryKey: platformQueryKeys.detail('platform-tenants', id),
     queryFn: () => platformTenantsApi.detail(id)
@@ -516,25 +702,55 @@ function TenantView({ tenant }: { tenant: PlatformTenantRecord }) {
       if (action === 'activate') return platformTenantsApi.activate(idOf(tenant), payload);
       return Promise.resolve({ data: null });
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: platformQueryKeys.detail('platform-tenants', idOf(tenant)) })
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: platformQueryKeys.detail('platform-tenants', idOf(tenant))
+      })
   });
 
   return (
     <section className="enterprise-module-page platform-access-page">
       <PageHeader
-        breadcrumbs={<AdminBreadcrumbs items={['Platform', 'Tenants', textOf(tenant, ['organization_name', 'display_name'])]} />}
+        breadcrumbs={
+          <AdminBreadcrumbs
+            items={['Platform', 'Tenants', textOf(tenant, ['organization_name', 'display_name'])]}
+          />
+        }
         title={textOf(tenant, ['organization_name', 'display_name'])}
         description={`${textOf(tenant, ['slug'])} / ${textOf(tenant, ['owner_email'])} / ${formatDate(tenant.created_at)}`}
-        meta={<StatusBadge tone={statusTone(textOf(tenant, ['status', 'tenant_status'], 'inactive'))}>{textOf(tenant, ['status', 'tenant_status'])}</StatusBadge>}
-        tabs={<Tabs tabs={tabs} activeId={activeTab} onChange={setActiveTab} ariaLabel="Tenant tabs" />}
+        meta={
+          <StatusBadge tone={statusTone(textOf(tenant, ['status', 'tenant_status'], 'inactive'))}>
+            {textOf(tenant, ['status', 'tenant_status'])}
+          </StatusBadge>
+        }
+        tabs={
+          <Tabs tabs={tabs} activeId={activeTab} onChange={setActiveTab} ariaLabel="Tenant tabs" />
+        }
         actions={
           <>
-            <Button type="button" variant="secondary" onClick={() => navigate(PLATFORM_ROUTES.tenants)}>Back</Button>
-            <PermissionButton guard="platform" permission="tenant.edit" type="button" onClick={() => navigate(`${PLATFORM_ROUTES.tenants}/${idOf(tenant)}/edit`)}>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => navigate(PLATFORM_ROUTES.tenants)}
+            >
+              Back
+            </Button>
+            <PermissionButton
+              guard="platform"
+              permission="tenant.edit"
+              type="button"
+              onClick={() => navigate(`${PLATFORM_ROUTES.tenants}/${idOf(tenant)}/edit`)}
+            >
               <Pencil size={16} aria-hidden />
               Edit
             </PermissionButton>
-            <PermissionButton guard="platform" permission="tenant.impersonate" type="button" variant="secondary" onClick={() => setModal('remoteLogin')}>
+            <PermissionButton
+              guard="platform"
+              permission="tenant.impersonate"
+              type="button"
+              variant="secondary"
+              onClick={() => setModal('remoteLogin')}
+            >
               <LogIn size={16} aria-hidden />
               Remote Login
             </PermissionButton>
@@ -543,34 +759,128 @@ function TenantView({ tenant }: { tenant: PlatformTenantRecord }) {
       />
 
       <section className="platform-access-summary">
-        <SummaryTile icon={<Building2 />} label="Plan" value={textOf(tenant, ['current_plan', 'plan_name'])} />
-        <SummaryTile icon={<CheckCircle2 />} label="Subscription" value={textOf(tenant, ['subscription_status'])} />
+        <SummaryTile
+          icon={<Building2 />}
+          label="Plan"
+          value={textOf(tenant, ['current_plan', 'plan_name'])}
+        />
+        <SummaryTile
+          icon={<CheckCircle2 />}
+          label="Subscription"
+          value={textOf(tenant, ['subscription_status'])}
+        />
         <SummaryTile icon={<Users />} label="Users" value={textOf(tenant, ['users_count'], '0')} />
-        <SummaryTile icon={<CalendarPlus />} label="Trial Ends" value={formatDate(tenant.trial_ends_at)} />
+        <SummaryTile
+          icon={<CalendarPlus />}
+          label="Trial Ends"
+          value={formatDate(tenant.trial_ends_at)}
+        />
       </section>
 
       <div className="enterprise-view-actions">
-        <PermissionButton guard="platform" permission="subscription.edit" type="button" size="sm" variant="secondary" onClick={() => setModal('changePlan')}>Change Plan</PermissionButton>
-        <PermissionButton guard="platform" permission="subscription.edit" type="button" size="sm" variant="secondary" onClick={() => setModal('extendTrial')}>Extend Trial</PermissionButton>
-        <PermissionButton guard="platform" permission="tenant.suspend" type="button" size="sm" variant="danger" onClick={() => setModal('suspend')}>Suspend</PermissionButton>
-        <PermissionButton guard="platform" permission="tenant.activate" type="button" size="sm" variant="secondary" onClick={() => setModal('reactivate')}>Reactivate</PermissionButton>
-        <PermissionButton guard="platform" permission="tenant.edit" type="button" size="sm" variant="secondary" onClick={() => setModal('resetOwnerPassword')}>Owner Reset</PermissionButton>
-        <PermissionButton guard="platform" permission="module.edit" type="button" size="sm" variant="secondary" onClick={() => setDrawer('moduleOverride')}>Module Overrides</PermissionButton>
-        <Button type="button" size="sm" variant="secondary" onClick={() => setDrawer('usageDetail')}>Usage Detail</Button>
-        <Button type="button" size="sm" variant="secondary" onClick={() => setDrawer('settingsPreview')}>Settings Preview</Button>
-        <PermissionButton guard="platform" permission="tenant.delete" type="button" size="sm" variant="danger" onClick={() => setModal('delete')}>Delete</PermissionButton>
+        <PermissionButton
+          guard="platform"
+          permission="subscription.edit"
+          type="button"
+          size="sm"
+          variant="secondary"
+          onClick={() => setModal('changePlan')}
+        >
+          Change Plan
+        </PermissionButton>
+        <PermissionButton
+          guard="platform"
+          permission="subscription.edit"
+          type="button"
+          size="sm"
+          variant="secondary"
+          onClick={() => setModal('extendTrial')}
+        >
+          Extend Trial
+        </PermissionButton>
+        <PermissionButton
+          guard="platform"
+          permission="tenant.suspend"
+          type="button"
+          size="sm"
+          variant="danger"
+          onClick={() => setModal('suspend')}
+        >
+          Suspend
+        </PermissionButton>
+        <PermissionButton
+          guard="platform"
+          permission="tenant.activate"
+          type="button"
+          size="sm"
+          variant="secondary"
+          onClick={() => setModal('reactivate')}
+        >
+          Reactivate
+        </PermissionButton>
+        <PermissionButton
+          guard="platform"
+          permission="tenant.edit"
+          type="button"
+          size="sm"
+          variant="secondary"
+          onClick={() => setModal('resetOwnerPassword')}
+        >
+          Owner Reset
+        </PermissionButton>
+        <PermissionButton
+          guard="platform"
+          permission="module.edit"
+          type="button"
+          size="sm"
+          variant="secondary"
+          onClick={() => setDrawer('moduleOverride')}
+        >
+          Module Overrides
+        </PermissionButton>
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          onClick={() => setDrawer('usageDetail')}
+        >
+          Usage Detail
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          onClick={() => setDrawer('settingsPreview')}
+        >
+          Settings Preview
+        </Button>
+        <PermissionButton
+          guard="platform"
+          permission="tenant.delete"
+          type="button"
+          size="sm"
+          variant="danger"
+          onClick={() => setModal('delete')}
+        >
+          Delete
+        </PermissionButton>
       </div>
 
       <article className="enterprise-view-panel">
         {activeTab === 'overview' ? <SafeRecordDetails record={tenant} /> : null}
-        {activeTab !== 'overview' ? <TenantRelationTab tenant={tenant} relation={relationForTab(activeTab)} /> : null}
+        {activeTab !== 'overview' ? (
+          <TenantRelationTab tenant={tenant} relation={relationForTab(activeTab)} />
+        ) : null}
       </article>
 
       <TenantControls
         modal={modal}
         drawer={drawer}
         tenant={tenant}
-        onClose={() => { setModal(null); setDrawer(null); }}
+        onClose={() => {
+          setModal(null);
+          setDrawer(null);
+        }}
         onAction={(action, payload) => mutation.mutate({ action, payload })}
       />
     </section>
@@ -583,7 +893,13 @@ function relationForTab(tab: string) {
   return tab;
 }
 
-function TenantRelationTab({ tenant, relation }: { tenant: PlatformTenantRecord; relation: string }) {
+function TenantRelationTab({
+  tenant,
+  relation
+}: {
+  tenant: PlatformTenantRecord;
+  relation: string;
+}) {
   const query = useQuery({
     queryKey: platformQueryKeys.related('platform-tenants', idOf(tenant), relation),
     queryFn: () => platformTenantsApi.relation(idOf(tenant), relation)
@@ -600,6 +916,10 @@ function TenantControls({
   drawer,
   tenant,
   filters = {},
+  columns = [],
+  hiddenColumnIds = [],
+  selectedCount = 0,
+  onHiddenColumnIdsChange,
   onFiltersChange,
   onClose,
   onAction
@@ -608,19 +928,31 @@ function TenantControls({
   drawer: TenantDrawer;
   tenant: PlatformTenantRecord | null;
   filters?: Record<string, string>;
+  columns?: DataTableColumn<PlatformTenantRecord>[];
+  hiddenColumnIds?: string[];
+  selectedCount?: number;
+  onHiddenColumnIdsChange?: (ids: string[]) => void;
   onFiltersChange?: (filters: Record<string, string>) => void;
   onClose: () => void;
   onAction?: (action: string, payload: Record<string, unknown>) => void;
 }) {
   return (
     <>
-      <TenantFiltersDrawer open={drawer === 'filters'} filters={filters} onChange={onFiltersChange} onClose={onClose} />
+      <TenantFiltersDrawer
+        open={drawer === 'filters'}
+        filters={filters}
+        onChange={onFiltersChange}
+        onClose={onClose}
+      />
       <SavedViewsModal
         open={modal === 'views'}
         onClose={onClose}
         guard="platform"
         permission="tenant.view"
-        views={[{ id: 'all', name: 'All tenants', visibility: 'shared', isDefault: true }, { id: 'trials', name: 'Trials ending soon', visibility: 'personal' }]}
+        views={[
+          { id: 'all', name: 'All tenants', visibility: 'shared', isDefault: true },
+          { id: 'trials', name: 'Trials ending soon', visibility: 'personal' }
+        ]}
         activeViewId="all"
         onSelect={onClose}
         onSaveCurrent={onClose}
@@ -630,9 +962,20 @@ function TenantControls({
         onClose={onClose}
         guard="platform"
         permission="tenant.view"
-        columns={['Tenant', 'Code', 'Owner', 'Business', 'Plan', 'Subscription', 'Status', 'Trial Ends', 'Usage', 'Created'].map((label) => ({ id: label.toLowerCase().replace(/\s+/g, '_'), label, visible: true }))}
-        onToggle={() => undefined}
-        onReset={() => undefined}
+        columns={columns.map((column) => ({
+          id: column.id,
+          label: column.header,
+          visible: !hiddenColumnIds.includes(column.id),
+          locked: column.enableHiding === false
+        }))}
+        onToggle={(id) =>
+          onHiddenColumnIdsChange?.(
+            hiddenColumnIds.includes(id)
+              ? hiddenColumnIds.filter((columnId) => columnId !== id)
+              : [...hiddenColumnIds, id]
+          )
+        }
+        onReset={() => onHiddenColumnIdsChange?.([])}
         onSave={onClose}
       />
       <ExportModal
@@ -640,18 +983,39 @@ function TenantControls({
         onClose={onClose}
         guard="platform"
         permission="tenant.view"
-        columns={['Tenant', 'Slug', 'Owner', 'Business type', 'Industry', 'Plan', 'Subscription', 'Status', 'Trial ends', 'Created']}
+        columns={columns
+          .filter((column) => !hiddenColumnIds.includes(column.id) && column.id !== 'actions')
+          .map((column) => String(column.header))}
+        selectedCount={selectedCount}
         onExport={onClose}
       />
       <ChangePlanModal open={modal === 'changePlan'} tenant={tenant} onClose={onClose} />
       <ExtendTrialModal open={modal === 'extendTrial'} tenant={tenant} onClose={onClose} />
-      <SuspendReactivateModal open={modal === 'suspend'} tenant={tenant} mode="suspend" onClose={onClose} />
-      <SuspendReactivateModal open={modal === 'reactivate'} tenant={tenant} mode="reactivate" onClose={onClose} />
+      <SuspendReactivateModal
+        open={modal === 'suspend'}
+        tenant={tenant}
+        mode="suspend"
+        onClose={onClose}
+      />
+      <SuspendReactivateModal
+        open={modal === 'reactivate'}
+        tenant={tenant}
+        mode="reactivate"
+        onClose={onClose}
+      />
       <RemoteLoginModal open={modal === 'remoteLogin'} tenant={tenant} onClose={onClose} />
-      <OwnerResetPasswordModal open={modal === 'resetOwnerPassword'} tenant={tenant} onClose={onClose} />
+      <OwnerResetPasswordModal
+        open={modal === 'resetOwnerPassword'}
+        tenant={tenant}
+        onClose={onClose}
+      />
       <ModuleOverrideDrawer open={drawer === 'moduleOverride'} tenant={tenant} onClose={onClose} />
       <UsageDetailDrawer open={drawer === 'usageDetail'} tenant={tenant} onClose={onClose} />
-      <SettingsPreviewDrawer open={drawer === 'settingsPreview'} tenant={tenant} onClose={onClose} />
+      <SettingsPreviewDrawer
+        open={drawer === 'settingsPreview'}
+        tenant={tenant}
+        onClose={onClose}
+      />
       <ConfirmDialog
         open={modal === 'archive'}
         onClose={onClose}
@@ -661,7 +1025,13 @@ function TenantControls({
         reasonRequired
         guard="platform"
         permission="tenant.delete"
-        onConfirm={(payload) => { onAction?.('archive', { reason: payload.reason ?? 'Tenant archived', notify_owner: true }); onClose(); }}
+        onConfirm={(payload) => {
+          onAction?.('archive', {
+            reason: payload.reason ?? 'Tenant archived',
+            notify_owner: true
+          });
+          onClose();
+        }}
       />
       <ConfirmDialog
         open={modal === 'delete'}
@@ -674,13 +1044,26 @@ function TenantControls({
         reasonRequired
         guard="platform"
         permission="tenant.delete"
-        onConfirm={(payload) => { onAction?.('delete', { reason: payload.reason ?? 'Tenant deleted', notify_owner: true }); onClose(); }}
+        onConfirm={(payload) => {
+          onAction?.('delete', { reason: payload.reason ?? 'Tenant deleted', notify_owner: true });
+          onClose();
+        }}
       />
     </>
   );
 }
 
-function TenantFiltersDrawer({ open, filters, onChange, onClose }: { open: boolean; filters: Record<string, string>; onChange?: (filters: Record<string, string>) => void; onClose: () => void }) {
+function TenantFiltersDrawer({
+  open,
+  filters,
+  onChange,
+  onClose
+}: {
+  open: boolean;
+  filters: Record<string, string>;
+  onChange?: (filters: Record<string, string>) => void;
+  onClose: () => void;
+}) {
   const [draft, setDraft] = useState(filters);
   useEffect(() => setDraft(filters), [filters, open]);
   const field = (name: string, label: string, input: ReactNode) => ({ name, label, input });
@@ -691,96 +1074,368 @@ function TenantFiltersDrawer({ open, filters, onChange, onClose }: { open: boole
       guard="platform"
       permission="tenant.view"
       fields={[
-        field('status', 'Tenant status', <select value={draft.status ?? ''} onChange={(event) => setDraft({ ...draft, status: event.target.value })}><option value="">Any status</option><option value="trial">Trial</option><option value="active">Active</option><option value="suspended">Suspended</option><option value="expired">Expired</option><option value="archived">Archived</option></select>),
-        field('plan_id', 'Plan UUID', <input value={draft.plan_id ?? ''} onChange={(event) => setDraft({ ...draft, plan_id: event.target.value })} />),
-        field('subscription_status', 'Subscription status', <select value={draft.subscription_status ?? ''} onChange={(event) => setDraft({ ...draft, subscription_status: event.target.value })}><option value="">Any subscription</option><option value="trial">Trial</option><option value="active">Active</option><option value="past_due">Past due</option><option value="cancelled">Cancelled</option></select>),
-        field('trial_ending_before', 'Trial ending before', <input type="date" value={draft.trial_ending_before ?? ''} onChange={(event) => setDraft({ ...draft, trial_ending_before: event.target.value })} />),
-        field('industry_id', 'Industry ID', <input value={draft.industry_id ?? ''} onChange={(event) => setDraft({ ...draft, industry_id: event.target.value })} />),
-        field('business_type_id', 'Business type ID', <input value={draft.business_type_id ?? ''} onChange={(event) => setDraft({ ...draft, business_type_id: event.target.value })} />),
-        field('country_id', 'Country ID', <input value={draft.country_id ?? ''} onChange={(event) => setDraft({ ...draft, country_id: event.target.value })} />),
-        field('created_from', 'Created from', <input type="date" value={draft.created_from ?? ''} onChange={(event) => setDraft({ ...draft, created_from: event.target.value })} />),
-        field('created_to', 'Created to', <input type="date" value={draft.created_to ?? ''} onChange={(event) => setDraft({ ...draft, created_to: event.target.value })} />)
+        field(
+          'status',
+          'Tenant status',
+          <select
+            value={draft.status ?? ''}
+            onChange={(event) => setDraft({ ...draft, status: event.target.value })}
+          >
+            <option value="">Any status</option>
+            <option value="trial">Trial</option>
+            <option value="active">Active</option>
+            <option value="suspended">Suspended</option>
+            <option value="expired">Expired</option>
+            <option value="archived">Archived</option>
+          </select>
+        ),
+        field(
+          'plan_id',
+          'Plan UUID',
+          <input
+            value={draft.plan_id ?? ''}
+            onChange={(event) => setDraft({ ...draft, plan_id: event.target.value })}
+          />
+        ),
+        field(
+          'subscription_status',
+          'Subscription status',
+          <select
+            value={draft.subscription_status ?? ''}
+            onChange={(event) => setDraft({ ...draft, subscription_status: event.target.value })}
+          >
+            <option value="">Any subscription</option>
+            <option value="trial">Trial</option>
+            <option value="active">Active</option>
+            <option value="past_due">Past due</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+        ),
+        field(
+          'trial_ending_before',
+          'Trial ending before',
+          <input
+            type="date"
+            value={draft.trial_ending_before ?? ''}
+            onChange={(event) => setDraft({ ...draft, trial_ending_before: event.target.value })}
+          />
+        ),
+        field(
+          'industry_id',
+          'Industry ID',
+          <input
+            value={draft.industry_id ?? ''}
+            onChange={(event) => setDraft({ ...draft, industry_id: event.target.value })}
+          />
+        ),
+        field(
+          'business_type_id',
+          'Business type ID',
+          <input
+            value={draft.business_type_id ?? ''}
+            onChange={(event) => setDraft({ ...draft, business_type_id: event.target.value })}
+          />
+        ),
+        field(
+          'country_id',
+          'Country ID',
+          <input
+            value={draft.country_id ?? ''}
+            onChange={(event) => setDraft({ ...draft, country_id: event.target.value })}
+          />
+        ),
+        field(
+          'created_from',
+          'Created from',
+          <input
+            type="date"
+            value={draft.created_from ?? ''}
+            onChange={(event) => setDraft({ ...draft, created_from: event.target.value })}
+          />
+        ),
+        field(
+          'created_to',
+          'Created to',
+          <input
+            type="date"
+            value={draft.created_to ?? ''}
+            onChange={(event) => setDraft({ ...draft, created_to: event.target.value })}
+          />
+        )
       ]}
-      onApply={() => { onChange?.(draft); onClose(); }}
-      onReset={() => { setDraft({}); onChange?.({}); }}
+      onApply={() => {
+        onChange?.(draft);
+        onClose();
+      }}
+      onReset={() => setDraft({})}
     />
   );
 }
 
-function ChangePlanModal({ open, tenant, onClose }: { open: boolean; tenant: PlatformTenantRecord | null; onClose: () => void }) {
+function ChangePlanModal({
+  open,
+  tenant,
+  onClose
+}: {
+  open: boolean;
+  tenant: PlatformTenantRecord | null;
+  onClose: () => void;
+}) {
   const [planUuid, setPlanUuid] = useState('');
   const [billingCycle, setBillingCycle] = useState('monthly');
   const [effectiveDate, setEffectiveDate] = useState('');
-  return <TenantModalShell open={open} onClose={onClose} title="Change plan" permission="subscription.edit" submitLabel="Queue plan change" onSubmit={onClose}>
-    <RecordDetails record={{ current_plan: textOf(tenant, ['current_plan', 'plan_name']), subscription_status: textOf(tenant, ['subscription_status']) }} />
-    <SimpleInput label="New plan UUID" value={planUuid} onChange={setPlanUuid} />
-    <label>Billing cycle<select value={billingCycle} onChange={(event) => setBillingCycle(event.target.value)}><option value="monthly">Monthly</option><option value="yearly">Yearly</option></select></label>
-    <SimpleInput label="Effective date" type="date" value={effectiveDate} onChange={setEffectiveDate} />
-    <div className="surface-state">Proration preview will appear here when the subscription change endpoint is connected.</div>
-  </TenantModalShell>;
+  return (
+    <TenantModalShell
+      open={open}
+      onClose={onClose}
+      title="Change plan"
+      permission="subscription.edit"
+      submitLabel="Queue plan change"
+      onSubmit={onClose}
+    >
+      <RecordDetails
+        record={{
+          current_plan: textOf(tenant, ['current_plan', 'plan_name']),
+          subscription_status: textOf(tenant, ['subscription_status'])
+        }}
+      />
+      <SimpleInput label="New plan UUID" value={planUuid} onChange={setPlanUuid} />
+      <label>
+        Billing cycle
+        <select value={billingCycle} onChange={(event) => setBillingCycle(event.target.value)}>
+          <option value="monthly">Monthly</option>
+          <option value="yearly">Yearly</option>
+        </select>
+      </label>
+      <SimpleInput
+        label="Effective date"
+        type="date"
+        value={effectiveDate}
+        onChange={setEffectiveDate}
+      />
+      <div className="surface-state">
+        Proration preview will appear here when the subscription change endpoint is connected.
+      </div>
+    </TenantModalShell>
+  );
 }
 
-function ExtendTrialModal({ open, tenant, onClose }: { open: boolean; tenant: PlatformTenantRecord | null; onClose: () => void }) {
+function ExtendTrialModal({
+  open,
+  tenant,
+  onClose
+}: {
+  open: boolean;
+  tenant: PlatformTenantRecord | null;
+  onClose: () => void;
+}) {
   const queryClient = useQueryClient();
   const [trialEndsAt, setTrialEndsAt] = useState('');
   const [reason, setReason] = useState('Sales-approved extension');
   const [notifyOwner, setNotifyOwner] = useState(true);
   const mutation = useMutation({
-    mutationFn: () => platformTenantsApi.extendTrial(idOf(tenant), { trial_ends_at: trialEndsAt, reason }),
-    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource('platform-tenants') }); onClose(); }
+    mutationFn: () =>
+      platformTenantsApi.extendTrial(idOf(tenant), { trial_ends_at: trialEndsAt, reason }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: platformQueryKeys.resource('platform-tenants')
+      });
+      onClose();
+    }
   });
-  return <TenantModalShell open={open} onClose={onClose} title="Extend trial" permission="subscription.edit" submitLabel="Extend trial" loading={mutation.isPending} error={mutation.error} onSubmit={() => mutation.mutate()}>
-    <RecordDetails record={{ current_trial_end: formatDate(tenant?.trial_ends_at), notify_owner: notifyOwner }} />
-    <SimpleInput label="New trial end" type="datetime-local" value={trialEndsAt} onChange={setTrialEndsAt} />
-    <SimpleTextarea label="Reason" value={reason} onChange={setReason} />
-    <label className="check-row"><input checked={notifyOwner} type="checkbox" onChange={(event) => setNotifyOwner(event.target.checked)} /> Notify owner</label>
-  </TenantModalShell>;
+  return (
+    <TenantModalShell
+      open={open}
+      onClose={onClose}
+      title="Extend trial"
+      permission="subscription.edit"
+      submitLabel="Extend trial"
+      loading={mutation.isPending}
+      error={mutation.error}
+      onSubmit={() => mutation.mutate()}
+    >
+      <RecordDetails
+        record={{ current_trial_end: formatDate(tenant?.trial_ends_at), notify_owner: notifyOwner }}
+      />
+      <SimpleInput
+        label="New trial end"
+        type="datetime-local"
+        value={trialEndsAt}
+        onChange={setTrialEndsAt}
+      />
+      <SimpleTextarea label="Reason" value={reason} onChange={setReason} />
+      <label className="check-row">
+        <input
+          checked={notifyOwner}
+          type="checkbox"
+          onChange={(event) => setNotifyOwner(event.target.checked)}
+        />{' '}
+        Notify owner
+      </label>
+    </TenantModalShell>
+  );
 }
 
-function SuspendReactivateModal({ open, tenant, mode, onClose }: { open: boolean; tenant: PlatformTenantRecord | null; mode: 'suspend' | 'reactivate'; onClose: () => void }) {
+function SuspendReactivateModal({
+  open,
+  tenant,
+  mode,
+  onClose
+}: {
+  open: boolean;
+  tenant: PlatformTenantRecord | null;
+  mode: 'suspend' | 'reactivate';
+  onClose: () => void;
+}) {
   const queryClient = useQueryClient();
   const [typed, setTyped] = useState('');
-  const [reason, setReason] = useState(mode === 'suspend' ? 'Payment overdue' : 'Tenant access restored');
+  const [reason, setReason] = useState(
+    mode === 'suspend' ? 'Payment overdue' : 'Tenant access restored'
+  );
   const [effectiveDate, setEffectiveDate] = useState('');
   const [blockLogin, setBlockLogin] = useState(mode === 'suspend');
   const [notifyOwner, setNotifyOwner] = useState(true);
   const canSubmit = reason.trim().length > 0 && (mode === 'reactivate' || typed === 'SUSPEND');
   const mutation = useMutation({
-    mutationFn: () => mode === 'suspend'
-      ? platformTenantsApi.suspend(idOf(tenant), { reason, notify_owner: notifyOwner, suspended_until: effectiveDate || null, block_login: blockLogin })
-      : platformTenantsApi.reactivate(idOf(tenant), { reason, notify_owner: notifyOwner, effective_date: effectiveDate || undefined, block_login: false }),
-    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource('platform-tenants') }); onClose(); }
+    mutationFn: () =>
+      mode === 'suspend'
+        ? platformTenantsApi.suspend(idOf(tenant), {
+            reason,
+            notify_owner: notifyOwner,
+            suspended_until: effectiveDate || null,
+            block_login: blockLogin
+          })
+        : platformTenantsApi.reactivate(idOf(tenant), {
+            reason,
+            notify_owner: notifyOwner,
+            effective_date: effectiveDate || undefined,
+            block_login: false
+          }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: platformQueryKeys.resource('platform-tenants')
+      });
+      onClose();
+    }
   });
   return (
-    <AppModal open={open} onClose={onClose} title={mode === 'suspend' ? 'Suspend tenant' : 'Reactivate tenant'} guard="platform" permission={mode === 'suspend' ? 'tenant.suspend' : 'tenant.activate'} loading={mutation.isPending} error={mutation.error ? errorMessage(mutation.error) : null} footer={<><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="button" variant={mode === 'suspend' ? 'danger' : 'primary'} disabled={!canSubmit} onClick={() => mutation.mutate()}>{mode === 'suspend' ? 'Suspend' : 'Reactivate'}</Button></>}>
+    <AppModal
+      open={open}
+      onClose={onClose}
+      title={mode === 'suspend' ? 'Suspend tenant' : 'Reactivate tenant'}
+      guard="platform"
+      permission={mode === 'suspend' ? 'tenant.suspend' : 'tenant.activate'}
+      loading={mutation.isPending}
+      error={mutation.error ? errorMessage(mutation.error) : null}
+      footer={
+        <>
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            variant={mode === 'suspend' ? 'danger' : 'primary'}
+            disabled={!canSubmit}
+            onClick={() => mutation.mutate()}
+          >
+            {mode === 'suspend' ? 'Suspend' : 'Reactivate'}
+          </Button>
+        </>
+      }
+    >
       <div className="form-grid">
-        {mode === 'suspend' ? <div className="surface-error">Type SUSPEND in the field below before submitting this availability-changing action.</div> : null}
-        {mode === 'suspend' ? <SimpleInput label="Type SUSPEND" value={typed} onChange={setTyped} /> : null}
+        {mode === 'suspend' ? (
+          <div className="surface-error">
+            Type SUSPEND in the field below before submitting this availability-changing action.
+          </div>
+        ) : null}
+        {mode === 'suspend' ? (
+          <SimpleInput label="Type SUSPEND" value={typed} onChange={setTyped} />
+        ) : null}
         <SimpleTextarea label="Reason" value={reason} onChange={setReason} />
-        <SimpleInput label={mode === 'suspend' ? 'Suspended until' : 'Effective date'} value={effectiveDate} onChange={setEffectiveDate} type="date" />
-        <label className="check-row"><input checked={blockLogin} type="checkbox" disabled={mode === 'reactivate'} onChange={(event) => setBlockLogin(event.target.checked)} /> Block login</label>
-        <label className="check-row"><input checked={notifyOwner} type="checkbox" onChange={(event) => setNotifyOwner(event.target.checked)} /> Notify owner</label>
+        <SimpleInput
+          label={mode === 'suspend' ? 'Suspended until' : 'Effective date'}
+          value={effectiveDate}
+          onChange={setEffectiveDate}
+          type="date"
+        />
+        <label className="check-row">
+          <input
+            checked={blockLogin}
+            type="checkbox"
+            disabled={mode === 'reactivate'}
+            onChange={(event) => setBlockLogin(event.target.checked)}
+          />{' '}
+          Block login
+        </label>
+        <label className="check-row">
+          <input
+            checked={notifyOwner}
+            type="checkbox"
+            onChange={(event) => setNotifyOwner(event.target.checked)}
+          />{' '}
+          Notify owner
+        </label>
       </div>
     </AppModal>
   );
 }
 
-function RemoteLoginModal({ open, tenant, onClose }: { open: boolean; tenant: PlatformTenantRecord | null; onClose: () => void }) {
+function RemoteLoginModal({
+  open,
+  tenant,
+  onClose
+}: {
+  open: boolean;
+  tenant: PlatformTenantRecord | null;
+  onClose: () => void;
+}) {
   const [typed, setTyped] = useState('');
   const [reason, setReason] = useState('Debug billing setup with customer approval');
   const [duration, setDuration] = useState(30);
   const [targetUserUuid, setTargetUserUuid] = useState('');
   const mutation = useMutation({
-    mutationFn: () => platformTenantsApi.impersonate(idOf(tenant), { reason, duration_minutes: duration, target_user_uuid: targetUserUuid || undefined }),
+    mutationFn: () =>
+      platformTenantsApi.impersonate(idOf(tenant), {
+        reason,
+        duration_minutes: duration,
+        target_user_uuid: targetUserUuid || undefined
+      }),
     onSuccess: onClose
   });
   const ok = typed === 'LOGIN' && reason.trim().length > 0;
   return (
-    <AppModal open={open} onClose={onClose} title="Remote login" guard="platform" permission="tenant.impersonate" loading={mutation.isPending} error={mutation.error ? errorMessage(mutation.error) : null} footer={<><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="button" disabled={!ok} onClick={() => mutation.mutate()}>Start session</Button></>}>
+    <AppModal
+      open={open}
+      onClose={onClose}
+      title="Remote login"
+      guard="platform"
+      permission="tenant.impersonate"
+      loading={mutation.isPending}
+      error={mutation.error ? errorMessage(mutation.error) : null}
+      footer={
+        <>
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="button" disabled={!ok} onClick={() => mutation.mutate()}>
+            Start session
+          </Button>
+        </>
+      }
+    >
       <div className="form-grid">
-        <div className="surface-error">Remote login is a security-sensitive action. Type LOGIN to confirm customer-approved access.</div>
+        <div className="surface-error">
+          Remote login is a security-sensitive action. Type LOGIN to confirm customer-approved
+          access.
+        </div>
         <SimpleTextarea label="Reason" value={reason} onChange={setReason} />
-        <SimpleInput label="Duration minutes" type="number" value={String(duration)} onChange={(value) => setDuration(Number(value))} />
+        <SimpleInput
+          label="Duration minutes"
+          type="number"
+          value={String(duration)}
+          onChange={(value) => setDuration(Number(value))}
+        />
         <SimpleInput label="Target user UUID" value={targetUserUuid} onChange={setTargetUserUuid} />
         <SimpleInput label="Type LOGIN" value={typed} onChange={setTyped} />
       </div>
@@ -788,34 +1443,123 @@ function RemoteLoginModal({ open, tenant, onClose }: { open: boolean; tenant: Pl
   );
 }
 
-function OwnerResetPasswordModal({ open, tenant, onClose }: { open: boolean; tenant: PlatformTenantRecord | null; onClose: () => void }) {
+function OwnerResetPasswordModal({
+  open,
+  tenant,
+  onClose
+}: {
+  open: boolean;
+  tenant: PlatformTenantRecord | null;
+  onClose: () => void;
+}) {
   const [mode, setMode] = useState('send_link');
   const [temporaryPassword, setTemporaryPassword] = useState('');
   const [forceChange, setForceChange] = useState(true);
-  return <TenantModalShell open={open} onClose={onClose} title="Owner reset password" permission="tenant.edit" submitLabel="Reset owner password" onSubmit={onClose}>
-    <RecordDetails record={{ owner: textOf(tenant, ['owner_email', 'owner_name']) }} />
-    <label>Mode<select value={mode} onChange={(event) => setMode(event.target.value)}><option value="send_link">Send reset link</option><option value="temporary_password">Set temporary password</option></select></label>
-    {mode === 'temporary_password' ? <SimpleInput label="Temporary password" value={temporaryPassword} onChange={setTemporaryPassword} type="password" /> : null}
-    <label className="check-row"><input checked={forceChange} type="checkbox" onChange={(event) => setForceChange(event.target.checked)} /> Force change on login</label>
-    <div className="surface-state">Owner-specific reset endpoint is not listed in completed tenant curls; this preserves the required UI surface.</div>
-  </TenantModalShell>;
+  return (
+    <TenantModalShell
+      open={open}
+      onClose={onClose}
+      title="Owner reset password"
+      permission="tenant.edit"
+      submitLabel="Reset owner password"
+      onSubmit={onClose}
+    >
+      <RecordDetails record={{ owner: textOf(tenant, ['owner_email', 'owner_name']) }} />
+      <label>
+        Mode
+        <select value={mode} onChange={(event) => setMode(event.target.value)}>
+          <option value="send_link">Send reset link</option>
+          <option value="temporary_password">Set temporary password</option>
+        </select>
+      </label>
+      {mode === 'temporary_password' ? (
+        <SimpleInput
+          label="Temporary password"
+          value={temporaryPassword}
+          onChange={setTemporaryPassword}
+          type="password"
+        />
+      ) : null}
+      <label className="check-row">
+        <input
+          checked={forceChange}
+          type="checkbox"
+          onChange={(event) => setForceChange(event.target.checked)}
+        />{' '}
+        Force change on login
+      </label>
+      <div className="surface-state">
+        Owner-specific reset endpoint is not listed in completed tenant curls; this preserves the
+        required UI surface.
+      </div>
+    </TenantModalShell>
+  );
 }
 
-function ModuleOverrideDrawer({ open, tenant, onClose }: { open: boolean; tenant: PlatformTenantRecord | null; onClose: () => void }) {
+function ModuleOverrideDrawer({
+  open,
+  tenant,
+  onClose
+}: {
+  open: boolean;
+  tenant: PlatformTenantRecord | null;
+  onClose: () => void;
+}) {
   const queryClient = useQueryClient();
   const [moduleCode, setModuleCode] = useState('crm');
   const [enabled, setEnabled] = useState(true);
   const [limitsJson, setLimitsJson] = useState('{"users":25}');
   const [reason, setReason] = useState('Custom enterprise agreement');
   const mutation = useMutation({
-    mutationFn: () => platformTenantsApi.updateModules(idOf(tenant), { modules: [{ module_code: moduleCode, enabled, limits: parseJsonObject(limitsJson), metadata: { source: 'platform_admin', reason } }] }),
-    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: platformQueryKeys.related('platform-tenants', idOf(tenant), 'modules') }); onClose(); }
+    mutationFn: () =>
+      platformTenantsApi.updateModules(idOf(tenant), {
+        modules: [
+          {
+            module_code: moduleCode,
+            enabled,
+            limits: parseJsonObject(limitsJson),
+            metadata: { source: 'platform_admin', reason }
+          }
+        ]
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: platformQueryKeys.related('platform-tenants', idOf(tenant), 'modules')
+      });
+      onClose();
+    }
   });
   return (
-    <AppDrawer open={open} onClose={onClose} title="Module override" guard="platform" permission="module.edit" size="lg" loading={mutation.isPending} error={mutation.error ? errorMessage(mutation.error) : null} footer={<><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="button" onClick={() => mutation.mutate()}>Save overrides</Button></>}>
+    <AppDrawer
+      open={open}
+      onClose={onClose}
+      title="Module override"
+      guard="platform"
+      permission="module.edit"
+      size="lg"
+      loading={mutation.isPending}
+      error={mutation.error ? errorMessage(mutation.error) : null}
+      footer={
+        <>
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="button" onClick={() => mutation.mutate()}>
+            Save overrides
+          </Button>
+        </>
+      }
+    >
       <div className="form-grid">
         <SimpleInput label="Module code" value={moduleCode} onChange={setModuleCode} />
-        <label className="check-row"><input checked={enabled} type="checkbox" onChange={(event) => setEnabled(event.target.checked)} /> Enabled</label>
+        <label className="check-row">
+          <input
+            checked={enabled}
+            type="checkbox"
+            onChange={(event) => setEnabled(event.target.checked)}
+          />{' '}
+          Enabled
+        </label>
         <SimpleTextarea label="Limits JSON" value={limitsJson} onChange={setLimitsJson} />
         <SimpleTextarea label="Reason" value={reason} onChange={setReason} />
       </div>
@@ -823,33 +1567,144 @@ function ModuleOverrideDrawer({ open, tenant, onClose }: { open: boolean; tenant
   );
 }
 
-function UsageDetailDrawer({ open, tenant, onClose }: { open: boolean; tenant: PlatformTenantRecord | null; onClose: () => void }) {
-  const query = useQuery({ queryKey: platformQueryKeys.related('platform-tenants', idOf(tenant), 'usage'), queryFn: () => platformTenantsApi.relation(idOf(tenant), 'usage'), enabled: open && Boolean(idOf(tenant)) });
-  return <AppDrawer open={open} onClose={onClose} title="Usage detail" guard="platform" permission="tenant.view" size="lg" loading={query.isLoading} error={query.error ? errorMessage(query.error) : null}>
-    <RecordList rows={query.data?.data ?? []} fallback={<SafeRecordDetails record={(query.data?.raw as Record<string, unknown>) ?? { users: tenant?.users_count, storage: tenant?.storage_used, api_requests: '-', projects: '-', invoices: '-' }} />} />
-  </AppDrawer>;
+function UsageDetailDrawer({
+  open,
+  tenant,
+  onClose
+}: {
+  open: boolean;
+  tenant: PlatformTenantRecord | null;
+  onClose: () => void;
+}) {
+  const query = useQuery({
+    queryKey: platformQueryKeys.related('platform-tenants', idOf(tenant), 'usage'),
+    queryFn: () => platformTenantsApi.relation(idOf(tenant), 'usage'),
+    enabled: open && Boolean(idOf(tenant))
+  });
+  return (
+    <AppDrawer
+      open={open}
+      onClose={onClose}
+      title="Usage detail"
+      guard="platform"
+      permission="tenant.view"
+      size="lg"
+      loading={query.isLoading}
+      error={query.error ? errorMessage(query.error) : null}
+    >
+      <RecordList
+        rows={query.data?.data ?? []}
+        fallback={
+          <SafeRecordDetails
+            record={
+              (query.data?.raw as Record<string, unknown>) ?? {
+                users: tenant?.users_count,
+                storage: tenant?.storage_used,
+                api_requests: '-',
+                projects: '-',
+                invoices: '-'
+              }
+            }
+          />
+        }
+      />
+    </AppDrawer>
+  );
 }
 
-function SettingsPreviewDrawer({ open, tenant, onClose }: { open: boolean; tenant: PlatformTenantRecord | null; onClose: () => void }) {
-  const query = useQuery({ queryKey: platformQueryKeys.related('platform-tenants', idOf(tenant), 'settings'), queryFn: () => platformTenantsApi.relation(idOf(tenant), 'settings'), enabled: open && Boolean(idOf(tenant)) });
-  const raw = maskSecrets((query.data?.raw as Record<string, unknown>) ?? {}) as Record<string, unknown>;
-  return <AppDrawer open={open} onClose={onClose} title="Tenant settings preview" guard="platform" permission="setting.view" size="lg" loading={query.isLoading} error={query.error ? errorMessage(query.error) : null}>
-    <SafeRecordDetails record={raw} />
-  </AppDrawer>;
+function SettingsPreviewDrawer({
+  open,
+  tenant,
+  onClose
+}: {
+  open: boolean;
+  tenant: PlatformTenantRecord | null;
+  onClose: () => void;
+}) {
+  const query = useQuery({
+    queryKey: platformQueryKeys.related('platform-tenants', idOf(tenant), 'settings'),
+    queryFn: () => platformTenantsApi.relation(idOf(tenant), 'settings'),
+    enabled: open && Boolean(idOf(tenant))
+  });
+  const raw = maskSecrets((query.data?.raw as Record<string, unknown>) ?? {}) as Record<
+    string,
+    unknown
+  >;
+  return (
+    <AppDrawer
+      open={open}
+      onClose={onClose}
+      title="Tenant settings preview"
+      guard="platform"
+      permission="setting.view"
+      size="lg"
+      loading={query.isLoading}
+      error={query.error ? errorMessage(query.error) : null}
+    >
+      <SafeRecordDetails record={raw} />
+    </AppDrawer>
+  );
 }
 
 function maskSecrets(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(maskSecrets);
   if (!value || typeof value !== 'object') return value;
-  return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, entry]) => {
-    const sensitive = ['secret', 'token', 'password', 'key', 'credential'].some((needle) => key.toLowerCase().includes(needle));
-    return [key, sensitive ? '••••••••' : maskSecrets(entry)];
-  }));
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([key, entry]) => {
+      const sensitive = ['secret', 'token', 'password', 'key', 'credential'].some((needle) =>
+        key.toLowerCase().includes(needle)
+      );
+      return [
+        key,
+        sensitive
+          ? 'ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢'
+          : maskSecrets(entry)
+      ];
+    })
+  );
 }
 
-function TenantModalShell({ open, title, permission, loading, error, children, submitLabel, onSubmit, onClose }: { open: boolean; title: string; permission: string; loading?: boolean; error?: unknown; children: ReactNode; submitLabel: string; onSubmit: () => void; onClose: () => void }) {
+function TenantModalShell({
+  open,
+  title,
+  permission,
+  loading,
+  error,
+  children,
+  submitLabel,
+  onSubmit,
+  onClose
+}: {
+  open: boolean;
+  title: string;
+  permission: string;
+  loading?: boolean;
+  error?: unknown;
+  children: ReactNode;
+  submitLabel: string;
+  onSubmit: () => void;
+  onClose: () => void;
+}) {
   return (
-    <AppModal open={open} onClose={onClose} title={title} guard="platform" permission={permission} loading={loading} error={error ? errorMessage(error) : null} footer={<><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="button" onClick={onSubmit}>{submitLabel}</Button></>}>
+    <AppModal
+      open={open}
+      onClose={onClose}
+      title={title}
+      guard="platform"
+      permission={permission}
+      loading={loading}
+      error={error ? errorMessage(error) : null}
+      footer={
+        <>
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="button" onClick={onSubmit}>
+            {submitLabel}
+          </Button>
+        </>
+      }
+    >
       <div className="form-grid">{children}</div>
     </AppModal>
   );
@@ -865,31 +1720,146 @@ function TenantActionsMenu(props: {
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLButtonElement>(null);
-  const run = (fn: () => void) => { fn(); setOpen(false); };
+  const run = (fn: () => void) => {
+    fn();
+    setOpen(false);
+  };
   return (
     <div className="row-action-menu">
-      <Button type="button" size="sm" variant="ghost" onClick={props.onView}><Eye size={15} aria-hidden /> View</Button>
-      <Button type="button" size="sm" variant="ghost" onClick={props.onEdit}><Pencil size={15} aria-hidden /> Edit</Button>
-      <button ref={ref} type="button" className="action-menu-trigger" onClick={() => setOpen((current) => !current)} aria-label="Open tenant actions"><MoreVertical size={16} aria-hidden /></button>
+      <Button type="button" size="sm" variant="ghost" onClick={props.onView}>
+        <Eye size={15} aria-hidden /> View
+      </Button>
+      <Button type="button" size="sm" variant="ghost" onClick={props.onEdit}>
+        <Pencil size={15} aria-hidden /> Edit
+      </Button>
+      <button
+        ref={ref}
+        type="button"
+        className="action-menu-trigger"
+        onClick={() => setOpen((current) => !current)}
+        aria-label="Open tenant actions"
+      >
+        <MoreVertical size={16} aria-hidden />
+      </button>
       <PortalActionMenu anchorRef={ref} open={open} onClose={() => setOpen(false)}>
         <div className="action-menu tenant-action-menu">
-          <PermissionButton guard="platform" permission="tenant.activate" type="button" variant="ghost" onMouseDown={(event) => event.preventDefault()} onClick={() => run(props.onActivate)}><CheckCircle2 size={15} aria-hidden /> Activate</PermissionButton>
-          <PermissionButton guard="platform" permission="subscription.edit" type="button" variant="ghost" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => props.onModal('changePlan'))}><Layers3 size={15} aria-hidden /> Change Plan</PermissionButton>
-          <PermissionButton guard="platform" permission="subscription.edit" type="button" variant="ghost" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => props.onModal('extendTrial'))}><CalendarPlus size={15} aria-hidden /> Extend Trial</PermissionButton>
-          <PermissionButton guard="platform" permission="tenant.suspend" type="button" variant="ghost" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => props.onModal('suspend'))}><ShieldAlert size={15} aria-hidden /> Suspend</PermissionButton>
-          <PermissionButton guard="platform" permission="tenant.activate" type="button" variant="ghost" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => props.onModal('reactivate'))}><RotateCcw size={15} aria-hidden /> Reactivate</PermissionButton>
-          <PermissionButton guard="platform" permission="tenant.impersonate" type="button" variant="ghost" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => props.onModal('remoteLogin'))}><LogIn size={15} aria-hidden /> Remote Login</PermissionButton>
-          <PermissionButton guard="platform" permission="tenant.edit" type="button" variant="ghost" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => props.onModal('resetOwnerPassword'))}><KeyRound size={15} aria-hidden /> Owner Reset</PermissionButton>
-          <PermissionButton guard="platform" permission="module.edit" type="button" variant="ghost" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => props.onDrawer('moduleOverride'))}><Settings size={15} aria-hidden /> Modules</PermissionButton>
-          <PermissionButton guard="platform" permission="tenant.delete" type="button" variant="ghost" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => props.onModal('archive'))}><Archive size={15} aria-hidden /> Archive</PermissionButton>
-          <PermissionButton guard="platform" permission="tenant.delete" type="button" variant="ghost" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => props.onModal('delete'))}><Trash2 size={15} aria-hidden /> Delete</PermissionButton>
+          <PermissionButton
+            guard="platform"
+            permission="tenant.activate"
+            type="button"
+            variant="ghost"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => run(props.onActivate)}
+          >
+            <CheckCircle2 size={15} aria-hidden /> Activate
+          </PermissionButton>
+          <PermissionButton
+            guard="platform"
+            permission="subscription.edit"
+            type="button"
+            variant="ghost"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => run(() => props.onModal('changePlan'))}
+          >
+            <Layers3 size={15} aria-hidden /> Change Plan
+          </PermissionButton>
+          <PermissionButton
+            guard="platform"
+            permission="subscription.edit"
+            type="button"
+            variant="ghost"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => run(() => props.onModal('extendTrial'))}
+          >
+            <CalendarPlus size={15} aria-hidden /> Extend Trial
+          </PermissionButton>
+          <PermissionButton
+            guard="platform"
+            permission="tenant.suspend"
+            type="button"
+            variant="ghost"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => run(() => props.onModal('suspend'))}
+          >
+            <ShieldAlert size={15} aria-hidden /> Suspend
+          </PermissionButton>
+          <PermissionButton
+            guard="platform"
+            permission="tenant.activate"
+            type="button"
+            variant="ghost"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => run(() => props.onModal('reactivate'))}
+          >
+            <RotateCcw size={15} aria-hidden /> Reactivate
+          </PermissionButton>
+          <PermissionButton
+            guard="platform"
+            permission="tenant.impersonate"
+            type="button"
+            variant="ghost"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => run(() => props.onModal('remoteLogin'))}
+          >
+            <LogIn size={15} aria-hidden /> Remote Login
+          </PermissionButton>
+          <PermissionButton
+            guard="platform"
+            permission="tenant.edit"
+            type="button"
+            variant="ghost"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => run(() => props.onModal('resetOwnerPassword'))}
+          >
+            <KeyRound size={15} aria-hidden /> Owner Reset
+          </PermissionButton>
+          <PermissionButton
+            guard="platform"
+            permission="module.edit"
+            type="button"
+            variant="ghost"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => run(() => props.onDrawer('moduleOverride'))}
+          >
+            <Settings size={15} aria-hidden /> Modules
+          </PermissionButton>
+          <PermissionButton
+            guard="platform"
+            permission="tenant.delete"
+            type="button"
+            variant="ghost"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => run(() => props.onModal('archive'))}
+          >
+            <Archive size={15} aria-hidden /> Archive
+          </PermissionButton>
+          <PermissionButton
+            guard="platform"
+            permission="tenant.delete"
+            type="button"
+            variant="ghost"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => run(() => props.onModal('delete'))}
+          >
+            <Trash2 size={15} aria-hidden /> Delete
+          </PermissionButton>
         </div>
       </PortalActionMenu>
     </div>
   );
 }
 
-function PortalActionMenu({ anchorRef, children, onClose, open }: { anchorRef: React.RefObject<HTMLElement>; children: ReactNode; onClose: () => void; open: boolean }) {
+function PortalActionMenu({
+  anchorRef,
+  children,
+  onClose,
+  open
+}: {
+  anchorRef: React.RefObject<HTMLElement>;
+  children: ReactNode;
+  onClose: () => void;
+  open: boolean;
+}) {
   const [position, setPosition] = useState({ top: 0, left: 0 });
   useEffect(() => {
     if (!open) return;
@@ -919,162 +1889,465 @@ function PortalActionMenu({ anchorRef, children, onClose, open }: { anchorRef: R
     };
   }, [anchorRef, onClose, open]);
   if (!open) return null;
-  return createPortal(<div className="action-menu-portal" style={{ left: position.left, top: position.top }}><button type="button" className="action-menu-backdrop" aria-label="Close actions menu" onClick={onClose} />{children}</div>, document.body);
+  return createPortal(
+    <div className="action-menu-portal" style={{ left: position.left, top: position.top }}>
+      <button
+        type="button"
+        className="action-menu-backdrop"
+        aria-label="Close actions menu"
+        onClick={onClose}
+      />
+      {children}
+    </div>,
+    document.body
+  );
 }
 
 function OrganizationStep({ form }: { form: any }) {
-  return <FormSection title="Organization">
-    <InputField form={form} name="organization_name" label="Organization name" />
-    <InputField form={form} name="legal_name" label="Legal name" />
-    <InputField form={form} name="display_name" label="Display name" />
-    <InputField form={form} name="organization_code" label="Organization code" />
-    <InputField form={form} name="slug" label="Slug" />
-    <InputField form={form} name="business_type_id" label="Business type ID" />
-    <InputField form={form} name="industry_id" label="Industry ID" />
-    <SelectField form={form} name="company_size" label="Company size" options={['small', 'medium', 'large', 'enterprise']} />
-    <InputField form={form} name="website" label="Website" />
-    <InputField form={form} name="gst_number" label="GST number" />
-    <InputField form={form} name="pan_number" label="PAN number" />
-    <InputField form={form} name="registration_number" label="Registration number" />
-    <InputField form={form} name="logo_file_id" label="Logo file ID" />
-    <InputField form={form} name="favicon_file_id" label="Favicon file ID" />
-    <InputField form={form} name="default_currency" label="Default currency" />
-    <InputField form={form} name="default_timezone" label="Default timezone" />
-    <SelectField form={form} name="status" label="Status" options={['trial', 'active', 'inactive', 'suspended']} />
-    <div className="modal-form-span"><InputField form={form} name="description" label="Description" type="textarea" /></div>
-  </FormSection>;
+  return (
+    <FormSection title="Organization">
+      <InputField form={form} name="organization_name" label="Organization name" />
+      <InputField form={form} name="legal_name" label="Legal name" />
+      <InputField form={form} name="display_name" label="Display name" />
+      <InputField form={form} name="organization_code" label="Organization code" />
+      <InputField form={form} name="slug" label="Slug" />
+      <InputField form={form} name="business_type_id" label="Business type ID" />
+      <InputField form={form} name="industry_id" label="Industry ID" />
+      <SelectField
+        form={form}
+        name="company_size"
+        label="Company size"
+        options={['small', 'medium', 'large', 'enterprise']}
+      />
+      <InputField form={form} name="website" label="Website" />
+      <InputField form={form} name="gst_number" label="GST number" />
+      <InputField form={form} name="pan_number" label="PAN number" />
+      <InputField form={form} name="registration_number" label="Registration number" />
+      <InputField form={form} name="logo_file_id" label="Logo file ID" />
+      <InputField form={form} name="favicon_file_id" label="Favicon file ID" />
+      <InputField form={form} name="default_currency" label="Default currency" />
+      <InputField form={form} name="default_timezone" label="Default timezone" />
+      <SelectField
+        form={form}
+        name="status"
+        label="Status"
+        options={['trial', 'active', 'inactive', 'suspended']}
+      />
+      <div className="modal-form-span">
+        <InputField form={form} name="description" label="Description" type="textarea" />
+      </div>
+    </FormSection>
+  );
 }
 
 function OwnerStep({ form }: { form: any }) {
-  return <FormSection title="Primary Owner">
-    <InputField form={form} name="owner_first_name" label="First name" />
-    <InputField form={form} name="owner_last_name" label="Last name" />
-    <InputField form={form} name="owner_display_name" label="Display name" />
-    <InputField form={form} name="owner_email" label="Email" type="email" />
-    <InputField form={form} name="owner_mobile" label="Mobile" />
-    <InputField form={form} name="owner_password" label="Password" type="password" />
-    <SelectField form={form} name="owner_status" label="Status" options={['active', 'inactive', 'invited']} />
-    <CheckboxField form={form} name="owner_send_invite" label="Send invite email" />
-  </FormSection>;
+  return (
+    <FormSection title="Primary Owner">
+      <InputField form={form} name="owner_first_name" label="First name" />
+      <InputField form={form} name="owner_last_name" label="Last name" />
+      <InputField form={form} name="owner_display_name" label="Display name" />
+      <InputField form={form} name="owner_email" label="Email" type="email" />
+      <InputField form={form} name="owner_mobile" label="Mobile" />
+      <InputField form={form} name="owner_password" label="Password" type="password" />
+      <SelectField
+        form={form}
+        name="owner_status"
+        label="Status"
+        options={['active', 'inactive', 'invited']}
+      />
+      <CheckboxField form={form} name="owner_send_invite" label="Send invite email" />
+    </FormSection>
+  );
 }
 
 function OfficeStep({ form }: { form: any }) {
-  return <FormSection title="Head Office">
-    <InputField form={form} name="office_name" label="Office name" />
-    <InputField form={form} name="office_code" label="Office code" />
-    <SelectField form={form} name="office_type" label="Office type" options={['head_office', 'branch', 'warehouse']} />
-    <InputField form={form} name="address_line_1" label="Address line 1" />
-    <InputField form={form} name="address_line_2" label="Address line 2" />
-    <InputField form={form} name="landmark" label="Landmark" />
-    <InputField form={form} name="country_id" label="Country ID" />
-    <InputField form={form} name="state_id" label="State ID" />
-    <InputField form={form} name="city_id" label="City ID" />
-    <InputField form={form} name="postal_code" label="Postal code" />
-    <InputField form={form} name="contact_person" label="Contact person" />
-    <InputField form={form} name="contact_email" label="Contact email" type="email" />
-    <InputField form={form} name="contact_phone" label="Contact phone" />
-    <InputField form={form} name="office_gst_number" label="Office GST number" />
-    <SelectField form={form} name="office_status" label="Status" options={['active', 'inactive']} />
-    <div className="modal-form-span"><InputField form={form} name="working_hours_json" label="Working hours JSON" type="textarea" /></div>
-  </FormSection>;
+  return (
+    <FormSection title="Head Office">
+      <InputField form={form} name="office_name" label="Office name" />
+      <InputField form={form} name="office_code" label="Office code" />
+      <SelectField
+        form={form}
+        name="office_type"
+        label="Office type"
+        options={['head_office', 'branch', 'warehouse']}
+      />
+      <InputField form={form} name="address_line_1" label="Address line 1" />
+      <InputField form={form} name="address_line_2" label="Address line 2" />
+      <InputField form={form} name="landmark" label="Landmark" />
+      <InputField form={form} name="country_id" label="Country ID" />
+      <InputField form={form} name="state_id" label="State ID" />
+      <InputField form={form} name="city_id" label="City ID" />
+      <InputField form={form} name="postal_code" label="Postal code" />
+      <InputField form={form} name="contact_person" label="Contact person" />
+      <InputField form={form} name="contact_email" label="Contact email" type="email" />
+      <InputField form={form} name="contact_phone" label="Contact phone" />
+      <InputField form={form} name="office_gst_number" label="Office GST number" />
+      <SelectField
+        form={form}
+        name="office_status"
+        label="Status"
+        options={['active', 'inactive']}
+      />
+      <div className="modal-form-span">
+        <InputField
+          form={form}
+          name="working_hours_json"
+          label="Working hours JSON"
+          type="textarea"
+        />
+      </div>
+    </FormSection>
+  );
 }
 
 function SubscriptionStep({ form }: { form: any }) {
-  return <FormSection title="Subscription">
-    <InputField form={form} name="plan_uuid" label="Plan UUID" />
-    <InputField form={form} name="trial_days" label="Trial days" type="number" />
-    <SelectField form={form} name="subscription_type" label="Type" options={['trial', 'paid', 'free']} />
-    <SelectField form={form} name="billing_cycle" label="Billing cycle" options={['monthly', 'yearly']} />
-    <InputField form={form} name="starts_at" label="Starts at" type="datetime-local" />
-    <InputField form={form} name="expires_at" label="Expires at" type="datetime-local" />
-    <InputField form={form} name="trial_starts_at" label="Trial starts at" type="datetime-local" />
-    <InputField form={form} name="trial_ends_at" label="Trial ends at" type="datetime-local" />
-    <SelectField form={form} name="renewal_type" label="Renewal type" options={['manual', 'auto']} />
-    <CheckboxField form={form} name="auto_renew" label="Auto renew" />
-  </FormSection>;
+  return (
+    <FormSection title="Subscription">
+      <InputField form={form} name="plan_uuid" label="Plan UUID" />
+      <InputField form={form} name="trial_days" label="Trial days" type="number" />
+      <SelectField
+        form={form}
+        name="subscription_type"
+        label="Type"
+        options={['trial', 'paid', 'free']}
+      />
+      <SelectField
+        form={form}
+        name="billing_cycle"
+        label="Billing cycle"
+        options={['monthly', 'yearly']}
+      />
+      <InputField form={form} name="starts_at" label="Starts at" type="datetime-local" />
+      <InputField form={form} name="expires_at" label="Expires at" type="datetime-local" />
+      <InputField
+        form={form}
+        name="trial_starts_at"
+        label="Trial starts at"
+        type="datetime-local"
+      />
+      <InputField form={form} name="trial_ends_at" label="Trial ends at" type="datetime-local" />
+      <SelectField
+        form={form}
+        name="renewal_type"
+        label="Renewal type"
+        options={['manual', 'auto']}
+      />
+      <CheckboxField form={form} name="auto_renew" label="Auto renew" />
+    </FormSection>
+  );
 }
 
 function ReviewStep({ values }: { values: TenantForm }) {
-  return <FormSection title="Review"><SafeRecordDetails record={cleanTenantPayload(values, true) as Record<string, unknown>} /></FormSection>;
+  return (
+    <FormSection title="Review">
+      <SafeRecordDetails record={cleanTenantPayload(values, true) as Record<string, unknown>} />
+    </FormSection>
+  );
 }
 
-function WizardSteps({ steps, active, onSelect }: { steps: string[]; active: number; onSelect: (step: number) => void }) {
-  return <div className="audit-tabs" role="tablist" aria-label="Tenant creation steps">{steps.map((step, index) => <button key={step} type="button" role="tab" aria-selected={active === index} onClick={() => onSelect(index)}>{index + 1}. {step}</button>)}</div>;
+function WizardSteps({
+  steps,
+  active,
+  onSelect
+}: {
+  steps: string[];
+  active: number;
+  onSelect: (step: number) => void;
+}) {
+  return (
+    <div className="audit-tabs" role="tablist" aria-label="Tenant creation steps">
+      {steps.map((step, index) => (
+        <button
+          key={step}
+          type="button"
+          role="tab"
+          aria-selected={active === index}
+          onClick={() => onSelect(index)}
+        >
+          {index + 1}. {step}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 function FormSection({ title, children }: { title: string; children: ReactNode }) {
-  return <section className="staff-form-section"><h2>{title}</h2><div className="enterprise-form__grid">{children}</div></section>;
+  return (
+    <section className="staff-form-section">
+      <h2>{title}</h2>
+      <div className="enterprise-form__grid">{children}</div>
+    </section>
+  );
 }
 
-function InputField({ form, name, label, placeholder, type = 'text' }: { form: any; name: string; label: string; placeholder?: string; type?: string }) {
+function InputField({
+  form,
+  name,
+  label,
+  placeholder,
+  type = 'text'
+}: {
+  form: any;
+  name: string;
+  label: string;
+  placeholder?: string;
+  type?: string;
+}) {
   const error = form.formState.errors[name]?.message;
-  return <label><span>{label}</span>{type === 'textarea' ? <textarea placeholder={placeholder} {...form.register(name)} /> : <input type={type} placeholder={placeholder} {...form.register(name)} />}{error ? <strong role="alert">{String(error)}</strong> : null}</label>;
+  return (
+    <label>
+      <span>{label}</span>
+      {type === 'textarea' ? (
+        <textarea placeholder={placeholder} {...form.register(name)} />
+      ) : (
+        <input type={type} placeholder={placeholder} {...form.register(name)} />
+      )}
+      {error ? <strong role="alert">{String(error)}</strong> : null}
+    </label>
+  );
 }
 
-function SelectField({ form, name, label, options }: { form: any; name: string; label: string; options: string[] }) {
-  return <label><span>{label}</span><select {...form.register(name)}>{options.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>;
+function SelectField({
+  form,
+  name,
+  label,
+  options
+}: {
+  form: any;
+  name: string;
+  label: string;
+  options: string[];
+}) {
+  return (
+    <label>
+      <span>{label}</span>
+      <select {...form.register(name)}>
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
 }
 
 function CheckboxField({ form, name, label }: { form: any; name: string; label: string }) {
-  return <label className="check-row"><input type="checkbox" {...form.register(name)} /><span>{label}</span></label>;
+  return (
+    <label className="check-row">
+      <input type="checkbox" {...form.register(name)} />
+      <span>{label}</span>
+    </label>
+  );
 }
 
-function SimpleInput({ label, value, onChange, placeholder, type = 'text' }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; type?: string }) {
-  return <label>{label}<input type={type} value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} /></label>;
+function SimpleInput({
+  label,
+  value,
+  onChange,
+  placeholder,
+  type = 'text'
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  type?: string;
+}) {
+  return (
+    <label>
+      {label}
+      <input
+        type={type}
+        value={value}
+        placeholder={placeholder}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
+  );
 }
 
-function SimpleTextarea({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
-  return <label>{label}<textarea value={value} onChange={(event) => onChange(event.target.value)} /></label>;
+function SimpleTextarea({
+  label,
+  value,
+  onChange
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label>
+      {label}
+      <textarea value={value} onChange={(event) => onChange(event.target.value)} />
+    </label>
+  );
 }
 
 function TypedGate({ word }: { word: string }) {
   const [typed, setTyped] = useState('');
-  return <label>Type {word}<input value={typed} onChange={(event) => setTyped(event.target.value)} aria-invalid={typed !== word} /></label>;
+  return (
+    <label>
+      Type {word}
+      <input
+        value={typed}
+        onChange={(event) => setTyped(event.target.value)}
+        aria-invalid={typed !== word}
+      />
+    </label>
+  );
 }
 
 function TenantIdentity({ row }: { row: PlatformTenantRecord }) {
   const name = textOf(row, ['organization_name', 'display_name'], 'Tenant');
-  const initials = name.split(/\s+/).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('');
-  return <span className="role-name-cell">{row.logo_url ? <img className="staff-avatar staff-avatar--compact" src={row.logo_url} alt="" /> : <span className="role-avatar staff-avatar--compact">{initials || 'T'}</span>}<span><strong>{name}</strong><small>{textOf(row, ['slug'])}</small></span></span>;
+  const initials = name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('');
+  return (
+    <span className="role-name-cell">
+      {row.logo_url ? (
+        <img className="staff-avatar staff-avatar--compact" src={row.logo_url} alt="" />
+      ) : (
+        <span className="role-avatar staff-avatar--compact">{initials || 'T'}</span>
+      )}
+      <span>
+        <strong>{name}</strong>
+        <small>{textOf(row, ['slug'])}</small>
+      </span>
+    </span>
+  );
 }
 
 function OwnerCell({ row }: { row: PlatformTenantRecord }) {
   const owner = (row.owner ?? {}) as PlatformTenantRecord;
-  return <span className="date-cell"><strong>{textOf(owner, ['display_name'], textOf(row, ['owner_name']))}</strong><small>{textOf(owner, ['email'], textOf(row, ['owner_email']))}</small></span>;
+  return (
+    <span className="date-cell">
+      <strong>{textOf(owner, ['display_name'], textOf(row, ['owner_name']))}</strong>
+      <small>{textOf(owner, ['email'], textOf(row, ['owner_email']))}</small>
+    </span>
+  );
 }
 
 function CompactStatus({ status }: { status: string }) {
   const active = ['active', 'trial', 'paid'].includes(status.toLowerCase());
-  return <span className={`status-pill ${active ? 'status-pill--active' : 'status-pill--muted'}`}><i aria-hidden />{status}</span>;
+  return (
+    <span className={`status-pill ${active ? 'status-pill--active' : 'status-pill--muted'}`}>
+      <i aria-hidden />
+      {status}
+    </span>
+  );
 }
 
 function TenantStats({ rows }: { rows: PlatformTenantRecord[] }) {
-  return <section className="platform-access-summary">
-    <SummaryTile icon={<Building2 />} label="Total Tenants" value={String(rows.length)} />
-    <SummaryTile icon={<CheckCircle2 />} label="Active" value={String(rows.filter((row) => textOf(row, ['status'], '').toLowerCase() === 'active').length)} />
-    <SummaryTile icon={<CalendarPlus />} label="Trial" value={String(rows.filter((row) => textOf(row, ['status'], '').toLowerCase() === 'trial').length)} />
-    <SummaryTile icon={<ShieldAlert />} label="Suspended" value={String(rows.filter((row) => textOf(row, ['status'], '').toLowerCase().includes('suspend')).length)} />
-  </section>;
+  return (
+    <section className="platform-access-summary">
+      <SummaryTile icon={<Building2 />} label="Total Tenants" value={String(rows.length)} />
+      <SummaryTile
+        icon={<CheckCircle2 />}
+        label="Active"
+        value={String(
+          rows.filter((row) => textOf(row, ['status'], '').toLowerCase() === 'active').length
+        )}
+      />
+      <SummaryTile
+        icon={<CalendarPlus />}
+        label="Trial"
+        value={String(
+          rows.filter((row) => textOf(row, ['status'], '').toLowerCase() === 'trial').length
+        )}
+      />
+      <SummaryTile
+        icon={<ShieldAlert />}
+        label="Suspended"
+        value={String(
+          rows.filter((row) => textOf(row, ['status'], '').toLowerCase().includes('suspend')).length
+        )}
+      />
+    </section>
+  );
 }
 
 function SummaryTile({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
-  return <article className="summary-card"><span>{icon}</span><p>{label}</p><strong>{value}</strong></article>;
+  return (
+    <article className="summary-card">
+      <span>{icon}</span>
+      <p>{label}</p>
+      <strong>{value}</strong>
+    </article>
+  );
 }
 
 function AdminBreadcrumbs({ items }: { items: string[] }) {
-  return <nav className="admin-breadcrumbs" aria-label="Breadcrumb">{items.map((item, index) => <span key={`${item}-${index}`}>{item}</span>)}</nav>;
+  return (
+    <nav className="admin-breadcrumbs" aria-label="Breadcrumb">
+      {items.map((item, index) => (
+        <span key={`${item}-${index}`}>{item}</span>
+      ))}
+    </nav>
+  );
 }
 
 function RecordDetails({ record }: { record: Record<string, unknown> }) {
-  return <dl className="enterprise-summary-list">{Object.entries(record).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{typeof value === 'object' ? JSON.stringify(value) : String(value ?? '-')}</dd></div>)}</dl>;
+  return (
+    <dl className="enterprise-summary-list">
+      {Object.entries(record).map(([key, value]) => (
+        <div key={key}>
+          <dt>{key}</dt>
+          <dd>{typeof value === 'object' ? JSON.stringify(value) : String(value ?? '-')}</dd>
+        </div>
+      ))}
+    </dl>
+  );
 }
 
 function SafeRecordDetails({ record }: { record: Record<string, unknown> }) {
   const hidden = ['password', 'token', 'access_token', 'refresh_token', 'remember_token', 'secret'];
-  return <dl className="enterprise-summary-list">{Object.entries(record).filter(([key]) => !hidden.some((item) => key.toLowerCase().includes(item))).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{typeof value === 'object' ? JSON.stringify(maskSecrets(value)) : String(value ?? '-')}</dd></div>)}</dl>;
+  return (
+    <dl className="enterprise-summary-list">
+      {Object.entries(record)
+        .filter(([key]) => !hidden.some((item) => key.toLowerCase().includes(item)))
+        .map(([key, value]) => (
+          <div key={key}>
+            <dt>{key}</dt>
+            <dd>
+              {typeof value === 'object'
+                ? JSON.stringify(maskSecrets(value))
+                : String(value ?? '-')}
+            </dd>
+          </div>
+        ))}
+    </dl>
+  );
 }
 
 function RecordList({ rows, fallback }: { rows: PlatformTenantRecord[]; fallback?: ReactNode }) {
-  if (!Array.isArray(rows) || rows.length === 0) return <>{fallback ?? <div className="empty-state">No records returned.</div>}</>;
-  return <div className="record-list">{rows.map((row, index) => <article key={idOf(row) || index}><strong>{textOf(row, ['display_name', 'name', 'email', 'invoice_number', 'payment_number', 'event', 'provider_name', 'module_code'], `Record ${index + 1}`)}</strong><p>{textOf(row, ['status', 'email', 'created_at', 'subscription_status', 'severity'])}</p></article>)}</div>;
+  if (!Array.isArray(rows) || rows.length === 0)
+    return <>{fallback ?? <div className="empty-state">No records returned.</div>}</>;
+  return (
+    <div className="record-list">
+      {rows.map((row, index) => (
+        <article key={idOf(row) || index}>
+          <strong>
+            {textOf(
+              row,
+              [
+                'display_name',
+                'name',
+                'email',
+                'invoice_number',
+                'payment_number',
+                'event',
+                'provider_name',
+                'module_code'
+              ],
+              `Record ${index + 1}`
+            )}
+          </strong>
+          <p>{textOf(row, ['status', 'email', 'created_at', 'subscription_status', 'severity'])}</p>
+        </article>
+      ))}
+    </div>
+  );
 }

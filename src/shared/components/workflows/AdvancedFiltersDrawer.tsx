@@ -1,6 +1,6 @@
-import type { ReactNode } from 'react';
+﻿import type { ReactNode } from 'react';
 
-import { AppDrawer } from '@/shared/components/drawer';
+import { AppModal } from '@/shared/components/modal';
 import { Button } from '@/shared/components/ui';
 import type { AuthGuard, Permission } from '@/features/auth/types/authTypes';
 
@@ -24,29 +24,45 @@ type AdvancedFiltersDrawerProps = {
 
 export function AdvancedFiltersDrawer(props: AdvancedFiltersDrawerProps) {
   return (
-    <AppDrawer
+    <AppModal
       open={props.open}
       onClose={props.onClose}
-      title="Advanced filters"
+      title="Filters"
+      size="lg"
       guard={props.guard}
       permission={props.permission}
       loading={props.loading}
       error={props.error}
       footer={
         <>
-          <Button type="button" variant="secondary" onClick={props.onReset}>Reset</Button>
-          <Button type="button" onClick={props.onApply}>Apply filters</Button>
+          <Button type="button" variant="secondary" onClick={props.onClose}>
+            Cancel
+          </Button>
+          <Button type="button" variant="secondary" onClick={props.onReset}>
+            Reset
+          </Button>
+          <Button type="button" onClick={props.onApply}>
+            Apply filters
+          </Button>
         </>
       }
     >
-      <div className="form-grid">
-        {props.fields.map((field) => (
-          <div className="filter-field" key={field.name}>
-            <label>{field.label}</label>
-            {field.input}
-          </div>
-        ))}
+      <div className="table-popup-intro">
+        <strong>Refine table records</strong>
+        <span>Choose filter values, then apply them to refresh the table.</span>
       </div>
-    </AppDrawer>
+      {props.fields.length > 0 ? (
+        <div className="form-grid table-filter-grid">
+          {props.fields.map((field) => (
+            <div className="filter-field" key={field.name}>
+              <label>{field.label}</label>
+              {field.input}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="empty-state">No filters are available for this table.</div>
+      )}
+    </AppModal>
   );
 }

@@ -659,8 +659,9 @@ These endpoints require a platform token created by the unified login flow.
 
 ## 2.1 Platform Auth/Profile/Security Endpoints
 
-| Method | Endpoint                           | Purpose                              |
-| ------ | ---------------------------------- | ------------------------------------ |
+
+| Method | Endpoint                         | Purpose                              |
+| -------- | ---------------------------------- | -------------------------------------- |
 | POST   | `/auth/logout`                   | Revoke current platform token        |
 | POST   | `/auth/refresh`                  | Rotate current platform token        |
 | GET    | `/auth/me`                       | Platform current user                |
@@ -733,8 +734,9 @@ Response example:
 
 ## 2.2 Platform API Tokens
 
-| Method | Endpoint                            | Purpose                                |
-| ------ | ----------------------------------- | -------------------------------------- |
+
+| Method | Endpoint                          | Purpose                                |
+| -------- | ----------------------------------- | ---------------------------------------- |
 | GET    | `/api-tokens`                     | List platform API tokens               |
 | POST   | `/api-tokens`                     | Create platform API token              |
 | GET    | `/api-tokens/{token_uuid}`        | Show platform API token metadata       |
@@ -778,8 +780,9 @@ These endpoints require a tenant/client token created by the unified login flow 
 
 ## 3.1 Tenant Auth/Profile/Security Endpoints
 
-| Method | Endpoint                           | Purpose                              |
-| ------ | ---------------------------------- | ------------------------------------ |
+
+| Method | Endpoint                         | Purpose                              |
+| -------- | ---------------------------------- | -------------------------------------- |
 | POST   | `/auth/logout`                   | Revoke current tenant token          |
 | POST   | `/auth/refresh`                  | Rotate current tenant token          |
 | GET    | `/auth/me`                       | Tenant current user                  |
@@ -836,8 +839,9 @@ Response example:
 
 ## 3.2 Tenant API Tokens
 
-| Method | Endpoint                                    | Purpose                                |
-| ------ | ------------------------------------------- | -------------------------------------- |
+
+| Method | Endpoint                                  | Purpose                                |
+| -------- | ------------------------------------------- | ---------------------------------------- |
 | GET    | `/profile/api-tokens`                     | List tenant API tokens                 |
 | POST   | `/profile/api-tokens`                     | Create tenant API token                |
 | POST   | `/profile/api-tokens/{token_uuid}/rotate` | Rotate token and return raw token once |
@@ -2196,4 +2200,138 @@ Invoice not draft:
 
 ```json
 {"success":false,"message":"Only draft invoices can be updated.","data":null,"meta":{"request_id":"{{REQUEST_ID}}"},"errors":{"code":"INVOICE_NOT_DRAFT","details":[]}}
+```
+
+---
+
+# 8. Remaining Platform Admin APIs
+
+All endpoints require:
+
+```http
+Authorization: Bearer {{PLATFORM_TOKEN}}
+Accept: application/json
+Content-Type: application/json
+X-Request-Id: {{REQUEST_ID}}
+```
+
+For retry endpoints also send:
+
+```http
+Idempotency-Key: {{REQUEST_ID}}-retry
+```
+
+## 8.1 Support
+
+```bash
+curl -X GET "{{BASE_URL}}/api/platform/v1/support/tickets?status=open&priority=high" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/platform/v1/support/tickets" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"tenant_uuid":"tenant_uuid","subject":"Invoice not generated","description":"July invoice missing","priority":"high","category":"billing","source":"platform","assigned_to_uuid":"platform_user_uuid"}'
+curl -X GET "{{BASE_URL}}/api/platform/v1/support/tickets/{ticket_uuid}" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json"
+curl -X PATCH "{{BASE_URL}}/api/platform/v1/support/tickets/{ticket_uuid}" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"priority":"urgent","status":"pending"}'
+curl -X POST "{{BASE_URL}}/api/platform/v1/support/tickets/{ticket_uuid}/assign" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"assigned_to_uuid":"platform_user_uuid","audit_reason":"Escalated"}'
+curl -X POST "{{BASE_URL}}/api/platform/v1/support/tickets/{ticket_uuid}/comments" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"comment":"Checked billing worker.","is_internal":true}'
+curl -X POST "{{BASE_URL}}/api/platform/v1/support/tickets/{ticket_uuid}/attachments" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"file_uuid":"file_uuid"}'
+curl -X POST "{{BASE_URL}}/api/platform/v1/support/tickets/{ticket_uuid}/close" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"notes":"Resolved"}'
+curl -X POST "{{BASE_URL}}/api/platform/v1/support/tickets/{ticket_uuid}/reopen" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/platform/v1/support/tickets/export" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json"
+```
+
+Response examples return `data.ticket`, `data.comment`, `data.attachments`, or `data.export` with the standard envelope.
+
+Knowledge base:
+
+```bash
+curl -X GET "{{BASE_URL}}/api/platform/v1/support/knowledge-base/categories" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/platform/v1/support/knowledge-base/categories" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"name":"Billing","slug":"billing","audience":"all","status":"active"}'
+curl -X PATCH "{{BASE_URL}}/api/platform/v1/support/knowledge-base/categories/{category_uuid}" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"name":"Billing Help"}'
+curl -X GET "{{BASE_URL}}/api/platform/v1/support/knowledge-base/articles?status=draft" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/platform/v1/support/knowledge-base/articles" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"category_uuid":"category_uuid","title":"How billing works","slug":"how-billing-works","body":"Article body","audience":"all","status":"draft"}'
+curl -X GET "{{BASE_URL}}/api/platform/v1/support/knowledge-base/articles/{article_uuid}" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json"
+curl -X PATCH "{{BASE_URL}}/api/platform/v1/support/knowledge-base/articles/{article_uuid}" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"body":"Updated body"}'
+curl -X POST "{{BASE_URL}}/api/platform/v1/support/knowledge-base/articles/{article_uuid}/publish" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/platform/v1/support/knowledge-base/articles/{article_uuid}/unpublish" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/platform/v1/support/knowledge-base/articles/{article_uuid}/archive" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json"
+```
+
+Remote login sessions:
+
+```bash
+curl -X GET "{{BASE_URL}}/api/platform/v1/support/remote-login-sessions" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json"
+curl -X GET "{{BASE_URL}}/api/platform/v1/support/remote-login-sessions/{session_uuid}" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/platform/v1/support/remote-login-sessions/{session_uuid}/end" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json"
+```
+
+## 8.2 Reports and Monitoring
+
+Reports:
+
+```bash
+curl -X GET "{{BASE_URL}}/api/platform/v1/reports/tenant-status" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json"
+curl -X GET "{{BASE_URL}}/api/platform/v1/reports/revenue" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json"
+curl -X GET "{{BASE_URL}}/api/platform/v1/reports/invoice-aging" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/platform/v1/reports/revenue/export?date_from=2026-08-01&date_to=2026-08-31" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"format":"csv"}'
+curl -X GET "{{BASE_URL}}/api/platform/v1/reports/export-jobs" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json"
+curl -X GET "{{BASE_URL}}/api/platform/v1/reports/export-jobs/{job_uuid}" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json"
+```
+
+Supported report codes: `tenant-status`, `plan-performance`, `revenue`, `invoice-aging`, `payment-failures`, `coupon-usage`, `tenant-usage`, `support-sla`, `security-events`.
+
+Monitoring:
+
+```bash
+curl -X GET "{{BASE_URL}}/api/platform/v1/monitoring/services" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json"
+curl -X GET "{{BASE_URL}}/api/platform/v1/monitoring/services/{service_code}/logs" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json"
+curl -X GET "{{BASE_URL}}/api/platform/v1/monitoring/api-request-logs" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json"
+curl -X GET "{{BASE_URL}}/api/platform/v1/monitoring/queue-jobs?status=failed" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/platform/v1/monitoring/queue-jobs/{job_id}/retry" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json"
+curl -X DELETE "{{BASE_URL}}/api/platform/v1/monitoring/queue-jobs/{job_id}" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json"
+curl -X GET "{{BASE_URL}}/api/platform/v1/monitoring/scheduler-logs" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json"
+curl -X GET "{{BASE_URL}}/api/platform/v1/monitoring/alerts?status=open" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/platform/v1/monitoring/alerts/{alert_id}/resolve" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"notes":"Queue recovered"}'
+curl -X GET "{{BASE_URL}}/api/platform/v1/monitoring/incidents" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/platform/v1/monitoring/incidents" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"title":"Billing worker delayed","severity":"high","summary":"Invoice queue delayed"}'
+curl -X PATCH "{{BASE_URL}}/api/platform/v1/monitoring/incidents/{incident_id}" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"status":"investigating"}'
+curl -X POST "{{BASE_URL}}/api/platform/v1/monitoring/incidents/{incident_id}/resolve" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"notes":"Worker scaled"}'
+curl -X GET "{{BASE_URL}}/api/platform/v1/monitoring/tenant-usage-snapshots" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json"
+```
+
+## 8.3 Integrations, Settings, Audit, Missing Pages
+
+Integration credentials are write-only and encrypted. Payload responses mask sensitive keys.
+
+```bash
+curl -X GET "{{BASE_URL}}/api/platform/v1/integrations/providers" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/platform/v1/integrations/providers" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"name":"Stripe","code":"stripe","category":"payment_gateway","auth_type":"api_key","metadata":{"secret":"masked"}}'
+curl -X GET "{{BASE_URL}}/api/platform/v1/integrations/tenant-integrations?tenant_uuid=tenant_uuid" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/platform/v1/integrations/tenant-integrations" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"tenant_uuid":"tenant_uuid","provider_code":"stripe","name":"Stripe Live","credentials":{"api_key":"sk_live_xxx"}}'
+curl -X POST "{{BASE_URL}}/api/platform/v1/integrations/tenant-integrations/{integration_uuid}/credentials" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"credentials":{"api_key":"new_secret"}}'
+curl -X POST "{{BASE_URL}}/api/platform/v1/integrations/webhook-logs/{log_id}/retry" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Idempotency-Key: {{REQUEST_ID}}-webhook-retry" -H "Accept: application/json"
+curl -X GET "{{BASE_URL}}/api/platform/v1/settings/platform" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json"
+curl -X PUT "{{BASE_URL}}/api/platform/v1/settings/platform" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"settings":{"billing":{"invoice_prefix":"INV"},"trials":{"trial_days":14}}}'
+curl -X POST "{{BASE_URL}}/api/platform/v1/settings/backups/run" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"backup_type":"manual"}'
+curl -X GET "{{BASE_URL}}/api/platform/v1/audit/activity-logs" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json"
+curl -X GET "{{BASE_URL}}/api/platform/v1/audit/security-events" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/platform/v1/audit/security-events/{event_id}/review" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"status":"reviewed","notes":"Expected admin action"}'
+curl -X GET "{{BASE_URL}}/api/platform/v1/onboarding/tenants" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json"
+curl -X PUT "{{BASE_URL}}/api/platform/v1/onboarding/tenants/{tenant_uuid}/steps/profile" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"status":"completed","metadata":{"source":"admin"}}'
+curl -X GET "{{BASE_URL}}/api/platform/v1/trials" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/platform/v1/trials/{tenant_uuid}/convert" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/platform/v1/legal/documents" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"document_type":"terms","title":"Terms","version":"1.0","content":"Terms body"}'
+curl -X POST "{{BASE_URL}}/api/platform/v1/announcements" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"title":"Maintenance","body":"Billing services maintenance","audience":"all"}'
+curl -X POST "{{BASE_URL}}/api/platform/v1/webhook-endpoints" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"tenant_uuid":"tenant_uuid","name":"Tenant Webhook","url":"https://tenant.example/webhook","events":["invoice.paid"],"secret":"write-only"}'
+curl -X POST "{{BASE_URL}}/api/platform/v1/webhook-deliveries/{delivery_uuid}/retry" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json"
+```
+
+Common errors:
+
+```json
+{"success":false,"message":"Unauthenticated.","data":null,"meta":{"request_id":"{{REQUEST_ID}}"},"errors":{"code":"AUTHENTICATION_REQUIRED","details":[]}}
+```
+
+```json
+{"success":false,"message":"Missing permission.","data":null,"meta":{"request_id":"{{REQUEST_ID}}"},"errors":{"code":"PERMISSION_DENIED","details":{"permissions":["monitoring.manage"]}}}
+```
+
+```json
+{"success":false,"message":"Validation failed.","data":null,"meta":{"request_id":"{{REQUEST_ID}}"},"errors":{"code":"VALIDATION_ERROR","details":{"notes":["The notes field is required."]}}}
 ```

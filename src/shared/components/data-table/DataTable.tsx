@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+﻿import { useMemo, useState, type ReactNode } from 'react';
 import {
   ArrowDown,
   ArrowUpDown,
@@ -35,6 +35,8 @@ type DataTableProps<TRow> = {
   searchValue?: string;
   searchPlaceholder?: string;
   onSearchChange?: (value: string) => void;
+  hiddenColumnIds?: string[];
+  onHiddenColumnIdsChange?: (ids: string[]) => void;
   onOpenFilters?: () => void;
   onOpenColumns?: () => void;
   onOpenSavedViews?: () => void;
@@ -59,6 +61,8 @@ export function DataTable<TRow>({
   searchValue,
   searchPlaceholder = 'Search',
   onSearchChange,
+  hiddenColumnIds,
+  onHiddenColumnIdsChange,
   onOpenFilters,
   onOpenColumns,
   onOpenSavedViews,
@@ -72,9 +76,11 @@ export function DataTable<TRow>({
   total = data.length,
   onPageChange
 }: DataTableProps<TRow>) {
-  const [hiddenColumns, setHiddenColumns] = useState<string[]>([]);
+  const [internalHiddenColumns, setInternalHiddenColumns] = useState<string[]>([]);
   const [sort, setSort] = useState<{ id: string; direction: 'asc' | 'desc' } | null>(null);
   const selected = selectedRowIds ?? [];
+  const hiddenColumns = hiddenColumnIds ?? internalHiddenColumns;
+  const setHiddenColumns = onHiddenColumnIdsChange ?? setInternalHiddenColumns;
   const pageCount = Math.max(1, Math.ceil(total / perPage));
   const startRecord = total === 0 ? 0 : (page - 1) * perPage + 1;
   const endRecord = Math.min(page * perPage, total);
@@ -97,11 +103,14 @@ export function DataTable<TRow>({
     });
   }, [columns, data, sort]);
 
-  const allVisibleSelected = sortedData.length > 0 && sortedData.every((row) => selected.includes(getRowId(row)));
+  const allVisibleSelected =
+    sortedData.length > 0 && sortedData.every((row) => selected.includes(getRowId(row)));
 
   function toggleRow(id: string) {
     if (!onSelectionChange) return;
-    onSelectionChange(selected.includes(id) ? selected.filter((rowId) => rowId !== id) : [...selected, id]);
+    onSelectionChange(
+      selected.includes(id) ? selected.filter((rowId) => rowId !== id) : [...selected, id]
+    );
   }
 
   function toggleAll() {
@@ -121,12 +130,28 @@ export function DataTable<TRow>({
   function renderSortIcon(column: DataTableColumn<TRow>) {
     if (!column.enableSorting) return null;
     if (sort?.id !== column.id) {
-      return <ArrowUpDown aria-hidden="true" className="table-sort-indicator" size={14} strokeWidth={2.2} />;
+      return (
+        <ArrowUpDown
+          aria-hidden="true"
+          className="table-sort-indicator"
+          size={14}
+          strokeWidth={2.2}
+        />
+      );
     }
     return sort.direction === 'asc' ? (
       <ArrowUp aria-hidden="true" size={14} strokeWidth={2.4} />
     ) : (
       <ArrowDown aria-hidden="true" size={14} strokeWidth={2.4} />
+    );
+  }
+
+  function toggleColumn(column: DataTableColumn<TRow>) {
+    if (column.enableHiding === false) return;
+    setHiddenColumns(
+      hiddenColumns.includes(column.id)
+        ? hiddenColumns.filter((id) => id !== column.id)
+        : [...hiddenColumns, column.id]
     );
   }
 
@@ -148,23 +173,53 @@ export function DataTable<TRow>({
           <span className="table-result-pill">{total} records</span>
         </div>
         <div className="table-actions">
-          <Button type="button" variant="secondary" size="sm" onClick={onOpenSavedViews} disabled={!onOpenSavedViews}>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={onOpenSavedViews}
+            disabled={!onOpenSavedViews}
+          >
             <FolderOpen aria-hidden="true" size={15} />
             Views
           </Button>
-          <Button type="button" variant="secondary" size="sm" onClick={onOpenFilters} disabled={!onOpenFilters}>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={onOpenFilters}
+            disabled={!onOpenFilters}
+          >
             <Filter aria-hidden="true" size={15} />
             Filters
           </Button>
-          <Button type="button" variant="secondary" size="sm" onClick={onOpenColumns} disabled={!onOpenColumns}>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={onOpenColumns}
+            disabled={!onOpenColumns}
+          >
             <Columns3 aria-hidden="true" size={15} />
             Columns
           </Button>
-          <Button type="button" variant="secondary" size="sm" onClick={onOpenExport} disabled={!onOpenExport}>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={onOpenExport}
+            disabled={!onOpenExport}
+          >
             <Download aria-hidden="true" size={15} />
             Export
           </Button>
-          <Button type="button" variant="secondary" size="sm" onClick={onOpenImport} disabled={!onOpenImport}>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            onClick={onOpenImport}
+            disabled={!onOpenImport}
+          >
             <Upload aria-hidden="true" size={15} />
             Import
           </Button>
@@ -178,7 +233,11 @@ export function DataTable<TRow>({
         </div>
       ) : null}
 
-      {error ? <div className="surface-error" role="alert">{error}</div> : null}
+      {error ? (
+        <div className="surface-error" role="alert">
+          {error}
+        </div>
+      ) : null}
       {loading ? (
         <div className="surface-state table-loading-state" role="status">
           <Loader2 aria-hidden="true" className="table-spinner" size={18} />
@@ -186,7 +245,9 @@ export function DataTable<TRow>({
         </div>
       ) : null}
 
-      {!loading && sortedData.length === 0 ? <>{emptyState ?? <div className="empty-state">No records found.</div>}</> : null}
+      {!loading && sortedData.length === 0 ? (
+        <>{emptyState ?? <div className="empty-state">No records found.</div>}</>
+      ) : null}
 
       {!loading && sortedData.length > 0 ? (
         <div className="data-table" role="region" tabIndex={0}>
@@ -259,7 +320,9 @@ export function DataTable<TRow>({
           >
             <ChevronLeft aria-hidden="true" size={15} />
           </Button>
-          <span className="table-page-current">Page {page} of {pageCount}</span>
+          <span className="table-page-current">
+            Page {page} of {pageCount}
+          </span>
           <Button
             type="button"
             variant="secondary"
@@ -283,11 +346,7 @@ export function DataTable<TRow>({
               type="checkbox"
               checked={!hiddenColumns.includes(column.id)}
               disabled={column.enableHiding === false}
-              onChange={() =>
-                setHiddenColumns((current) =>
-                  current.includes(column.id) ? current.filter((id) => id !== column.id) : [...current, column.id]
-                )
-              }
+              onChange={() => toggleColumn(column)}
             />
             {column.header}
           </label>

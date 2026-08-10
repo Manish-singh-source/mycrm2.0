@@ -19,12 +19,33 @@ type BulkUpdateModalProps = {
 
 export function BulkUpdateModal(props: BulkUpdateModalProps) {
   return (
-    <AppModal open={props.open} onClose={props.onClose} title="Bulk update" guard={props.guard} permission={props.permission} loading={props.loading} error={props.error} footer={<Button type="button" onClick={props.onSubmit}>Update {props.selectedCount} records</Button>}>
+    <AppModal
+      open={props.open}
+      onClose={props.onClose}
+      title="Bulk update"
+      guard={props.guard}
+      permission={props.permission}
+      loading={props.loading}
+      error={props.error}
+      footer={
+        <>
+          <Button type="button" variant="secondary" onClick={props.onClose}>
+            Cancel
+          </Button>
+          <Button type="button" onClick={props.onSubmit}>
+            Update {props.selectedCount} records
+          </Button>
+        </>
+      }
+    >
       <div className="form-grid">
         <p>{props.selectedCount} records will be updated.</p>
         <label>Target field{props.fieldSelect}</label>
         <label>New value{props.valueInput}</label>
-        <label>Reason<textarea required /></label>
+        <label>
+          Reason
+          <textarea required />
+        </label>
       </div>
     </AppModal>
   );

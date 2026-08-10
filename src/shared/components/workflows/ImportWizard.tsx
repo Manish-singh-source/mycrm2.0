@@ -32,17 +32,36 @@ export function ImportWizard(props: ImportWizardProps) {
       error={props.error}
       footer={
         <>
-          {props.onBack ? <Button type="button" variant="secondary" onClick={props.onBack}>Back</Button> : null}
-          <Button type="button" onClick={props.onNext}>Continue</Button>
+          <Button type="button" variant="secondary" onClick={props.onClose}>
+            Cancel
+          </Button>
+          {props.onBack ? (
+            <Button type="button" variant="secondary" onClick={props.onBack}>
+              Back
+            </Button>
+          ) : null}
+          <Button type="button" onClick={props.onNext}>
+            Continue
+          </Button>
         </>
       }
     >
       <div className="wizard-steps" aria-label="Import progress">
         {['upload', 'mapping', 'preview', 'progress', 'complete'].map((step) => (
-          <span key={step} aria-current={step === props.step}>{step}</span>
+          <span key={step} aria-current={step === props.step}>
+            {step}
+          </span>
         ))}
       </div>
-      {props.step === 'upload' ? <FileDropzone label="Upload import file" accept=".csv,.xlsx" onFilesSelected={props.onFilesSelected} /> : props.children}
+      {props.step === 'upload' ? (
+        <FileDropzone
+          label="Upload import file"
+          accept=".csv,.xlsx"
+          onFilesSelected={props.onFilesSelected}
+        />
+      ) : (
+        props.children
+      )}
     </AppModal>
   );
 }

@@ -20,14 +20,40 @@ type AssignUserTeamModalProps = {
 
 export function AssignUserTeamModal(props: AssignUserTeamModalProps) {
   return (
-    <AppModal open={props.open} onClose={props.onClose} title={props.title ?? 'Assign user or team'} guard={props.guard} permission={props.permission} loading={props.loading} error={props.error} footer={<Button type="button" onClick={props.onAssign}>Assign</Button>}>
+    <AppModal
+      open={props.open}
+      onClose={props.onClose}
+      title={props.title ?? 'Assign user or team'}
+      guard={props.guard}
+      permission={props.permission}
+      loading={props.loading}
+      error={props.error}
+      footer={
+        <>
+          <Button type="button" variant="secondary" onClick={props.onClose}>
+            Cancel
+          </Button>
+          <Button type="button" onClick={props.onAssign}>
+            Assign
+          </Button>
+        </>
+      }
+    >
       <div className="form-grid">
         <label>User{props.userSelect}</label>
         {props.teamSelect ? <label>Team{props.teamSelect}</label> : null}
         {props.roleSelect ? <label>Role{props.roleSelect}</label> : null}
-        <label>Effective date<input type="date" /></label>
-        <label><input type="checkbox" /> Notify assignee</label>
-        <label>Remarks<textarea /></label>
+        <label>
+          Effective date
+          <input type="date" />
+        </label>
+        <label>
+          <input type="checkbox" /> Notify assignee
+        </label>
+        <label>
+          Remarks
+          <textarea />
+        </label>
       </div>
     </AppModal>
   );
