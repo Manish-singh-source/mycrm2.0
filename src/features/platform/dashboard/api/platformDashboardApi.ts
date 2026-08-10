@@ -1,4 +1,5 @@
-import type { ApiQuery } from '@/lib/api/apiTypes';
+import { ApiError } from '@/lib/api/apiError';
+import type { ApiQuery, NormalizedApiResponse } from '@/lib/api/apiTypes';
 import { platformClient } from '@/lib/api/platformClient';
 
 export type DashboardDateRange = {
@@ -15,29 +16,79 @@ const queryFor = (range: DashboardDateRange): ApiQuery => ({
   date_to: range.date_to
 });
 
+function asRecord(value: unknown) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function pickArray(payload: unknown, keys: string[]): DashboardChartPoint[] {
+  if (Array.isArray(payload)) return payload as DashboardChartPoint[];
+  const record = asRecord(payload);
+  for (const key of keys) {
+    const value = record[key];
+    if (Array.isArray(value)) return value as DashboardChartPoint[];
+    const nested = asRecord(value);
+    if (Array.isArray(nested.data)) return nested.data as DashboardChartPoint[];
+    if (Array.isArray(nested.items)) return nested.items as DashboardChartPoint[];
+    if (Array.isArray(nested.rows)) return nested.rows as DashboardChartPoint[];
+  }
+  if (Array.isArray(record.data)) return record.data as DashboardChartPoint[];
+  return [];
+}
+
+async function chartEndpoint(
+  path: string,
+  range: DashboardDateRange,
+  fallbackKeys: string[]
+): Promise<NormalizedApiResponse<DashboardChartPoint[]>> {
+  try {
+    const response = await platformClient.get<DashboardChartPoint[] | Record<string, unknown>>(path, { query: queryFor(range) });
+    return { ...response, data: pickArray(response.data, fallbackKeys) };
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 404) throw error;
+    const response = await platformClient.get<Record<string, unknown>>('/dashboard/charts', { query: queryFor(range) });
+    return { ...response, data: pickArray(response.data, fallbackKeys) };
+  }
+}
+
+async function tableEndpoint(
+  path: string,
+  range: DashboardDateRange,
+  fallbackPath: '/dashboard/recent' | '/dashboard/alerts',
+  fallbackKeys: string[]
+): Promise<NormalizedApiResponse<DashboardTableRow[]>> {
+  try {
+    const response = await platformClient.get<DashboardTableRow[] | Record<string, unknown>>(path, { query: queryFor(range) });
+    return { ...response, data: pickArray(response.data, fallbackKeys) as DashboardTableRow[] };
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 404) throw error;
+    const response = await platformClient.get<Record<string, unknown>>(fallbackPath, { query: queryFor(range) });
+    return { ...response, data: pickArray(response.data, fallbackKeys) as DashboardTableRow[] };
+  }
+}
+
 export const platformDashboardApi = {
   summary: (range: DashboardDateRange) =>
     platformClient.get<DashboardSummary>('/dashboard/summary', { query: queryFor(range) }),
   tenantGrowth: (range: DashboardDateRange) =>
-    platformClient.get<DashboardChartPoint[]>('/dashboard/charts/tenant-growth', { query: queryFor(range) }),
+    chartEndpoint('/dashboard/charts/tenant-growth', range, ['tenant_growth', 'tenantGrowth', 'tenants', 'growth']),
   revenue: (range: DashboardDateRange) =>
-    platformClient.get<DashboardChartPoint[]>('/dashboard/charts/revenue', { query: queryFor(range) }),
+    chartEndpoint('/dashboard/charts/revenue', range, ['revenue', 'revenue_chart', 'revenueChart']),
   planDistribution: (range: DashboardDateRange) =>
-    platformClient.get<DashboardChartPoint[]>('/dashboard/charts/plan-distribution', { query: queryFor(range) }),
+    chartEndpoint('/dashboard/charts/plan-distribution', range, ['plan_distribution', 'planDistribution', 'plans']),
   subscriptionStatus: (range: DashboardDateRange) =>
-    platformClient.get<DashboardChartPoint[]>('/dashboard/charts/subscription-status', { query: queryFor(range) }),
+    chartEndpoint('/dashboard/charts/subscription-status', range, ['subscription_status', 'subscriptionStatus', 'subscriptions']),
   usage: (range: DashboardDateRange) =>
-    platformClient.get<DashboardChartPoint[]>('/dashboard/charts/usage', { query: queryFor(range) }),
+    chartEndpoint('/dashboard/charts/usage', range, ['usage', 'usage_chart', 'usageChart', 'api_usage', 'storage_usage', 'payment_trend']),
   recentTenants: (range: DashboardDateRange) =>
-    platformClient.get<DashboardTableRow[]>('/dashboard/recent-tenants', { query: queryFor(range) }),
+    tableEndpoint('/dashboard/recent-tenants', range, '/dashboard/recent', ['recent_tenants', 'recentTenants', 'tenants']),
   recentPayments: (range: DashboardDateRange) =>
-    platformClient.get<DashboardTableRow[]>('/dashboard/recent-payments', { query: queryFor(range) }),
+    tableEndpoint('/dashboard/recent-payments', range, '/dashboard/recent', ['recent_payments', 'recentPayments', 'payments']),
   overdueInvoices: (range: DashboardDateRange) =>
-    platformClient.get<DashboardTableRow[]>('/dashboard/overdue-invoices', { query: queryFor(range) }),
+    tableEndpoint('/dashboard/overdue-invoices', range, '/dashboard/recent', ['overdue_invoices', 'overdueInvoices', 'invoices']),
   activeAlerts: (range: DashboardDateRange) =>
-    platformClient.get<DashboardTableRow[]>('/dashboard/active-alerts', { query: queryFor(range) }),
+    tableEndpoint('/dashboard/active-alerts', range, '/dashboard/alerts', ['active_alerts', 'activeAlerts', 'alerts']),
   securityEvents: (range: DashboardDateRange) =>
-    platformClient.get<DashboardTableRow[]>('/dashboard/security-events', { query: queryFor(range) }),
+    tableEndpoint('/dashboard/security-events', range, '/dashboard/alerts', ['security_events', 'securityEvents', 'events']),
   failedJobs: (range: DashboardDateRange) =>
     platformClient.get<DashboardTableRow[]>('/monitoring/queue-jobs', {
       query: { ...queryFor(range), filter: { status: 'failed' } }

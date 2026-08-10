@@ -36,6 +36,7 @@ import type {
   DashboardDateRange,
   DashboardTableRow
 } from '@/features/platform/dashboard/api/platformDashboardApi';
+import { DataTable, type DataTableColumn } from '@/shared/components/data-table';
 import { AppDrawer } from '@/shared/components/drawer';
 import { AppModal } from '@/shared/components/modal';
 import { PermissionButton, Button } from '@/shared/components/ui';
@@ -62,13 +63,13 @@ function chartFrom(query: UseQueryResult<{ data?: DashboardChartPoint[] }>) {
   const rows = Array.isArray(query.data?.data) ? query.data.data : [];
 
   return rows.map((row, index) => ({
-    label: String(row.month ?? row.date ?? row.label ?? row.name ?? `#${index + 1}`),
-    value: Number(row.value ?? row.count ?? row.total ?? row.tenants ?? 0),
-    revenue: Number(row.revenue ?? row.amount ?? row.value ?? 0),
-    failed: Number(row.failed ?? row.failed_count ?? 0),
-    success: Number(row.success ?? row.success_count ?? row.value ?? 0),
-    storage: Number(row.storage ?? row.storage_tb ?? 0),
-    api: Number(row.api ?? row.requests ?? row.value ?? 0)
+    label: String(row.month ?? row.period ?? row.date ?? row.label ?? row.name ?? row.status ?? row.plan_name ?? `#${index + 1}`),
+    value: Number(row.value ?? row.count ?? row.total ?? row.tenants ?? row.active ?? row.quantity ?? 0),
+    revenue: Number(row.revenue ?? row.amount ?? row.total_amount ?? row.collected ?? row.value ?? 0),
+    failed: Number(row.failed ?? row.failed_count ?? row.failed_payments ?? row.failures ?? 0),
+    success: Number(row.success ?? row.success_count ?? row.successful ?? row.paid ?? row.value ?? 0),
+    storage: Number(row.storage ?? row.storage_tb ?? row.storage_gb ?? row.storage_used ?? 0),
+    api: Number(row.api ?? row.api_requests ?? row.requests ?? row.request_count ?? row.value ?? 0)
   }));
 }
 
@@ -82,10 +83,14 @@ function valueAt(source: unknown, path: string, fallback: string | number = '-')
   return value as string | number;
 }
 
-function money(value: unknown) {
-  if (typeof value === 'number') return `$${value.toLocaleString()}`;
-  if (typeof value === 'string' && value.trim()) return value.startsWith('$') ? value : `$${value}`;
-  return '-';
+function money(value: unknown, currency = 'INR') {
+  const amount = Number(value ?? 0);
+  if (!Number.isFinite(amount)) return String(value ?? '-');
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: currency || 'INR',
+    maximumFractionDigits: 2
+  }).format(amount);
 }
 
 function labelOf(row: DashboardTableRow, keys: string[], fallback = '-') {
@@ -132,6 +137,7 @@ export function PlatformDashboardPage() {
   const queries = usePlatformDashboardQueries(range);
   const mutations = usePlatformDashboardMutations(range);
   const summary = queries.summary.data?.data;
+  const currency = String(valueAt(summary, 'revenue.currency', 'INR'));
   const tenantGrowth = chartFrom(queries.tenantGrowth);
   const revenue = chartFrom(queries.revenue);
   const subscriptionStatus = chartFrom(queries.subscriptionStatus);
@@ -149,14 +155,14 @@ export function PlatformDashboardPage() {
       ['Suspended Tenants', valueAt(summary, 'tenants.suspended', 0), '- 2.6%', ShieldAlert, 'red'],
       ['Expired Tenants', valueAt(summary, 'tenants.expired', 0), '+ 4.7%', CalendarDays, 'slate'],
       ['New Today', valueAt(summary, 'tenants.new_today', 0), '+ 20.8%', Plus, 'blue'],
-      ['MRR', money(valueAt(summary, 'revenue.mrr', 0)), '+ 7.3%', Bell, 'green'],
-      ['ARR', money(valueAt(summary, 'revenue.arr', 0)), '+ 7.9%', Bell, 'blue'],
+      ['MRR', money(valueAt(summary, 'revenue.mrr', 0), currency), '+ 7.3%', Bell, 'green'],
+      ['ARR', money(valueAt(summary, 'revenue.arr', 0), currency), '+ 7.9%', Bell, 'blue'],
       ['Overdue Invoices', valueAt(summary, 'billing.overdue_invoice_count', 0), '- 5.4%', AlertTriangle, 'orange'],
-      ['Overdue Balance', money(valueAt(summary, 'billing.overdue_balance', 0)), '- 3.1%', AlertTriangle, 'red'],
+      ['Overdue Balance', money(valueAt(summary, 'billing.overdue_balance', 0), currency), '- 3.1%', AlertTriangle, 'red'],
       ['Active Incidents', valueAt(summary, 'operations.open_incidents', rowsFrom(queries.incidents).length), '- 12.5%', AlertTriangle, 'orange'],
       ['Failed Jobs', valueAt(summary, 'operations.failed_queue_jobs', failedJobs.length), '- 21.4%', ShieldAlert, 'red']
     ] as const,
-    [failedJobs.length, queries.incidents.data, summary]
+    [currency, failedJobs.length, queries.incidents.data, summary]
   );
 
   function openRowDrawer(nextDrawer: DashboardDrawer, row: DashboardTableRow) {
@@ -317,7 +323,7 @@ export function PlatformDashboardPage() {
           renderRow={(row) => [
             labelOf(row, ['payment_number', 'number']),
             labelOf(row, ['tenant', 'tenant_name']),
-            money(row.amount),
+            money(row.amount, String(row.currency ?? currency)),
             labelOf(row, ['gateway']),
             labelOf(row, ['payment_status', 'status']),
             labelOf(row, ['paid_at'])
@@ -331,7 +337,7 @@ export function PlatformDashboardPage() {
             labelOf(row, ['invoice_number', 'number']),
             labelOf(row, ['tenant', 'tenant_name']),
             labelOf(row, ['due_date']),
-            money(row.balance_amount ?? row.balance),
+            money(row.balance_amount ?? row.balance, String(row.currency ?? currency)),
             labelOf(row, ['status'])
           ]}
         />
@@ -506,30 +512,46 @@ function DashboardTable({
   onRowClick?: (row: DashboardTableRow) => void;
 }) {
   const rows = rowsFrom(query);
+  const dataColumns = useMemo<DataTableColumn<DashboardTableRow>[]>(
+    () => {
+      const baseColumns = columns.map((column, index) => ({
+        id: `${column}-${index}`,
+        header: column,
+        cell: (row: DashboardTableRow) => {
+          const cells = renderRow(row);
+          const cell = cells[index] ?? '-';
+          if (index === cells.length - 1) return <span className={statusClass(cell)}>{cell}</span>;
+          if (index === 0) return <strong>{cell}</strong>;
+          return cell;
+        }
+      }));
+
+      if (!onRowClick) return baseColumns;
+      return [
+        ...baseColumns,
+        {
+          id: 'actions',
+          header: 'Actions',
+          enableHiding: false,
+          cell: (row: DashboardTableRow) => <Button type="button" size="sm" variant="ghost" onClick={() => onRowClick(row)}>View</Button>
+        }
+      ];
+    },
+    [columns, onRowClick, renderRow]
+  );
 
   return (
     <article className="dashboard-panel dashboard-table-panel">
       <header><h2>{title}</h2><button type="button">View all</button></header>
       <QueryPanel query={query} empty={`No ${title.toLowerCase()} found.`}>
-        {rows.length === 0 ? <div className="empty-state">No {title.toLowerCase()} found.</div> : (
-          <div className="dashboard-table">
-            <table>
-              <thead><tr>{columns.map((column) => <th key={column}>{column}</th>)}</tr></thead>
-              <tbody>
-                {rows.map((row) => {
-                  const cells = renderRow(row);
-                  return (
-                    <tr key={rowId(row)} onClick={() => onRowClick?.(row)} className={onRowClick ? 'is-clickable' : undefined}>
-                      {cells.map((cell, index) => (
-                        <td key={`${cell}-${index}`}>{index === cells.length - 1 || index === 0 ? <span className={index === cells.length - 1 ? statusClass(cell) : undefined}>{cell}</span> : cell}</td>
-                      ))}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <DataTable
+          columns={dataColumns}
+          data={rows}
+          getRowId={rowId}
+          total={rows.length}
+          perPage={Math.max(25, rows.length || 25)}
+          emptyState={<div className="empty-state">No {title.toLowerCase()} found.</div>}
+        />
       </QueryPanel>
     </article>
   );
