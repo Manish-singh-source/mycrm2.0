@@ -4,12 +4,19 @@ import { AppModal } from '@/shared/components/modal';
 import { Button } from '@/shared/components/ui';
 import type { AuthGuard, Permission } from '@/features/auth/types/authTypes';
 
+export type ExportOptions = {
+  format: string;
+  scope: 'filtered' | 'selected';
+  timezone: string;
+  emailWhenReady: boolean;
+};
+
 type ExportModalProps = {
   open: boolean;
   onClose: () => void;
   columns: string[];
   selectedCount?: number;
-  onExport: () => void;
+  onExport: (options: ExportOptions) => void;
   guard?: AuthGuard;
   permission?: Permission;
   loading?: boolean;
@@ -40,7 +47,11 @@ export function ExportModal({ columns, selectedCount = 0, onExport, ...props }: 
           <Button type="button" variant="secondary" onClick={props.onClose}>
             Cancel
           </Button>
-          <Button type="button" onClick={onExport} disabled={columns.length === 0}>
+          <Button
+            type="button"
+            onClick={() => onExport({ format, scope, timezone, emailWhenReady })}
+            disabled={columns.length === 0}
+          >
             Export
           </Button>
         </>

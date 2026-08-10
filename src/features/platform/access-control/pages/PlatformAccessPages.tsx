@@ -29,6 +29,7 @@ import {
   type TeamPayload,
   type TeamRolePayload
 } from '@/features/platform/access-control/api/platformAccessApi';
+import { platformStaffApi } from '@/features/platform/staff/api/platformStaffApi';
 import { platformQueryKeys } from '@/features/platform/api/platformQueryKeys';
 import { PLATFORM_ROUTES } from '@/features/platform/routes/platformRoutes';
 import { ApiError } from '@/lib/api/apiError';
@@ -62,6 +63,7 @@ type ModalKind =
   | 'export'
   | 'columns'
   | 'views'
+  | 'auditHistory'
   | null;
 
 type DrawerKind = 'assignPermissions' | 'permissionDetail' | 'filters' | null;
@@ -149,16 +151,61 @@ const resourceMeta = {
   }
 } as const;
 
-function idOf(record?: PlatformRecord | null) {
+function idOf(record?: Record<string, unknown> | null) {
   return String(record?.uuid ?? record?.id ?? '');
 }
 
-function textOf(record: PlatformRecord | null | undefined, keys: string[], fallback = '-') {
+function textOf(
+  record: Record<string, unknown> | null | undefined,
+  keys: string[],
+  fallback = '-'
+) {
   for (const key of keys) {
     const value = record?.[key];
     if (value !== undefined && value !== null && value !== '') return String(value);
   }
   return fallback;
+}
+
+function toTitleCase(value: unknown) {
+  return String(value ?? '-')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\w\S*/g, (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
+}
+
+function toSnakeCase(value: string) {
+  return value
+    .trim()
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .replace(/[^a-zA-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .toLowerCase();
+}
+
+function displayText(record: PlatformRecord | null | undefined, keys: string[], fallback = '-') {
+  return toTitleCase(textOf(record, keys, fallback));
+}
+
+function activityRows(record: PlatformRecord) {
+  const rows = (record.activity as PlatformRecord[] | undefined) ?? [];
+  return rows.length > 0 ? rows : [record];
+}
+
+function roleDisplayDetails(record: Record<string, unknown>, kind: ResourceKind) {
+  if (kind !== 'roles') return record;
+  const hidden = new Set([
+    'uuid',
+    'id',
+    'guard_name',
+    'is_system',
+    'permissions_count',
+    'users_count',
+    'permissions',
+    'users'
+  ]);
+  return Object.fromEntries(Object.entries(record).filter(([key]) => !hidden.has(key)));
 }
 
 function errorMessage(error: unknown) {
@@ -304,6 +351,7 @@ function ResourceList({ kind }: { kind: ResourceKind }) {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [searchInput, setSearchInput] = useState('');
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectedRecord, setSelectedRecord] = useState<PlatformRecord | null>(null);
@@ -324,6 +372,14 @@ function ResourceList({ kind }: { kind: ResourceKind }) {
         : {})
     }
   });
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setSearch(searchInput);
+      setPage(1);
+    }, 450);
+    return () => window.clearTimeout(timeout);
+  }, [searchInput]);
 
   const listQuery = useQuery({
     queryKey: platformQueryKeys.list(meta.resourceKey, queryParams),
@@ -403,11 +459,6 @@ function ResourceList({ kind }: { kind: ResourceKind }) {
       description={descriptionFor(kind)}
       actions={
         <>
-          {kind === 'roles' ? (
-            <Button type="button" variant="secondary" size="sm">
-              Keyboard Shortcuts
-            </Button>
-          ) : null}
           {kind === 'teamRoles' ? null : (
             <PermissionButton
               guard="platform"
@@ -442,11 +493,11 @@ function ResourceList({ kind }: { kind: ResourceKind }) {
       getRowId={idOf}
       loading={listQuery.isLoading}
       error={listQuery.isError ? errorMessage(listQuery.error) : ''}
-      searchValue={search}
+      searchValue={searchInput}
       searchPlaceholder={
         kind === 'roles' ? 'Search roles...' : `Search ${meta.label.toLowerCase()}...`
       }
-      onSearchChange={setSearch}
+      onSearchChange={setSearchInput}
       hiddenColumnIds={hiddenColumnIds}
       onHiddenColumnIdsChange={setHiddenColumnIds}
       onOpenFilters={() => setDrawer('filters')}
@@ -606,13 +657,13 @@ function columnsFor(
         header: 'Role Name',
         accessor: (row) => row.name,
         enableSorting: true,
-        cell: (row) => <span className="muted-cell">{textOf(row, ['name'])}</span>
+        cell: (row) => <span className="muted-cell">{displayText(row, ['name'])}</span>
       },
       {
         id: 'guard_name',
         header: 'Guard',
         accessor: (row) => row.guard_name,
-        cell: (row) => textOf(row, ['guard_name'])
+        cell: (row) => displayText(row, ['guard_name'])
       },
       {
         id: 'permissions_count',
@@ -793,8 +844,8 @@ function RoleNameCell({ row }: { row: PlatformRecord }) {
         {initials || 'R'}
       </span>
       <span>
-        <strong>{name}</strong>
-        {row.description ? <small>{String(row.description)}</small> : null}
+        <strong>{toTitleCase(name)}</strong>
+        {row.description ? <small>{toTitleCase(row.description)}</small> : null}
       </span>
     </span>
   );
@@ -805,7 +856,7 @@ function CompactStatusBadge({ status }: { status: string }) {
   return (
     <span className={`status-pill ${active ? 'status-pill--active' : 'status-pill--muted'}`}>
       <i aria-hidden="true" />
-      {status}
+      {toTitleCase(status)}
     </span>
   );
 }
@@ -939,7 +990,7 @@ function RoleActionsMenu({
             type="button"
             role="menuitem"
             onMouseDown={(event) => event.preventDefault()}
-            onClick={() => setOpen(false)}
+            onClick={() => run(() => handlers.onAction('auditHistory', row))}
           >
             <KeyRound size={15} aria-hidden="true" /> Audit History
           </button>
@@ -1223,6 +1274,8 @@ function RoleFormPage({ record, title }: { record?: PlatformRecord; title?: stri
     mutationFn: (values: RoleForm) => {
       const payload: RolePayload = {
         ...values,
+        name: toSnakeCase(values.name),
+        display_name: toTitleCase(values.display_name),
         permission_ids:
           selectedPermissionIdsState.length > 0
             ? selectedPermissionIdsState
@@ -1260,7 +1313,7 @@ function RoleFormPage({ record, title }: { record?: PlatformRecord; title?: stri
       }
     >
       <FormGrid>
-        <InputField form={form} name="name" label="Role name" placeholder="billing_manager" />
+        <InputField form={form} name="name" label="Role name" placeholder="Billing Manager" />
         <InputField
           form={form}
           name="display_name"
@@ -1505,7 +1558,7 @@ function ResourceView({ kind, record }: { kind: ResourceKind; record: PlatformRe
         )}
         meta={
           <StatusBadge tone={record.status === 'active' ? 'success' : 'neutral'}>
-            {textOf(record, ['status'])}
+            {displayText(record, ['status'])}
           </StatusBadge>
         }
         tabs={
@@ -1626,7 +1679,9 @@ function ResourceView({ kind, record }: { kind: ResourceKind; record: PlatformRe
       </div>
 
       <article className="enterprise-view-panel">
-        {activeTab === 'details' ? <RecordDetails record={record} /> : null}
+        {activeTab === 'details' ? (
+          <RecordDetails record={roleDisplayDetails(record, kind)} />
+        ) : null}
         {activeTab === 'permissions' ? (
           <PermissionGroups groups={record.permissions as GroupedPermissions | undefined} />
         ) : null}
@@ -1646,7 +1701,7 @@ function ResourceView({ kind, record }: { kind: ResourceKind; record: PlatformRe
         {activeTab === 'assignments' && kind !== 'teams' ? (
           <RecordList rows={(record.assignments as PlatformRecord[] | undefined) ?? []} />
         ) : null}
-        {activeTab === 'activity' ? <AuditRail rows={[record]} compact /> : null}
+        {activeTab === 'activity' ? <AuditRail rows={activityRows(record)} compact /> : null}
       </article>
 
       <StandardListControls
@@ -1690,7 +1745,21 @@ function StandardListControls({
   onClose: () => void;
   onAction?: (action: string, payload: Record<string, unknown>) => void;
 }) {
+  const queryClient = useQueryClient();
   const [draftFilters, setDraftFilters] = useState(filters);
+  const exportMutation = useMutation({
+    mutationFn: (options: Record<string, unknown>) => {
+      if (kind === 'roles') return platformAccessApi.roles.export(options);
+      if (kind === 'permissions') return platformAccessApi.permissions.export(options);
+      return Promise.resolve({ data: null });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: platformQueryKeys.resource(resourceMeta[kind].resourceKey)
+      });
+      onClose();
+    }
+  });
   const filterFields = [
     {
       name: 'status',
@@ -1801,7 +1870,19 @@ function StandardListControls({
           .filter((column) => !hiddenColumnIds.includes(column.id) && column.id !== 'actions')
           .map((column) => String(column.header))}
         selectedCount={selectedCount}
-        onExport={onClose}
+        loading={exportMutation.isPending}
+        error={exportMutation.error ? errorMessage(exportMutation.error) : null}
+        onExport={(options) =>
+          exportMutation.mutate({
+            ...options,
+            format: String(options.format).toLowerCase(),
+            filters,
+            columns: columns
+              .filter((column) => !hiddenColumnIds.includes(column.id) && column.id !== 'actions')
+              .map((column) => column.id),
+            selected_count: selectedCount
+          })
+        }
       />
       <AssignPermissionsDrawer
         open={drawer === 'assignPermissions'}
@@ -1815,12 +1896,24 @@ function StandardListControls({
         onClose={onClose}
       />
       <AssignUsersModal open={modal === 'assignUsers'} role={selectedRecord} onClose={onClose} />
+      <AppModal
+        open={modal === 'auditHistory'}
+        onClose={onClose}
+        title="Audit history"
+        guard="platform"
+        permission={`${resourceMeta[kind].permission}.view`}
+      >
+        <AuditRail rows={selectedRecord ? activityRows(selectedRecord) : []} compact />
+      </AppModal>
       <CloneRoleModal open={modal === 'cloneRole'} role={selectedRecord} onClose={onClose} />
       <DeleteRoleDialog
         open={modal === 'deleteRole'}
         role={selectedRecord}
         onClose={onClose}
-        onConfirm={(payload) => onAction?.('deleteRole', payload)}
+        onConfirm={(payload) => {
+          onAction?.('deleteRole', auditPayload(String(payload.reason ?? 'Role deleted')));
+          onClose();
+        }}
       />
       <PermissionEditorModal
         open={modal === 'permissionEditor'}
@@ -2037,7 +2130,7 @@ function AssignUsersModal({
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
-  const [ids, setIds] = useState('');
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [effectiveDate, setEffectiveDate] = useState('');
   const [notifyUsers, setNotifyUsers] = useState(true);
   const [auditReason, setAuditReason] = useState('Role assignment update');
@@ -2047,13 +2140,15 @@ function AssignUsersModal({
     queryFn: () => platformAccessApi.roles.users(idOf(role)),
     enabled: open && Boolean(role)
   });
+  const platformUsersQuery = useQuery({
+    queryKey: platformQueryKeys.list('platform-users-for-role-assignment', { per_page: 100 }),
+    queryFn: () => platformStaffApi.list({ per_page: 100, filter: { status: 'active' } }),
+    enabled: open
+  });
   const mutation = useMutation({
     mutationFn: () =>
       platformAccessApi.roles.assignUsers(idOf(role), {
-        platform_user_ids: ids
-          .split(',')
-          .map((item) => item.trim())
-          .filter(Boolean),
+        platform_user_ids: selectedUserIds,
         effective_date: effectiveDate || undefined,
         notify_users: notifyUsers,
         audit_reason: auditReason
@@ -2065,7 +2160,7 @@ function AssignUsersModal({
       await queryClient.invalidateQueries({
         queryKey: platformQueryKeys.related(resourceMeta.roles.resourceKey, idOf(role), 'users')
       });
-      setIds('');
+      setSelectedUserIds([]);
     }
   });
   const removeMutation = useMutation({
@@ -2081,6 +2176,13 @@ function AssignUsersModal({
     }
   });
   const users = usersQuery.data?.data.users ?? role?.users ?? [];
+  const availableUsers = platformUsersQuery.data?.data ?? [];
+
+  function toggleAssignedUser(userId: string) {
+    setSelectedUserIds((current) =>
+      current.includes(userId) ? current.filter((id) => id !== userId) : [...current, userId]
+    );
+  }
 
   return (
     <AppModal
@@ -2089,15 +2191,22 @@ function AssignUsersModal({
       title="Assign users"
       guard="platform"
       permission="platform_role.edit"
-      loading={usersQuery.isLoading || mutation.isPending || removeMutation.isPending}
+      loading={
+        usersQuery.isLoading ||
+        platformUsersQuery.isLoading ||
+        mutation.isPending ||
+        removeMutation.isPending
+      }
       error={
         usersQuery.error
           ? errorMessage(usersQuery.error)
-          : mutation.error
-            ? errorMessage(mutation.error)
-            : removeMutation.error
-              ? errorMessage(removeMutation.error)
-              : null
+          : platformUsersQuery.error
+            ? errorMessage(platformUsersQuery.error)
+            : mutation.error
+              ? errorMessage(mutation.error)
+              : removeMutation.error
+                ? errorMessage(removeMutation.error)
+                : null
       }
       footer={
         <>
@@ -2139,14 +2248,38 @@ function AssignUsersModal({
         </div>
       </section>
       <div className="form-grid">
-        <label>
-          Platform user IDs
-          <input
-            value={ids}
-            onChange={(event) => setIds(event.target.value)}
-            placeholder="uuid_1, uuid_2"
-          />
+        <label className="modal-form-span">
+          Platform user names
+          <select
+            multiple
+            value={selectedUserIds}
+            onChange={(event) =>
+              setSelectedUserIds(
+                Array.from(event.currentTarget.selectedOptions).map((option) => option.value)
+              )
+            }
+          >
+            {availableUsers.map((user) => (
+              <option key={idOf(user)} value={idOf(user)}>
+                {textOf(user, ['display_name', 'name', 'email'])}
+              </option>
+            ))}
+          </select>
         </label>
+        <div className="chip-list modal-form-span" aria-label="Selected platform users">
+          {selectedUserIds.length === 0 ? (
+            <span>No users selected</span>
+          ) : (
+            selectedUserIds.map((userId) => {
+              const user = availableUsers.find((item) => idOf(item) === userId);
+              return (
+                <button key={userId} type="button" onClick={() => toggleAssignedUser(userId)}>
+                  {textOf(user, ['display_name', 'name', 'email'], userId)}
+                </button>
+              );
+            })
+          )}
+        </div>
         <label>
           Effective date
           <input
@@ -2211,8 +2344,8 @@ function CloneRoleModal({
   const mutation = useMutation({
     mutationFn: () =>
       platformAccessApi.roles.clone(idOf(role), {
-        name,
-        display_name: displayName,
+        name: toSnakeCase(name),
+        display_name: toTitleCase(displayName),
         copy_permissions: copyPermissions,
         copy_users: copyUsers,
         copy_description: true,
@@ -2969,12 +3102,21 @@ function RecordDetails({ record }: { record: Record<string, unknown> }) {
     <dl className="enterprise-summary-list">
       {Object.entries(record).map(([key, value]) => (
         <div key={key}>
-          <dt>{key}</dt>
-          <dd>{typeof value === 'object' ? JSON.stringify(value) : String(value ?? '-')}</dd>
+          <dt>{toTitleCase(key)}</dt>
+          <dd>{formatDetailValue(value)}</dd>
         </div>
       ))}
     </dl>
   );
+}
+
+function formatDetailValue(value: unknown) {
+  if (value === null || value === undefined || value === '') return '-';
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (typeof value === 'number') return String(value);
+  if (Array.isArray(value)) return value.length ? String(value.length) : '-';
+  if (typeof value === 'object') return '-';
+  return toTitleCase(value);
 }
 
 function PermissionGroups({ groups }: { groups?: GroupedPermissions }) {
@@ -3007,8 +3149,8 @@ function RecordList({ rows }: { rows: PlatformRecord[] }) {
     <div className="record-list">
       {rows.map((row) => (
         <article key={idOf(row)}>
-          <strong>{textOf(row, ['display_name', 'name', 'email', 'assignable_type'])}</strong>
-          <p>{textOf(row, ['email', 'status', 'assignment_role'])}</p>
+          <strong>{displayText(row, ['display_name', 'name', 'email', 'assignable_type'])}</strong>
+          <p>{displayText(row, ['email', 'status', 'assignment_role'])}</p>
         </article>
       ))}
     </div>
@@ -3328,43 +3470,68 @@ function ResourceStats({ kind, rows }: { kind: ResourceKind; rows: PlatformRecor
 }
 
 function AuditRail({ rows, compact = false }: { rows: PlatformRecord[]; compact?: boolean }) {
+  const [visible, setVisible] = useState(true);
+  const [activeTab, setActiveTab] = useState<'activity' | 'details'>('activity');
+  const activity = rows.slice(0, 6);
+
+  if (!visible) return null;
+
   return (
     <aside className={compact ? 'audit-rail audit-rail--compact' : 'audit-rail'}>
       <header>
         <h2>Audit Log</h2>
-        <button type="button" aria-label="Close audit log">
+        <button type="button" aria-label="Close audit log" onClick={() => setVisible(false)}>
           x
         </button>
       </header>
       <div className="audit-tabs" role="tablist" aria-label="Audit views">
-        <button type="button" role="tab" aria-selected="true">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'activity'}
+          onClick={() => setActiveTab('activity')}
+        >
           Activity
         </button>
-        <button type="button" role="tab" aria-selected="false">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'details'}
+          onClick={() => setActiveTab('details')}
+        >
           Details
         </button>
       </div>
-      {rows.slice(0, 6).map((row) => (
-        <article key={idOf(row) || textOf(row, ['name'])}>
-          <span className="audit-avatar" aria-hidden="true">
-            {textOf(row, ['updated_by', 'created_by'], 'System').slice(0, 1).toUpperCase()}
-          </span>
-          <div>
-            <strong>{textOf(row, ['updated_by', 'created_by'], 'System')}</strong>
-            <small>{textOf(row, ['guard_name', 'module', 'visibility'], 'Platform')}</small>
-            <p>{textOf(row, ['display_name', 'name'])} changed</p>
-            <time>{formatDateTime(row.updated_at ?? row.created_at)}</time>
-          </div>
-        </article>
-      ))}
-      {rows.length === 0 ? <div className="empty-state">No audit activity loaded.</div> : null}
-      <Button type="button" variant="secondary" size="sm">
+      {activeTab === 'activity' ? (
+        <>
+          {activity.map((row) => (
+            <article key={idOf(row) || textOf(row, ['name'])}>
+              <span className="audit-avatar" aria-hidden="true">
+                {textOf(row, ['updated_by', 'created_by'], 'System').slice(0, 1).toUpperCase()}
+              </span>
+              <div>
+                <strong>{toTitleCase(textOf(row, ['updated_by', 'created_by'], 'System'))}</strong>
+                <small>
+                  {displayText(row, ['guard_name', 'module', 'visibility'], 'Platform')}
+                </small>
+                <p>{displayText(row, ['event', 'action', 'display_name', 'name'])} Changed</p>
+                <time>{formatDateTime(row.updated_at ?? row.created_at)}</time>
+              </div>
+            </article>
+          ))}
+          {activity.length === 0 ? (
+            <div className="empty-state">No audit activity loaded.</div>
+          ) : null}
+        </>
+      ) : (
+        <RecordDetails record={activity[0] ? roleDisplayDetails(activity[0], 'roles') : {}} />
+      )}
+      <Button type="button" variant="secondary" size="sm" onClick={() => setActiveTab('details')}>
         View Full Audit Logs
       </Button>
     </aside>
   );
 }
-
 function formatDateTime(value: unknown) {
   if (!value) return 'Recent activity';
   const date = new Date(String(value));

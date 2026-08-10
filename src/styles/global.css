@@ -2112,6 +2112,31 @@ textarea:disabled {
   display: block;
 }
 
+.inline-check-field {
+  align-items: center;
+  display: flex !important;
+  gap: 8px;
+}
+
+.inline-check-field input[type='checkbox'],
+.check-row input[type='checkbox'] {
+  flex: 0 0 auto;
+  height: 16px;
+  min-height: auto;
+  width: 16px;
+}
+
+.chip-list button {
+  background: #eef4ff;
+  border: 0;
+  border-radius: 999px;
+  color: #2563eb;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 5px 9px;
+}
+
 /* Enterprise admin master visual system */
 body {
   background: #f8fafc;
@@ -2544,8 +2569,8 @@ body {
 }
 
 .data-table tbody tr:focus-within td {
-  background: #eff6ff;
-  box-shadow: inset 3px 0 0 #2563eb;
+  background: inherit;
+  box-shadow: none;
 }
 
 .data-table tbody tr:last-child td {
@@ -3357,8 +3382,8 @@ textarea:focus-visible {
 }
 
 .data-table tbody tr:focus-within td {
-  background: #eaf2ff;
-  box-shadow: inset 3px 0 0 var(--crm-primary);
+  background: inherit;
+  box-shadow: none;
 }
 
 .data-table input[type='checkbox'] {
