@@ -1952,3 +1952,248 @@ Not found:
 ```json
 {"success":false,"message":"Resource not found.","data":null,"meta":{"request_id":"{{REQUEST_ID}}"},"errors":{"code":"NOT_FOUND","details":[]}}
 ```
+
+---
+
+# 7. Platform SaaS Billing and Catalog APIs
+
+All endpoints require a platform token and platform permission middleware. Financial mutations also require `Idempotency-Key`.
+
+Common platform headers:
+
+```http
+Authorization: Bearer {{PLATFORM_TOKEN}}
+Accept: application/json
+Content-Type: application/json
+X-Request-Id: {{REQUEST_ID}}
+Idempotency-Key: {{REQUEST_ID}}-billing-action
+```
+
+## 7.1 Plans
+
+### List plans
+
+```bash
+curl -X GET "{{BASE_URL}}/api/platform/v1/plans?page=1&per_page=25&status=active&search=growth" \
+  -H "Authorization: Bearer {{PLATFORM_TOKEN}}" \
+  -H "Accept: application/json" \
+  -H "X-Request-Id: {{REQUEST_ID}}"
+```
+
+Request body: none.
+
+Response example:
+
+```json
+{"success":true,"message":"OK","data":[{"uuid":"plan_uuid","name":"Growth","code":"growth","billing_cycle":"monthly","base_price":"2999.00","currency":"INR","status":"active"}],"meta":{"request_id":"{{REQUEST_ID}}","pagination":{"current_page":1,"per_page":25,"total":1}},"errors":null}
+```
+
+### Create plan
+
+```bash
+curl -X POST "{{BASE_URL}}/api/platform/v1/plans" \
+  -H "Authorization: Bearer {{PLATFORM_TOKEN}}" \
+  -H "Accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "X-Request-Id: {{REQUEST_ID}}" \
+  -d '{"name":"Scale","code":"scale","description":"Scale plan","billing_cycle":"monthly","base_price":"4999.00","currency":"INR","trial_days":14,"is_custom":false,"is_public":true,"status":"active"}'
+```
+
+Request body:
+
+```json
+{"name":"Scale","code":"scale","description":"Scale plan","billing_cycle":"monthly","base_price":"4999.00","currency":"INR","trial_days":14,"is_custom":false,"is_public":true,"status":"active"}
+```
+
+Response example:
+
+```json
+{"success":true,"message":"Plan created.","data":{"plan":{"uuid":"plan_uuid","name":"Scale","code":"scale","status":"active"}},"meta":{"request_id":"{{REQUEST_ID}}"},"errors":null}
+```
+
+### View, update, archive, clone, features, subscriptions
+
+```bash
+curl -X GET "{{BASE_URL}}/api/platform/v1/plans/{plan_uuid}" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}"
+curl -X PATCH "{{BASE_URL}}/api/platform/v1/plans/{plan_uuid}" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}" -d '{"base_price":"5999.00","status":"active"}'
+curl -X DELETE "{{BASE_URL}}/api/platform/v1/plans/{plan_uuid}" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}"
+curl -X POST "{{BASE_URL}}/api/platform/v1/plans/{plan_uuid}/clone" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}" -d '{"name":"Scale Copy","code":"scale_copy","status":"inactive"}'
+curl -X GET "{{BASE_URL}}/api/platform/v1/plans/{plan_uuid}/features" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}"
+curl -X PUT "{{BASE_URL}}/api/platform/v1/plans/{plan_uuid}/features" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}" -d '{"features":[{"feature_uuid":"feature_uuid","value":"25","metadata":{"source":"contract"}}]}'
+curl -X GET "{{BASE_URL}}/api/platform/v1/plans/{plan_uuid}/subscriptions" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}"
+curl -X POST "{{BASE_URL}}/api/platform/v1/plans/export" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}"
+```
+
+Response examples: view returns `data.plan`, `data.features`, and `data.subscription_count`; update/clone return `data.plan`; archive returns `data:null`; feature replacement returns `data.features`; export returns `data.export.status=queued`.
+
+## 7.2 Features and Add-on Plans
+
+```bash
+curl -X GET "{{BASE_URL}}/api/platform/v1/features?module=projects&status=active" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}"
+curl -X POST "{{BASE_URL}}/api/platform/v1/features" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}" -d '{"module":"projects","name":"Project Limit","code":"projects.limit","data_type":"integer","unit":"projects","description":"Maximum active projects","status":"active"}'
+curl -X GET "{{BASE_URL}}/api/platform/v1/features/{feature_uuid}" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}"
+curl -X PATCH "{{BASE_URL}}/api/platform/v1/features/{feature_uuid}" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}" -d '{"name":"Project Limit","status":"active"}'
+curl -X DELETE "{{BASE_URL}}/api/platform/v1/features/{feature_uuid}" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}"
+curl -X GET "{{BASE_URL}}/api/platform/v1/addons?status=active" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}"
+curl -X POST "{{BASE_URL}}/api/platform/v1/addons" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}" -d '{"name":"Extra 10 Users","code":"extra_10_users","pricing_type":"recurring","price":"499.00","currency":"INR","status":"active"}'
+curl -X GET "{{BASE_URL}}/api/platform/v1/addons/{addon_uuid}" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}"
+curl -X PATCH "{{BASE_URL}}/api/platform/v1/addons/{addon_uuid}" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}" -d '{"price":"699.00","status":"active"}'
+curl -X DELETE "{{BASE_URL}}/api/platform/v1/addons/{addon_uuid}" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}"
+```
+
+Feature create response returns `data.feature`; add-on create/update/view returns `data.addon`; delete/archive responses return `data:null`.
+
+## 7.3 Subscriptions
+
+### Create subscription
+
+```bash
+curl -X POST "{{BASE_URL}}/api/platform/v1/subscriptions" \
+  -H "Authorization: Bearer {{PLATFORM_TOKEN}}" \
+  -H "Accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "X-Request-Id: {{REQUEST_ID}}" \
+  -H "Idempotency-Key: {{REQUEST_ID}}-sub-create" \
+  -d '{"tenant_id":"tenant_uuid","plan_id":"plan_uuid","type":"paid","billing_cycle":"yearly","status":"active","renewal_type":"automatic","starts_at":"2026-08-08T00:00:00Z","expires_at":"2027-08-07T23:59:59Z","currency":"INR","auto_renew":true,"notes":"Annual contract"}'
+```
+
+Request body: same as `-d` JSON above.
+
+Response example:
+
+```json
+{"success":true,"message":"Subscription created.","data":{"subscription":{"uuid":"subscription_uuid","subscription_number":"SUB-ABC123","status":"active","current_version":1}},"meta":{"request_id":"{{REQUEST_ID}}"},"errors":null}
+```
+
+### Subscription lifecycle and history
+
+```bash
+curl -X GET "{{BASE_URL}}/api/platform/v1/subscriptions?status=active&tenant_uuid=tenant_uuid" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}"
+curl -X GET "{{BASE_URL}}/api/platform/v1/subscriptions/{subscription_uuid}" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}"
+curl -X PATCH "{{BASE_URL}}/api/platform/v1/subscriptions/{subscription_uuid}" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}" -H "Idempotency-Key: {{REQUEST_ID}}-sub-update" -d '{"auto_renew":false,"notes":"Manual renewal"}'
+curl -X POST "{{BASE_URL}}/api/platform/v1/subscriptions/{subscription_uuid}/upgrade" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}" -H "Idempotency-Key: {{REQUEST_ID}}-upgrade" -d '{"new_plan_id":"plan_uuid","effective_at":"2026-08-08T00:00:00Z","proration":"immediate","billing_cycle":"yearly","reason":"Customer upgrade"}'
+curl -X POST "{{BASE_URL}}/api/platform/v1/subscriptions/{subscription_uuid}/downgrade" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}" -H "Idempotency-Key: {{REQUEST_ID}}-downgrade" -d '{"new_plan_id":"plan_uuid","reason":"Customer downgrade"}'
+curl -X POST "{{BASE_URL}}/api/platform/v1/subscriptions/{subscription_uuid}/renew" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}" -H "Idempotency-Key: {{REQUEST_ID}}-renew" -d '{"renewal_expires_at":"2028-08-07T23:59:59Z","amount":"120000.00","currency":"INR","create_invoice":true,"notes":"Manual renewal"}'
+curl -X POST "{{BASE_URL}}/api/platform/v1/subscriptions/{subscription_uuid}/pause" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}" -H "Idempotency-Key: {{REQUEST_ID}}-pause"
+curl -X POST "{{BASE_URL}}/api/platform/v1/subscriptions/{subscription_uuid}/resume" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}" -H "Idempotency-Key: {{REQUEST_ID}}-resume"
+curl -X POST "{{BASE_URL}}/api/platform/v1/subscriptions/{subscription_uuid}/cancel" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}" -H "Idempotency-Key: {{REQUEST_ID}}-cancel" -d '{"reason":"Customer requested cancellation"}'
+curl -X GET "{{BASE_URL}}/api/platform/v1/subscriptions/{subscription_uuid}/usage" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}"
+curl -X GET "{{BASE_URL}}/api/platform/v1/subscriptions/{subscription_uuid}/history" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}"
+curl -X POST "{{BASE_URL}}/api/platform/v1/subscriptions/export" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}"
+```
+
+Lifecycle responses return `data.subscription`; usage returns `data.usage`; history returns immutable `data.versions` and `data.renewals`.
+
+### Subscription add-ons, coupons, invoice
+
+```bash
+curl -X POST "{{BASE_URL}}/api/platform/v1/subscriptions/{subscription_uuid}/addons" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}" -H "Idempotency-Key: {{REQUEST_ID}}-addon-add" -d '{"addon_plan_id":"addon_uuid","quantity":5,"unit_price":"499.00","starts_at":"2026-08-08T00:00:00Z","status":"active"}'
+curl -X PATCH "{{BASE_URL}}/api/platform/v1/subscriptions/{subscription_uuid}/addons/{addon_id}" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}" -H "Idempotency-Key: {{REQUEST_ID}}-addon-update" -d '{"quantity":10,"status":"active"}'
+curl -X DELETE "{{BASE_URL}}/api/platform/v1/subscriptions/{subscription_uuid}/addons/{addon_id}" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}" -H "Idempotency-Key: {{REQUEST_ID}}-addon-remove"
+curl -X POST "{{BASE_URL}}/api/platform/v1/subscriptions/{subscription_uuid}/apply-coupon" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}" -H "Idempotency-Key: {{REQUEST_ID}}-coupon-apply" -d '{"coupon_code":"YEARLY20"}'
+curl -X DELETE "{{BASE_URL}}/api/platform/v1/subscriptions/{subscription_uuid}/coupons/{coupon_uuid}" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}" -H "Idempotency-Key: {{REQUEST_ID}}-coupon-remove"
+curl -X POST "{{BASE_URL}}/api/platform/v1/subscriptions/{subscription_uuid}/invoice" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}" -H "Idempotency-Key: {{REQUEST_ID}}-sub-invoice"
+```
+
+## 7.4 Platform Billing: Invoices, Payments, Refunds
+
+```bash
+curl -X GET "{{BASE_URL}}/api/platform/v1/billing/invoices?status=draft&overdue=0" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}"
+curl -X POST "{{BASE_URL}}/api/platform/v1/billing/invoices" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}" -H "Idempotency-Key: {{REQUEST_ID}}-invoice-create" -d '{"tenant_id":"tenant_uuid","subscription_id":"subscription_uuid","invoice_date":"2026-08-08","due_date":"2026-08-23","currency":"INR","status":"draft","discount_amount":"0.00","tax_amount":"899.82","items":[{"item_type":"plan","description":"Growth plan - August 2026","quantity":"1.00","unit_price":"4999.00","amount":"4999.00","metadata":{}}]}'
+curl -X GET "{{BASE_URL}}/api/platform/v1/billing/invoices/{invoice_uuid}" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}"
+curl -X PATCH "{{BASE_URL}}/api/platform/v1/billing/invoices/{invoice_uuid}" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}" -H "Idempotency-Key: {{REQUEST_ID}}-invoice-update" -d '{"due_date":"2026-08-30","tax_amount":"900.00"}'
+curl -X DELETE "{{BASE_URL}}/api/platform/v1/billing/invoices/{invoice_uuid}" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}" -H "Idempotency-Key: {{REQUEST_ID}}-invoice-cancel"
+curl -X POST "{{BASE_URL}}/api/platform/v1/billing/invoices/{invoice_uuid}/send" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}" -d '{"to":["owner@tenant.example"],"cc":[],"message":"Please find your invoice attached."}'
+curl -X GET "{{BASE_URL}}/api/platform/v1/billing/invoices/{invoice_uuid}/pdf" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}"
+curl -X POST "{{BASE_URL}}/api/platform/v1/billing/invoices/{invoice_uuid}/payments" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}" -H "Idempotency-Key: {{REQUEST_ID}}-invoice-payment" -d '{"gateway":"razorpay","gateway_payment_id":"pay_123","payment_method":"card","amount":"5898.82","currency":"INR","payment_status":"success","paid_at":"2026-08-08T10:00:00Z","raw_response":{"token":"secret-token","status":"captured"}}'
+curl -X POST "{{BASE_URL}}/api/platform/v1/billing/invoices/export" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}"
+```
+
+Invoice create response returns `data.invoice` and `data.items`. PDF response returns file metadata only, never raw storage path.
+
+```bash
+curl -X GET "{{BASE_URL}}/api/platform/v1/billing/payments?payment_status=success" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}"
+curl -X POST "{{BASE_URL}}/api/platform/v1/billing/payments" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}" -H "Idempotency-Key: {{REQUEST_ID}}-payment-record" -d '{"tenant_id":"tenant_uuid","platform_invoice_id":"invoice_uuid","subscription_id":"subscription_uuid","gateway":"razorpay","gateway_payment_id":"pay_123","payment_method":"card","amount":"5898.82","currency":"INR","payment_status":"success","paid_at":"2026-08-08T10:00:00Z","raw_response":{"secret":"masked in response"}}'
+curl -X GET "{{BASE_URL}}/api/platform/v1/billing/payments/{payment_uuid}" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}"
+curl -X POST "{{BASE_URL}}/api/platform/v1/billing/payments/{payment_uuid}/retry" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}" -H "Idempotency-Key: {{REQUEST_ID}}-payment-retry"
+curl -X POST "{{BASE_URL}}/api/platform/v1/billing/payments/{payment_uuid}/reconcile" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}" -H "Idempotency-Key: {{REQUEST_ID}}-payment-reconcile"
+curl -X POST "{{BASE_URL}}/api/platform/v1/billing/payments/{payment_uuid}/refund" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}" -H "Idempotency-Key: {{REQUEST_ID}}-payment-refund" -d '{"amount":"1000.00","currency":"INR","reason":"Duplicate payment","gateway":"razorpay"}'
+curl -X POST "{{BASE_URL}}/api/platform/v1/billing/payments/export" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}"
+curl -X GET "{{BASE_URL}}/api/platform/v1/billing/refunds" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}"
+curl -X POST "{{BASE_URL}}/api/platform/v1/billing/refunds" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}" -H "Idempotency-Key: {{REQUEST_ID}}-refund-create" -d '{"platform_payment_id":"payment_uuid","amount":"1000.00","currency":"INR","reason":"Duplicate payment","gateway":"razorpay"}'
+curl -X GET "{{BASE_URL}}/api/platform/v1/billing/refunds/{refund_uuid}" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}"
+curl -X POST "{{BASE_URL}}/api/platform/v1/billing/refunds/{refund_uuid}/retry" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}" -H "Idempotency-Key: {{REQUEST_ID}}-refund-retry"
+curl -X POST "{{BASE_URL}}/api/platform/v1/billing/refunds/export" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}"
+```
+
+Payment and refund responses mask gateway `raw_response` secrets as `[masked]`.
+
+## 7.5 Coupons
+
+```bash
+curl -X GET "{{BASE_URL}}/api/platform/v1/coupons?status=active&discount_type=percent" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}"
+curl -X POST "{{BASE_URL}}/api/platform/v1/coupons" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}" -d '{"code":"YEARLY20","name":"Yearly 20%","discount_type":"percent","discount_value":"20.00","starts_at":"2026-08-08T00:00:00Z","expires_at":"2026-12-31T23:59:59Z","max_redemptions":100,"status":"active","plan_uuids":["plan_uuid"],"tenant_uuids":["tenant_uuid"]}'
+curl -X GET "{{BASE_URL}}/api/platform/v1/coupons/{coupon_uuid}" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}"
+curl -X PATCH "{{BASE_URL}}/api/platform/v1/coupons/{coupon_uuid}" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}" -d '{"name":"Yearly 20% Updated","status":"active"}'
+curl -X DELETE "{{BASE_URL}}/api/platform/v1/coupons/{coupon_uuid}" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}"
+curl -X POST "{{BASE_URL}}/api/platform/v1/coupons/{coupon_uuid}/activate" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}"
+curl -X POST "{{BASE_URL}}/api/platform/v1/coupons/{coupon_uuid}/deactivate" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}"
+curl -X GET "{{BASE_URL}}/api/platform/v1/coupons/{coupon_uuid}/redemptions" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}"
+curl -X PUT "{{BASE_URL}}/api/platform/v1/coupons/{coupon_uuid}/plans" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}" -d '{"plan_uuids":["plan_uuid"]}'
+curl -X PUT "{{BASE_URL}}/api/platform/v1/coupons/{coupon_uuid}/tenants" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}" -d '{"tenant_uuids":["tenant_uuid"]}'
+curl -X POST "{{BASE_URL}}/api/platform/v1/coupons/export" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}"
+```
+
+## 7.6 Modules and Feature Controls
+
+```bash
+curl -X GET "{{BASE_URL}}/api/platform/v1/modules?status=active" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}"
+curl -X POST "{{BASE_URL}}/api/platform/v1/modules" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}" -d '{"name":"Projects","code":"projects","description":"Project management","icon":"briefcase","category":"operations","is_core":true,"status":"active","sort_order":10}'
+curl -X GET "{{BASE_URL}}/api/platform/v1/modules/{module_uuid}" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}"
+curl -X PATCH "{{BASE_URL}}/api/platform/v1/modules/{module_uuid}" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}" -d '{"description":"Updated module"}'
+curl -X POST "{{BASE_URL}}/api/platform/v1/modules/{module_uuid}/enable" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}"
+curl -X POST "{{BASE_URL}}/api/platform/v1/modules/{module_uuid}/disable" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}"
+curl -X GET "{{BASE_URL}}/api/platform/v1/modules/{module_uuid}/features" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}"
+curl -X PUT "{{BASE_URL}}/api/platform/v1/modules/{module_uuid}/features" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}" -d '{"feature_uuids":["feature_uuid"]}'
+curl -X GET "{{BASE_URL}}/api/platform/v1/modules/{module_uuid}/tenants" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}"
+curl -X GET "{{BASE_URL}}/api/platform/v1/tenants/{tenant_uuid}/module-entitlements" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}"
+curl -X PUT "{{BASE_URL}}/api/platform/v1/tenants/{tenant_uuid}/modules/{module_code}" -H "Authorization: Bearer {{PLATFORM_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -H "X-Request-Id: {{REQUEST_ID}}" -d '{"enabled":true,"limits":{"users":25},"metadata":{"reason":"Enterprise override"},"reason":"Custom agreement"}'
+```
+
+## 7.7 Billing and Catalog Errors
+
+Missing idempotency key on financial mutations:
+
+```json
+{"success":false,"message":"Idempotency-Key header is required for this financial mutation.","data":null,"meta":{"request_id":"{{REQUEST_ID}}"},"errors":{"code":"IDEMPOTENCY_KEY_REQUIRED","details":[]}}
+```
+
+Reused idempotency key with different body:
+
+```json
+{"success":false,"message":"Idempotency-Key was already used with different request data.","data":null,"meta":{"request_id":"{{REQUEST_ID}}"},"errors":{"code":"IDEMPOTENCY_KEY_CONFLICT","details":[]}}
+```
+
+Validation error:
+
+```json
+{"success":false,"message":"Validation failed.","data":null,"meta":{"request_id":"{{REQUEST_ID}}"},"errors":{"code":"VALIDATION_ERROR","details":{"name":["The name field is required."]}}}
+```
+
+Missing permission:
+
+```json
+{"success":false,"message":"Missing permission.","data":null,"meta":{"request_id":"{{REQUEST_ID}}"},"errors":{"code":"PERMISSION_DENIED","details":{"permissions":["billing.invoice.create"]}}}
+```
+
+Not found:
+
+```json
+{"success":false,"message":"Resource not found.","data":null,"meta":{"request_id":"{{REQUEST_ID}}"},"errors":{"code":"NOT_FOUND","details":[]}}
+```
+
+Invoice not draft:
+
+```json
+{"success":false,"message":"Only draft invoices can be updated.","data":null,"meta":{"request_id":"{{REQUEST_ID}}"},"errors":{"code":"INVOICE_NOT_DRAFT","details":[]}}
+```

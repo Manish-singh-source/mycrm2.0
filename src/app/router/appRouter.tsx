@@ -44,6 +44,32 @@ import {
   PlatformTenantsListPage,
   PlatformTenantViewPage
 } from '@/features/platform/tenants/pages/PlatformTenantPages';
+import {
+  PlatformAddonCreatePage,
+  PlatformAddonEditPage,
+  PlatformAddonsListPage,
+  PlatformAddonViewPage,
+  PlatformFeatureCreatePage,
+  PlatformFeatureEditPage,
+  PlatformFeaturesListPage,
+  PlatformFeatureViewPage,
+  PlatformPlanCreatePage,
+  PlatformPlanEditPage,
+  PlatformPlansListPage,
+  PlatformPlanViewPage,
+  PlatformSubscriptionsListPage,
+  PlatformSubscriptionViewPage
+} from '@/features/platform/subscriptions/pages/PlatformSubscriptionCatalogPages';
+import {
+  PlatformCouponViewPage,
+  PlatformCouponsListPage,
+  PlatformInvoiceViewPage,
+  PlatformInvoicesListPage,
+  PlatformPaymentViewPage,
+  PlatformPaymentsListPage,
+  PlatformRefundViewPage,
+  PlatformRefundsListPage
+} from '@/features/platform/billing/pages/PlatformBillingPages';
 import { ForbiddenPage } from '@/pages/ForbiddenPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { PlaceholderPage } from '@/pages/PlaceholderPage';
@@ -313,6 +339,182 @@ export const appRouter = createBrowserRouter([
         element: (
           <RequirePermission guard="platform" anyOf={['tenant.edit']}>
             <PlatformTenantEditPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'subscriptions',
+        element: (
+          <RequirePermission guard="platform" anyOf={['subscription.view']}>
+            <PlatformSubscriptionsListPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'subscriptions/:id',
+        element: (
+          <RequirePermission guard="platform" anyOf={['subscription.view']}>
+            <PlatformSubscriptionViewPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'catalog/plans',
+        element: (
+          <RequirePermission guard="platform" anyOf={['plan.view']}>
+            <PlatformPlansListPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'catalog/plans/create',
+        element: (
+          <RequirePermission guard="platform" anyOf={['plan.create']}>
+            <PlatformPlanCreatePage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'catalog/plans/:id',
+        element: (
+          <RequirePermission guard="platform" anyOf={['plan.view']}>
+            <PlatformPlanViewPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'catalog/plans/:id/edit',
+        element: (
+          <RequirePermission guard="platform" anyOf={['plan.edit']}>
+            <PlatformPlanEditPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'catalog/features',
+        element: (
+          <RequirePermission guard="platform" anyOf={['feature.view']}>
+            <PlatformFeaturesListPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'catalog/features/create',
+        element: (
+          <RequirePermission guard="platform" anyOf={['feature.create']}>
+            <PlatformFeatureCreatePage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'catalog/features/:id',
+        element: (
+          <RequirePermission guard="platform" anyOf={['feature.view']}>
+            <PlatformFeatureViewPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'catalog/features/:id/edit',
+        element: (
+          <RequirePermission guard="platform" anyOf={['feature.edit']}>
+            <PlatformFeatureEditPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'catalog/add-ons',
+        element: (
+          <RequirePermission guard="platform" anyOf={['plan.view']}>
+            <PlatformAddonsListPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'catalog/add-ons/create',
+        element: (
+          <RequirePermission guard="platform" anyOf={['plan.create']}>
+            <PlatformAddonCreatePage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'catalog/add-ons/:id',
+        element: (
+          <RequirePermission guard="platform" anyOf={['plan.view']}>
+            <PlatformAddonViewPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'catalog/add-ons/:id/edit',
+        element: (
+          <RequirePermission guard="platform" anyOf={['plan.edit']}>
+            <PlatformAddonEditPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'billing/invoices',
+        element: (
+          <RequirePermission guard="platform" anyOf={['billing.invoice.view']}>
+            <PlatformInvoicesListPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'billing/invoices/:id',
+        element: (
+          <RequirePermission guard="platform" anyOf={['billing.invoice.view']}>
+            <PlatformInvoiceViewPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'billing/payments',
+        element: (
+          <RequirePermission guard="platform" anyOf={['billing.payment.view']}>
+            <PlatformPaymentsListPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'billing/payments/:id',
+        element: (
+          <RequirePermission guard="platform" anyOf={['billing.payment.view']}>
+            <PlatformPaymentViewPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'billing/refunds',
+        element: (
+          <RequirePermission guard="platform" anyOf={['billing.payment.view', 'billing.payment.refund']}>
+            <PlatformRefundsListPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'billing/refunds/:id',
+        element: (
+          <RequirePermission guard="platform" anyOf={['billing.payment.view', 'billing.payment.refund']}>
+            <PlatformRefundViewPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'billing/coupons',
+        element: (
+          <RequirePermission guard="platform" anyOf={['coupon.view']}>
+            <PlatformCouponsListPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'billing/coupons/:id',
+        element: (
+          <RequirePermission guard="platform" anyOf={['coupon.view']}>
+            <PlatformCouponViewPage />
           </RequirePermission>
         )
       },
