@@ -318,7 +318,7 @@ function detailFor(kind: BillingKind, id: string) {
   return platformBillingApi.coupons.detail(id);
 }
 
-function mutateFor(kind: BillingKind, action: BillingModal, record: BillingRecord, payload: Record<string, unknown>) {
+async function mutateFor(kind: BillingKind, action: BillingModal, record: BillingRecord, payload: Record<string, unknown>) {
   const id = idOf(record);
   if (action === 'sendInvoice') return platformBillingApi.invoices.send(id, payload);
   if (action === 'recordPayment') return platformBillingApi.invoices.recordPayment(id, payload);
@@ -326,9 +326,12 @@ function mutateFor(kind: BillingKind, action: BillingModal, record: BillingRecor
   if (action === 'retryPayment') return platformBillingApi.payments.retry(id, payload);
   if (action === 'refundPayment') return platformBillingApi.payments.refund(id, payload);
   if (action === 'retryRefund') return platformBillingApi.refunds.retry(id, payload);
-  if (action === 'couponRules') return id ? platformBillingApi.coupons.update(id, payload) : platformBillingApi.coupons.create(payload);
+  if (action === 'couponRules') {
+    const coupon = id ? await platformBillingApi.coupons.update(id, payload) : await platformBillingApi.coupons.create(payload);
+    return { data: coupon };
+  }
   if (action === 'disableCoupon') return platformBillingApi.coupons.deactivate(id);
-  return Promise.resolve({ data: null });
+  return { data: null };
 }
 
 function exportFor(kind: BillingKind) {
