@@ -32,15 +32,15 @@ export function AppTopbar({
   return (
     <div className="topbar">
       <div className="topbar__left">
-        <Button type="button" variant="ghost" size="sm" className="sidebar-toggle" onClick={onToggleSidebar}>
+        {/* <Button type="button" variant="ghost" size="sm" className="sidebar-toggle" onClick={onToggleSidebar}>
           Menu
-        </Button>
-        <label className="topbar-search">
+        </Button> */}
+        {/* <label className="topbar-search">
           <Search size={16} aria-hidden />
           <span className="sr-only">Search</span>
           <input type="search" placeholder={searchPlaceholder} aria-label="Search" />
           <kbd>Ctrl K</kbd>
-        </label>
+        </label> */}
       </div>
 
       <div className="topbar__right">

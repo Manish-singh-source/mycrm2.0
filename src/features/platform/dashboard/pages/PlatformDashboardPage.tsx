@@ -183,10 +183,10 @@ export function PlatformDashboardPage() {
           <p>Home / Dashboard / {range.date_from} to {range.date_to}</p>
         </div>
         <div className="dashboard-head__tools">
-          <label className="dashboard-search">
+          {/* <label className="dashboard-search">
             <Search size={16} aria-hidden="true" />
             <input placeholder="Search tenants, users, invoices..." />
-          </label>
+          </label> */}
           <Button type="button" variant="secondary" size="sm" onClick={() => setDialog('date')}>
             <CalendarDays size={16} aria-hidden="true" />
             Date range
