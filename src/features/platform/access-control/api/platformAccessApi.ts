@@ -191,6 +191,7 @@ export const platformAccessApi = {
   },
   teamRoles: {
     list: (query?: ApiQuery) => list<PlatformRecord>('/platform-team-roles', query),
+    detail: (id: string) => detail<PlatformRecord>(`/platform-team-roles/${encodeURIComponent(id)}`),
     create: async (body: TeamRolePayload) => unwrapRecord(await platformClient.post('/platform-team-roles', body)),
     update: async (id: string, body: Partial<TeamRolePayload>) =>
       unwrapRecord(await platformClient.patch(`/platform-team-roles/${encodeURIComponent(id)}`, body)),

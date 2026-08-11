@@ -27,6 +27,7 @@ import {
   PlatformTeamEditPage,
   PlatformTeamRoleCreatePage,
   PlatformTeamRoleEditPage,
+  PlatformTeamRoleViewPage,
   PlatformTeamRolesListPage,
   PlatformTeamsListPage,
   PlatformTeamViewPage
@@ -299,6 +300,14 @@ export const appRouter = createBrowserRouter([
         element: (
           <RequirePermission guard="platform" anyOf={['platform_team.create']}>
             <PlatformTeamRoleCreatePage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'team-roles/:id',
+        element: (
+          <RequirePermission guard="platform" anyOf={['platform_team.view']}>
+            <PlatformTeamRoleViewPage />
           </RequirePermission>
         )
       },

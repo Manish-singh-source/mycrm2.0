@@ -60,6 +60,7 @@ type ModalKind =
   | 'teamRoleEditor'
   | 'archiveTeam'
   | 'deletePermission'
+  | 'deleteTeamRole'
   | 'export'
   | 'columns'
   | 'views'
@@ -196,6 +197,10 @@ function activityRows(record: PlatformRecord) {
 }
 
 function roleDisplayDetails(record: Record<string, unknown>, kind: ResourceKind) {
+  if (kind === 'teamRoles') {
+    const hidden = new Set(['uuid', 'id', 'deleted_at', 'created_at', 'updated_at']);
+    return Object.fromEntries(Object.entries(record).filter(([key]) => !hidden.has(key)));
+  }
   if (kind !== 'roles') return record;
   const hidden = new Set([
     'uuid',
@@ -254,12 +259,40 @@ function groupedPermissionIds(grouped?: GroupedPermissions) {
     .filter(Boolean);
 }
 
+function groupedPermissionsForDisplay(value: unknown): GroupedPermissions {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([module, permissions]) => {
+      const rows = Array.isArray(permissions) ? permissions : [];
+
+      return [
+        module,
+        rows.map((permission) => {
+          if (permission && typeof permission === 'object' && !Array.isArray(permission)) {
+            return permission as PlatformRecord;
+          }
+
+          const code = String(permission ?? '');
+
+          return {
+            uuid: `${module}.${code}`,
+            module,
+            name: `${module}.${code}`,
+            display_name: toTitleCase(code)
+          };
+        })
+      ];
+    })
+  );
+}
+
 function guardNameValue(value: unknown): 'platform' | 'tenant' {
   return value === 'tenant' ? 'tenant' : 'platform';
 }
 function selectedPermissionIds(record?: PlatformRecord | null) {
   if (!record?.permissions) return [];
-  return groupedPermissionIds(record.permissions as GroupedPermissions);
+  return groupedPermissionIds(groupedPermissionsForDisplay(record.permissions));
 }
 
 function auditPayload(value: string) {
@@ -326,6 +359,10 @@ export function PlatformTeamRoleEditPage() {
   return <PlatformResourcePage kind="teamRoles" mode="edit" />;
 }
 
+export function PlatformTeamRoleViewPage() {
+  return <PlatformResourcePage kind="teamRoles" mode="view" />;
+}
+
 function PlatformResourcePage({ kind, mode }: { kind: ResourceKind; mode: Mode }) {
   const { id = '' } = useParams();
   const meta = resourceMeta[kind];
@@ -364,9 +401,7 @@ function DetailLoader({
       if (kind === 'roles') return platformAccessApi.roles.detail(id);
       if (kind === 'permissions') return platformAccessApi.permissions.detail(id);
       if (kind === 'teams') return platformAccessApi.teams.detail(id);
-      throw new Error(
-        'Team role detail endpoint is not documented; edit from the list row instead.'
-      );
+      return platformAccessApi.teamRoles.detail(id);
     }
   });
 
@@ -470,7 +505,12 @@ function ResourceList({ kind }: { kind: ResourceKind }) {
         });
       throw new Error(`Unsupported action ${action}`);
     },
-    onSuccess: invalidate
+    onSuccess: () => {
+      invalidate();
+      setModal(null);
+      setDrawer(null);
+      setSelectedRecord(null);
+    }
   });
 
   const columns = useMemo(
@@ -623,6 +663,8 @@ function ResourceList({ kind }: { kind: ResourceKind }) {
         selectedCount={selectedIds.length}
           sort={sort}
           onHiddenColumnIdsChange={setHiddenColumnIds}
+          actionLoading={actionMutation.isPending}
+          actionError={actionMutation.error}
           onClose={() => {
             setModal(null);
             setDrawer(null);
@@ -657,6 +699,8 @@ function ResourceList({ kind }: { kind: ResourceKind }) {
         selectedCount={selectedIds.length}
           sort={sort}
         onHiddenColumnIdsChange={setHiddenColumnIds}
+        actionLoading={actionMutation.isPending}
+        actionError={actionMutation.error}
         onClose={() => {
           setModal(null);
           setDrawer(null);
@@ -1116,17 +1160,19 @@ function ResourceActionsMenu({
           >
             <Eye size={15} aria-hidden="true" /> View
           </button>
-          <PermissionButton
-            guard="platform"
-            permission={permissionFor(kind, 'edit')}
-            type="button"
-            role="menuitem"
-            variant="ghost"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => run(() => handlers.onEdit(row))}
-          >
-            <Pencil size={15} aria-hidden="true" /> Edit
-          </PermissionButton>
+          {kind === 'teamRoles' ? null : (
+            <PermissionButton
+              guard="platform"
+              permission={permissionFor(kind, 'edit')}
+              type="button"
+              role="menuitem"
+              variant="ghost"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => run(() => handlers.onEdit(row))}
+            >
+              <Pencil size={15} aria-hidden="true" /> Edit
+            </PermissionButton>
+          )}
 
           {kind === 'permissions' ? (
             <>
@@ -1223,7 +1269,7 @@ function ResourceActionsMenu({
                 variant="ghost"
                 className="is-danger"
                 onMouseDown={(event) => event.preventDefault()}
-                onClick={() => run(() => handlers.onInlineAction('deleteTeamRole', row))}
+                onClick={() => run(() => handlers.onAction('deleteTeamRole', row))}
               >
                 <Trash2 size={15} aria-hidden="true" /> Delete Team Role
               </PermissionButton>
@@ -1556,9 +1602,9 @@ function TeamRoleFormPage({ record, title }: { record?: PlatformRecord; title?: 
   });
   const mutation = useMutation({
     mutationFn: (values: TeamRoleForm) => {
-      const payload: TeamRolePayload = {
+      const payload: Partial<TeamRolePayload> = {
         name: values.name,
-        code: values.code,
+        ...(!record || values.code !== textOf(record, ['code'], '') ? { code: values.code } : {}),
         description: values.description,
         permissions: values.permissions_json ? JSON.parse(values.permissions_json) : {},
         sort_order: values.sort_order,
@@ -1568,7 +1614,7 @@ function TeamRoleFormPage({ record, title }: { record?: PlatformRecord; title?: 
       };
       return record
         ? platformAccessApi.teamRoles.update(idOf(record), payload)
-        : platformAccessApi.teamRoles.create(payload);
+        : platformAccessApi.teamRoles.create(payload as TeamRolePayload);
     },
     onError: (error) => applyApiFieldErrors(form, error),
     onSuccess: async () => {
@@ -1609,13 +1655,20 @@ function ResourceView({ kind, record }: { kind: ResourceKind; record: PlatformRe
   const [activeTab, setActiveTab] = useState('details');
   const [modal, setModal] = useState<ModalKind>(null);
   const [drawer, setDrawer] = useState<DrawerKind>(null);
-  const tabs = [
-    { id: 'details', label: 'Details' },
-    { id: 'permissions', label: 'Permissions' },
-    { id: 'users', label: kind === 'teams' ? 'Members' : 'Assigned Users' },
-    { id: 'assignments', label: 'Assignments' },
-    { id: 'activity', label: 'Activity' }
-  ];
+  const permissionGroups = groupedPermissionsForDisplay(record.permissions);
+  const tabs = kind === 'teamRoles'
+    ? [
+        { id: 'details', label: 'Details' },
+        { id: 'permissions', label: 'Permissions' },
+        { id: 'activity', label: 'Activity' }
+      ]
+    : [
+        { id: 'details', label: 'Details' },
+        { id: 'permissions', label: 'Permissions' },
+        { id: 'users', label: kind === 'teams' ? 'Members' : 'Assigned Users' },
+        { id: 'assignments', label: 'Assignments' },
+        { id: 'activity', label: 'Activity' }
+      ];
 
   return (
     <section className="enterprise-module-page platform-access-page">
@@ -1753,7 +1806,7 @@ function ResourceView({ kind, record }: { kind: ResourceKind; record: PlatformRe
           <RecordDetails record={roleDisplayDetails(record, kind)} />
         ) : null}
         {activeTab === 'permissions' ? (
-          <PermissionGroups groups={record.permissions as GroupedPermissions | undefined} />
+          <PermissionGroups groups={permissionGroups} />
         ) : null}
         {activeTab === 'users' && kind === 'teams' ? <TeamMembersPanel team={record} /> : null}
         {activeTab === 'users' && kind !== 'teams' ? (
@@ -1802,7 +1855,9 @@ function StandardListControls({
   sort,
   onHiddenColumnIdsChange,
   onClose,
-  onAction
+  onAction,
+  actionLoading = false,
+  actionError = null
 }: {
   kind: ResourceKind;
   modal: ModalKind;
@@ -1818,6 +1873,8 @@ function StandardListControls({
   onHiddenColumnIdsChange?: (ids: string[]) => void;
   onClose: () => void;
   onAction?: (action: string, payload: Record<string, unknown>) => void;
+  actionLoading?: boolean;
+  actionError?: unknown;
 }) {
   const queryClient = useQueryClient();
   const [draftFilters, setDraftFilters] = useState(filters);
@@ -2062,6 +2119,22 @@ function StandardListControls({
         onConfirm={(payload) => {
           onAction?.('archiveTeam', auditPayload(payload.reason ?? 'Team archived'));
           onClose();
+        }}
+      />
+      <ConfirmDialog
+        open={modal === 'deleteTeamRole'}
+        onClose={onClose}
+        title="Delete team role"
+        description="Delete this team role if it is not assigned to any team members."
+        confirmLabel="Delete"
+        typedConfirmation="DELETE"
+        reasonRequired
+        guard="platform"
+        permission="platform_team.delete"
+        loading={actionLoading}
+        error={actionError ? errorMessage(actionError) : null}
+        onConfirm={(payload) => {
+          onAction?.('deleteTeamRole', auditPayload(payload.reason ?? 'Team role deleted'));
         }}
       />
     </>
@@ -2962,9 +3035,9 @@ function TeamRoleEditorModal({
   });
   const mutation = useMutation({
     mutationFn: (values: TeamRoleForm) => {
-      const payload: TeamRolePayload = {
+      const payload: Partial<TeamRolePayload> = {
         name: values.name,
-        code: values.code,
+        ...(!role || values.code !== textOf(role, ['code'], '') ? { code: values.code } : {}),
         description: values.description,
         permissions: values.permissions_json ? JSON.parse(values.permissions_json) : {},
         sort_order: values.sort_order,
@@ -2975,7 +3048,7 @@ function TeamRoleEditorModal({
 
       return role
         ? platformAccessApi.teamRoles.update(idOf(role), payload)
-        : platformAccessApi.teamRoles.create(payload);
+        : platformAccessApi.teamRoles.create(payload as TeamRolePayload);
     },
     onError: (error) => applyApiFieldErrors(form, error),
     onSuccess: async () => {

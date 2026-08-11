@@ -16,11 +16,15 @@ vi.mock('@/lib/api/platformClient', () => ({
 
 const mockedGet = vi.mocked(platformClient.get);
 const mockedPost = vi.mocked(platformClient.post);
+const mockedPatch = vi.mocked(platformClient.patch);
+const mockedDelete = vi.mocked(platformClient.delete);
 
 describe('platformAccessApi', () => {
   beforeEach(() => {
     mockedGet.mockReset();
     mockedPost.mockReset();
+    mockedPatch.mockReset();
+    mockedDelete.mockReset();
   });
 
   it('sends roles list filters, sorting, and pagination to the backend', async () => {
@@ -115,5 +119,46 @@ describe('platformAccessApi', () => {
       filters: { event: 'platform_role_created' },
       columns: ['event', 'description']
     });
+  });
+  it('uses real platform teams endpoints for list, detail, members, assignments, and deletes', async () => {
+    mockedGet.mockResolvedValue({ data: [], meta: { pagination: { total: 0 } } } as never);
+    mockedPost.mockResolvedValue({ data: { member_added: true } } as never);
+
+    await platformAccessApi.teams.list({ search: 'ops', sort: 'name', direction: 'asc', filter: { status: 'active', visibility: 'internal' } });
+    await platformAccessApi.teams.detail('team-1');
+    await platformAccessApi.teams.members('team-1');
+    await platformAccessApi.teams.assignments('team-1');
+    await platformAccessApi.teams.addMembers('team-1', { platform_user_uuid: 'user-1', team_role_uuid: 'role-1' });
+    await platformAccessApi.teams.assignRecord('team-1', { assignable_type: 'tenant', assignable_id: 123 });
+
+    expect(mockedGet).toHaveBeenNthCalledWith(1, '/platform-teams', {
+      query: { search: 'ops', sort: 'name', direction: 'asc', filter: { status: 'active', visibility: 'internal' } }
+    });
+    expect(mockedGet).toHaveBeenNthCalledWith(2, '/platform-teams/team-1');
+    expect(mockedGet).toHaveBeenNthCalledWith(3, '/platform-teams/team-1/members');
+    expect(mockedGet).toHaveBeenNthCalledWith(4, '/platform-teams/team-1/assignments');
+    expect(mockedPost).toHaveBeenNthCalledWith(1, '/platform-teams/team-1/members', { platform_user_uuid: 'user-1', team_role_uuid: 'role-1' });
+    expect(mockedPost).toHaveBeenNthCalledWith(2, '/platform-teams/team-1/assignments', { assignable_type: 'tenant', assignable_id: 123 });
+  });
+
+  it('uses real platform team role list, detail, create, update, and delete endpoints', async () => {
+    mockedGet.mockResolvedValue({ data: [], meta: { pagination: { total: 0 } } } as never);
+    mockedPost.mockResolvedValue({ data: { team_role: { uuid: 'role-1' } } } as never);
+    mockedPatch.mockResolvedValue({ data: { team_role: { uuid: 'role-1' } } } as never);
+    mockedDelete.mockResolvedValue({ data: null } as never);
+
+    await platformAccessApi.teamRoles.list({ search: 'lead', sort: 'sort_order', direction: 'asc', filter: { status: 'active' } });
+    await platformAccessApi.teamRoles.detail('role-1');
+    await platformAccessApi.teamRoles.create({ name: 'Lead', code: 'lead', permissions: {}, status: 'active' });
+    await platformAccessApi.teamRoles.update('role-1', { name: 'Lead Updated', status: 'active' });
+    await platformAccessApi.teamRoles.delete('role-1', { audit_reason: 'cleanup' });
+
+    expect(mockedGet).toHaveBeenNthCalledWith(1, '/platform-team-roles', {
+      query: { search: 'lead', sort: 'sort_order', direction: 'asc', filter: { status: 'active' } }
+    });
+    expect(mockedGet).toHaveBeenNthCalledWith(2, '/platform-team-roles/role-1');
+    expect(mockedPost).toHaveBeenCalledWith('/platform-team-roles', { name: 'Lead', code: 'lead', permissions: {}, status: 'active' });
+    expect(mockedPatch).toHaveBeenCalledWith('/platform-team-roles/role-1', { name: 'Lead Updated', status: 'active' });
+    expect(mockedDelete).toHaveBeenCalledWith('/platform-team-roles/role-1', { body: { audit_reason: 'cleanup' } });
   });
 });
