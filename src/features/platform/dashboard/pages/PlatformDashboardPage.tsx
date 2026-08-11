@@ -312,7 +312,7 @@ export function PlatformDashboardPage() {
             labelOf(row, ['slug']),
             labelOf(row, ['owner', 'owner_name', 'owner_email']),
             labelOf(row, ['current_plan', 'plan', 'plan_name']),
-            labelOf(row, ['status', 'tenant_status', 'subscription_status']),
+            labelOf(row, ['subscription_status', 'status', 'tenant_status']),
             labelOf(row, ['created_at'])
           ]}
         />
@@ -321,8 +321,8 @@ export function PlatformDashboardPage() {
           query={queries.recentPayments}
           columns={['Payment #', 'Tenant', 'Amount', 'Gateway', 'Status', 'Paid At']}
           renderRow={(row) => [
-            labelOf(row, ['payment_number', 'number']),
-            labelOf(row, ['tenant', 'tenant_name']),
+            labelOf(row, ['payment_number', 'number', 'uuid']),
+            labelOf(row, ['organization_name', 'tenant', 'tenant_name']),
             money(row.amount, String(row.currency ?? currency)),
             labelOf(row, ['gateway']),
             labelOf(row, ['payment_status', 'status']),
@@ -335,7 +335,7 @@ export function PlatformDashboardPage() {
           columns={['Invoice #', 'Tenant', 'Due Date', 'Balance', 'Status']}
           renderRow={(row) => [
             labelOf(row, ['invoice_number', 'number']),
-            labelOf(row, ['tenant', 'tenant_name']),
+            labelOf(row, ['organization_name', 'tenant', 'tenant_name']),
             labelOf(row, ['due_date']),
             money(row.balance_amount ?? row.balance, String(row.currency ?? currency)),
             labelOf(row, ['status'])
@@ -374,7 +374,7 @@ export function PlatformDashboardPage() {
           renderRow={(row) => [
             labelOf(row, ['severity']),
             labelOf(row, ['event', 'message', 'type']),
-            labelOf(row, ['tenant', 'tenant_name']),
+            labelOf(row, ['organization_name', 'tenant', 'tenant_name']),
             labelOf(row, ['user_ip', 'ip_address', 'actor']),
             labelOf(row, ['created_at'])
           ]}

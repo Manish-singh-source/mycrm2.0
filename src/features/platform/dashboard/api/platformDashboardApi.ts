@@ -76,7 +76,7 @@ export const platformDashboardApi = {
   planDistribution: (range: DashboardDateRange) =>
     chartEndpoint('/dashboard/charts/plan-distribution', range, ['plan_distribution', 'planDistribution', 'plans']),
   subscriptionStatus: (range: DashboardDateRange) =>
-    chartEndpoint('/dashboard/charts/subscription-status', range, ['subscription_status', 'subscriptionStatus', 'subscriptions']),
+    chartEndpoint('/dashboard/charts/subscription-status', range, ['subscription_status', 'subscriptionStatus', 'tenant_status', 'tenantStatus', 'subscriptions']),
   usage: (range: DashboardDateRange) =>
     chartEndpoint('/dashboard/charts/usage', range, ['usage', 'usage_chart', 'usageChart', 'api_usage', 'storage_usage', 'payment_trend']),
   recentTenants: (range: DashboardDateRange) =>
@@ -91,11 +91,11 @@ export const platformDashboardApi = {
     tableEndpoint('/dashboard/security-events', range, '/dashboard/alerts', ['security_events', 'securityEvents', 'events']),
   failedJobs: (range: DashboardDateRange) =>
     platformClient.get<DashboardTableRow[]>('/monitoring/queue-jobs', {
-      query: { ...queryFor(range), filter: { status: 'failed' } }
+      query: { ...queryFor(range), status: 'failed' }
     }),
   incidents: (range: DashboardDateRange) =>
     platformClient.get<DashboardTableRow[]>('/monitoring/incidents', {
-      query: { ...queryFor(range), filter: { status: ['open', 'investigating', 'active'] } }
+      query: { ...queryFor(range), status: ['open', 'investigating', 'active'] }
     }),
   exportSnapshot: (range: DashboardDateRange, format: string) =>
     platformClient.post<{ export_id?: string; file_url?: string; queued?: boolean }, { format: string }>(
