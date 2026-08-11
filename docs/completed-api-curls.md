@@ -677,6 +677,27 @@ These endpoints require a platform token created by the unified login flow.
 | GET    | `/profile/sessions`              | List Sanctum sessions/tokens         |
 | DELETE | `/profile/sessions/{session_id}` | Revoke session/token                 |
 
+Example platform token refresh:
+
+```bash
+curl -X POST "{{BASE_URL}}/api/platform/v1/auth/refresh" \
+  -H "Authorization: Bearer {{PLATFORM_TOKEN}}" \
+  -H "Accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "X-Request-Id: {{REQUEST_ID}}" \
+  -d '{
+    "device_name": "Chrome on Windows"
+  }'
+```
+
+Request body:
+
+```json
+{
+  "device_name": "Chrome on Windows"
+}
+```
+
 Example platform profile update:
 
 ```bash
@@ -730,6 +751,106 @@ Response example:
 
 ```json
 {"success": true, "message": "Confirm 2FA setup.", "data": {"secret": "BASE32TOTPSECRET", "provisioning_uri": "otpauth://totp/SaaS%20CRM:user%40example.com?secret=BASE32TOTPSECRET&issuer=SaaS%20CRM&algorithm=SHA1&digits=6&period=30"}, "meta": {"request_id": "{{REQUEST_ID}}"}, "errors": null}
+```
+
+Example platform 2FA confirm:
+
+```bash
+curl -X POST "{{BASE_URL}}/api/platform/v1/auth/2fa/confirm" \
+  -H "Authorization: Bearer {{PLATFORM_TOKEN}}" \
+  -H "Accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "X-Request-Id: {{REQUEST_ID}}" \
+  -d '{
+    "code": "123456"
+  }'
+```
+
+Request body:
+
+```json
+{"code": "123456"}
+```
+
+Example platform 2FA disable:
+
+```bash
+curl -X POST "{{BASE_URL}}/api/platform/v1/auth/2fa/disable" \
+  -H "Authorization: Bearer {{PLATFORM_TOKEN}}" \
+  -H "Accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "X-Request-Id: {{REQUEST_ID}}" \
+  -d '{
+    "password": "StrongPassword#123"
+  }'
+```
+
+Request body:
+
+```json
+{"password": "StrongPassword#123"}
+```
+
+Example platform password change:
+
+```bash
+curl -X PUT "{{BASE_URL}}/api/platform/v1/profile/password" \
+  -H "Authorization: Bearer {{PLATFORM_TOKEN}}" \
+  -H "Accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "X-Request-Id: {{REQUEST_ID}}" \
+  -d '{
+    "current_password": "StrongPassword#123",
+    "password": "NewStrongPassword#123",
+    "password_confirmation": "NewStrongPassword#123"
+  }'
+```
+
+Request body:
+
+```json
+{
+  "current_password": "StrongPassword#123",
+  "password": "NewStrongPassword#123",
+  "password_confirmation": "NewStrongPassword#123"
+}
+```
+
+Example platform preferences update:
+
+```bash
+curl -X PUT "{{BASE_URL}}/api/platform/v1/settings/preferences" \
+  -H "Authorization: Bearer {{PLATFORM_TOKEN}}" \
+  -H "Accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "X-Request-Id: {{REQUEST_ID}}" \
+  -d '{
+    "preferences": {
+      "notifications": {
+        "email": true,
+        "browser": false
+      },
+      "ui": {
+        "theme": "light"
+      }
+    }
+  }'
+```
+
+Request body:
+
+```json
+{
+  "preferences": {
+    "notifications": {
+      "email": true,
+      "browser": false
+    },
+    "ui": {
+      "theme": "light"
+    }
+  }
+}
 ```
 
 ## 2.2 Platform API Tokens
@@ -798,6 +919,28 @@ These endpoints require a tenant/client token created by the unified login flow 
 | GET    | `/profile/sessions`              | List Sanctum sessions/tokens         |
 | DELETE | `/profile/sessions/{session_id}` | Revoke session/token                 |
 
+Example tenant token refresh:
+
+```bash
+curl -X POST "{{BASE_URL}}/api/tenant/v1/auth/refresh" \
+  -H "Authorization: Bearer {{TENANT_TOKEN}}" \
+  -H "Accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "X-Tenant: {{TENANT}}" \
+  -H "X-Request-Id: {{REQUEST_ID}}" \
+  -d '{
+    "device_name": "Chrome on Windows"
+  }'
+```
+
+Request body:
+
+```json
+{
+  "device_name": "Chrome on Windows"
+}
+```
+
 Example tenant profile update:
 
 ```bash
@@ -835,6 +978,122 @@ Response example:
 
 ```json
 {"success": true, "message": "Profile updated.", "data": {"user": {"uuid": "user_uuid", "display_name": "Sahil Owner"}}, "meta": {"request_id": "{{REQUEST_ID}}"}, "errors": null}
+```
+
+Example tenant 2FA enable:
+
+```bash
+curl -X POST "{{BASE_URL}}/api/tenant/v1/auth/2fa/enable" \
+  -H "Authorization: Bearer {{TENANT_TOKEN}}" \
+  -H "Accept: application/json" \
+  -H "X-Tenant: {{TENANT}}" \
+  -H "X-Request-Id: {{REQUEST_ID}}"
+```
+
+Request body: none
+
+Example tenant 2FA confirm:
+
+```bash
+curl -X POST "{{BASE_URL}}/api/tenant/v1/auth/2fa/confirm" \
+  -H "Authorization: Bearer {{TENANT_TOKEN}}" \
+  -H "Accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "X-Tenant: {{TENANT}}" \
+  -H "X-Request-Id: {{REQUEST_ID}}" \
+  -d '{
+    "code": "123456"
+  }'
+```
+
+Request body:
+
+```json
+{"code": "123456"}
+```
+
+Example tenant 2FA disable:
+
+```bash
+curl -X POST "{{BASE_URL}}/api/tenant/v1/auth/2fa/disable" \
+  -H "Authorization: Bearer {{TENANT_TOKEN}}" \
+  -H "Accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "X-Tenant: {{TENANT}}" \
+  -H "X-Request-Id: {{REQUEST_ID}}" \
+  -d '{
+    "password": "StrongPassword#123"
+  }'
+```
+
+Request body:
+
+```json
+{"password": "StrongPassword#123"}
+```
+
+Example tenant password change:
+
+```bash
+curl -X PUT "{{BASE_URL}}/api/tenant/v1/profile/password" \
+  -H "Authorization: Bearer {{TENANT_TOKEN}}" \
+  -H "Accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "X-Tenant: {{TENANT}}" \
+  -H "X-Request-Id: {{REQUEST_ID}}" \
+  -d '{
+    "current_password": "StrongPassword#123",
+    "password": "NewStrongPassword#123",
+    "password_confirmation": "NewStrongPassword#123"
+  }'
+```
+
+Request body:
+
+```json
+{
+  "current_password": "StrongPassword#123",
+  "password": "NewStrongPassword#123",
+  "password_confirmation": "NewStrongPassword#123"
+}
+```
+
+Example tenant preferences update:
+
+```bash
+curl -X PUT "{{BASE_URL}}/api/tenant/v1/profile/preferences" \
+  -H "Authorization: Bearer {{TENANT_TOKEN}}" \
+  -H "Accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "X-Tenant: {{TENANT}}" \
+  -H "X-Request-Id: {{REQUEST_ID}}" \
+  -d '{
+    "preferences": {
+      "notifications": {
+        "email": true,
+        "browser": false
+      },
+      "ui": {
+        "theme": "light"
+      }
+    }
+  }'
+```
+
+Request body:
+
+```json
+{
+  "preferences": {
+    "notifications": {
+      "email": true,
+      "browser": false
+    },
+    "ui": {
+      "theme": "light"
+    }
+  }
+}
 ```
 
 ## 3.2 Tenant API Tokens
@@ -977,6 +1236,30 @@ curl -X POST "{{BASE_URL}}/api/platform/v1/platform-teams" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer {{PLATFORM_TOKEN}}" \
   -d '{"name":"Customer Success","code":"customer-success","description":"Tenant success operations","status":"active"}'
+
+curl -X POST "{{BASE_URL}}/api/platform/v1/platform-team-roles" \
+  -H "Accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer {{PLATFORM_TOKEN}}" \
+  -d '{"name":"Implementation Lead","code":"implementation_lead","permissions":["platform_team.view","platform_team.assign"],"status":"active"}'
+
+curl -X PATCH "{{BASE_URL}}/api/platform/v1/platform-team-roles/{role_uuid}" \
+  -H "Accept: application/json" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer {{PLATFORM_TOKEN}}" \
+  -d '{"name":"Senior Implementation Lead","permissions":["platform_team.view","platform_team.assign"],"status":"active"}'
+```
+
+Platform team role create body:
+
+```json
+{"name":"Implementation Lead","code":"implementation_lead","permissions":["platform_team.view","platform_team.assign"],"status":"active"}
+```
+
+Platform team role update body:
+
+```json
+{"name":"Senior Implementation Lead","permissions":["platform_team.view","platform_team.assign"],"status":"active"}
 ```
 
 Response example:
