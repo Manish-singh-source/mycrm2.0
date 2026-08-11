@@ -68,15 +68,17 @@ type ModalKind =
 
 type DrawerKind = 'assignPermissions' | 'permissionDetail' | 'filters' | null;
 
+const guardNameOptions = ['platform', 'tenant'];
+
 const roleSchema = z.object({
   name: z.string().min(2),
   display_name: z.string().min(2),
-  guard_name: z.string().min(2),
+  guard_name: z.enum(['platform', 'tenant']),
   description: z.string().optional(),
   status: z.string(),
   is_system: z.boolean(),
   permission_ids: z.string().optional(),
-  audit_reason: z.string().min(3)
+  audit_reason: z.string().optional()
 });
 
 const permissionSchema = z.object({
@@ -84,14 +86,14 @@ const permissionSchema = z.object({
   name: z.string().min(3),
   display_name: z.string().min(2),
   description: z.string().optional(),
-  guard_name: z.string().min(2),
+  guard_name: z.enum(['platform', 'tenant']),
   is_system: z.boolean(),
   status: z.string()
 });
 
 const teamSchema = z.object({
   name: z.string().min(2),
-  code: z.string().min(2),
+  code: z.string().optional(),
   description: z.string().optional(),
   lead_platform_user_id: z.string().optional(),
   assistant_lead_platform_user_id: z.string().optional(),
@@ -209,9 +211,36 @@ function roleDisplayDetails(record: Record<string, unknown>, kind: ResourceKind)
 }
 
 function errorMessage(error: unknown) {
-  if (error instanceof ApiError) return error.message;
+  if (error instanceof ApiError) {
+    const fieldMessage = firstValidationMessage(error);
+    return fieldMessage ? `${error.message}: ${fieldMessage}` : error.message;
+  }
   if (error instanceof Error) return error.message;
   return 'Request failed.';
+}
+
+function firstValidationMessage(error: ApiError) {
+  const [field, messages] = Object.entries(error.validationErrors)[0] ?? [];
+  const message = Array.isArray(messages) ? messages[0] : messages;
+  return field && message ? `${fieldLabel(field)} ${String(message)}` : '';
+}
+
+function fieldLabel(field: string) {
+  return field
+    .replace(/\.\d+/g, '')
+    .replace(/[._]/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function applyApiFieldErrors(form: any, error: unknown) {
+  if (!(error instanceof ApiError)) return;
+
+  Object.entries(error.validationErrors).forEach(([field, messages]) => {
+    const message = Array.isArray(messages) ? messages.join(' ') : String(messages);
+    if (message) {
+      form.setError(field, { type: 'server', message });
+    }
+  });
 }
 
 function totalFromQuery(data?: { total: number; data: PlatformRecord[] }) {
@@ -225,6 +254,9 @@ function groupedPermissionIds(grouped?: GroupedPermissions) {
     .filter(Boolean);
 }
 
+function guardNameValue(value: unknown): 'platform' | 'tenant' {
+  return value === 'tenant' ? 'tenant' : 'platform';
+}
 function selectedPermissionIds(record?: PlatformRecord | null) {
   if (!record?.permissions) return [];
   return groupedPermissionIds(record.permissions as GroupedPermissions);
@@ -1262,7 +1294,7 @@ function RoleFormPage({ record, title }: { record?: PlatformRecord; title?: stri
     defaultValues: {
       name: textOf(record, ['name'], ''),
       display_name: textOf(record, ['display_name'], ''),
-      guard_name: textOf(record, ['guard_name'], 'platform'),
+      guard_name: guardNameValue(record?.guard_name),
       description: textOf(record, ['description'], ''),
       status: textOf(record, ['status'], 'active'),
       is_system: Boolean(record?.is_system),
@@ -1270,6 +1302,7 @@ function RoleFormPage({ record, title }: { record?: PlatformRecord; title?: stri
       audit_reason: record ? 'Quarterly access review' : 'Initial role setup'
     }
   });
+  const watchedRole = form.watch();
   const mutation = useMutation({
     mutationFn: (values: RoleForm) => {
       const payload: RolePayload = {
@@ -1283,12 +1316,13 @@ function RoleFormPage({ record, title }: { record?: PlatformRecord; title?: stri
                 ?.split(',')
                 .map((item) => item.trim())
                 .filter(Boolean),
-        audit_reason: values.audit_reason
+        audit_reason: values.audit_reason || (record ? 'Role updated from platform access control UI' : 'Role created from platform access control UI')
       };
       return record
         ? platformAccessApi.roles.update(idOf(record), payload)
         : platformAccessApi.roles.create(payload);
     },
+    onError: (error) => applyApiFieldErrors(form, error),
     onSuccess: async (saved) => {
       await queryClient.invalidateQueries({
         queryKey: platformQueryKeys.resource(resourceMeta.roles.resourceKey)
@@ -1305,7 +1339,7 @@ function RoleFormPage({ record, title }: { record?: PlatformRecord; title?: stri
       onSubmit={form.handleSubmit((values) => mutation.mutate(values))}
       title={title ?? `Edit ${textOf(record, ['display_name', 'name'])}`}
       permission={record ? 'platform_role.edit' : 'platform_role.create'}
-      side={<RoleSummary record={record} selectedCount={selectedPermissionIdsState.length} />}
+      side={<RoleSummary record={record} values={watchedRole} selectedCount={selectedPermissionIdsState.length} />}
       footerExtra={
         <Button type="button" variant="secondary" onClick={() => setDrawerOpen(true)}>
           Assign permissions
@@ -1320,11 +1354,11 @@ function RoleFormPage({ record, title }: { record?: PlatformRecord; title?: stri
           label="Display name"
           placeholder="Billing Manager"
         />
-        <InputField form={form} name="guard_name" label="Guard name" placeholder="platform" />
+        <SelectField form={form} name="guard_name" label="Guard name" options={guardNameOptions} formatOption={titleCaseOption} />
         <InputField form={form} name="description" label="Description" type="textarea" />
         <SelectField form={form} name="status" label="Status" options={['active', 'inactive']} />
         <CheckboxField form={form} name="is_system" label="System role" />
-        <InputField form={form} name="audit_reason" label="Audit reason" />
+        {record ? <InputField form={form} name="audit_reason" label="Audit reason" /> : null}
       </FormGrid>
       <AssignPermissionsDrawer
         open={drawerOpen}
@@ -1348,7 +1382,7 @@ function PermissionFormPage({ record, title }: { record?: PlatformRecord; title?
       name: textOf(record, ['name'], ''),
       display_name: textOf(record, ['display_name'], ''),
       description: textOf(record, ['description'], ''),
-      guard_name: textOf(record, ['guard_name'], 'platform'),
+      guard_name: guardNameValue(record?.guard_name),
       is_system: Boolean(record?.is_system),
       status: textOf(record, ['status'], 'active')
     }
@@ -1358,6 +1392,7 @@ function PermissionFormPage({ record, title }: { record?: PlatformRecord; title?
       record
         ? platformAccessApi.permissions.update(idOf(record), values as PermissionPayload)
         : platformAccessApi.permissions.create(values as PermissionPayload),
+    onError: (error) => applyApiFieldErrors(form, error),
     onSuccess: async (saved) => {
       await queryClient.invalidateQueries({
         queryKey: platformQueryKeys.resource(resourceMeta.permissions.resourceKey)
@@ -1385,7 +1420,7 @@ function PermissionFormPage({ record, title }: { record?: PlatformRecord; title?
           placeholder="billing.invoice.view"
         />
         <InputField form={form} name="display_name" label="Display name" />
-        <InputField form={form} name="guard_name" label="Guard name" placeholder="platform" />
+        <SelectField form={form} name="guard_name" label="Guard name" options={guardNameOptions} formatOption={titleCaseOption} />
         <InputField form={form} name="description" label="Description" type="textarea" />
         <SelectField form={form} name="status" label="Status" options={['active', 'inactive']} />
         <CheckboxField form={form} name="is_system" label="System permission" />
@@ -1414,11 +1449,24 @@ function TeamFormPage({ record, title }: { record?: PlatformRecord; title?: stri
       audit_reason: record ? 'Team profile update' : 'Team created'
     }
   });
+  const watchedTeam = form.watch();
+  const platformUsersQuery = useQuery({
+    queryKey: platformQueryKeys.list('platform-users-for-team-form', { per_page: 100 }),
+    queryFn: () => platformStaffApi.list({ per_page: 100, filter: { status: 'active' } })
+  });
+  const platformUsers = platformUsersQuery.data?.data ?? [];
   const mutation = useMutation({
-    mutationFn: (values: TeamForm) =>
-      record
-        ? platformAccessApi.teams.update(idOf(record), values as TeamPayload)
-        : platformAccessApi.teams.create(values as TeamPayload),
+    mutationFn: (values: TeamForm) => {
+      const payload: TeamPayload = {
+        ...values,
+        code: values.code || generateTeamCode(values.name),
+        audit_reason: values.audit_reason || (record ? 'Team profile update' : 'Team created')
+      };
+      return record
+        ? platformAccessApi.teams.update(idOf(record), payload)
+        : platformAccessApi.teams.create(payload);
+    },
+    onError: (error) => applyApiFieldErrors(form, error),
     onSuccess: async (saved) => {
       await queryClient.invalidateQueries({
         queryKey: platformQueryKeys.resource(resourceMeta.teams.resourceKey)
@@ -1435,17 +1483,13 @@ function TeamFormPage({ record, title }: { record?: PlatformRecord; title?: stri
       onSubmit={form.handleSubmit((values) => mutation.mutate(values))}
       title={title ?? `Edit ${textOf(record, ['name'])}`}
       permission={record ? 'platform_team.edit' : 'platform_team.create'}
-      side={<TeamSummary record={record} />}
+      side={<TeamSummary record={record} values={watchedTeam} users={platformUsers} />}
     >
       <FormGrid>
         <InputField form={form} name="name" label="Team name" />
-        <InputField form={form} name="code" label="Team code" />
-        <InputField form={form} name="lead_platform_user_id" label="Lead platform user ID" />
-        <InputField
-          form={form}
-          name="assistant_lead_platform_user_id"
-          label="Assistant lead user ID"
-        />
+        {record ? <InputField form={form} name="code" label="Team code" /> : null}
+        <UserSelectField form={form} name="lead_platform_user_id" label="Lead platform user" users={platformUsers} loading={platformUsersQuery.isLoading} />
+        <UserSelectField form={form} name="assistant_lead_platform_user_id" label="Assistant lead user" users={platformUsers} loading={platformUsersQuery.isLoading} />
         <InputField form={form} name="email" label="Team email" />
         <InputField form={form} name="phone" label="Phone" />
         <InputField form={form} name="color" label="Color" type="color" />
@@ -1463,7 +1507,7 @@ function TeamFormPage({ record, title }: { record?: PlatformRecord; title?: stri
           options={['active', 'inactive', 'archived']}
         />
         <InputField form={form} name="description" label="Description" type="textarea" />
-        <InputField form={form} name="audit_reason" label="Audit reason" />
+        {record ? <InputField form={form} name="audit_reason" label="Audit reason" /> : null}
       </FormGrid>
     </FormShell>
   );
@@ -1495,12 +1539,13 @@ function TeamRoleFormPage({ record, title }: { record?: PlatformRecord; title?: 
         sort_order: values.sort_order,
         is_system: values.is_system,
         status: values.status,
-        audit_reason: values.audit_reason
+        audit_reason: values.audit_reason || (record ? 'Team role update' : 'Team role created')
       };
       return record
         ? platformAccessApi.teamRoles.update(idOf(record), payload)
         : platformAccessApi.teamRoles.create(payload);
     },
+    onError: (error) => applyApiFieldErrors(form, error),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
         queryKey: platformQueryKeys.resource(resourceMeta.teamRoles.resourceKey)
@@ -1527,7 +1572,7 @@ function TeamRoleFormPage({ record, title }: { record?: PlatformRecord; title?: 
         <CheckboxField form={form} name="is_system" label="System role" />
         <InputField form={form} name="description" label="Description" type="textarea" />
         <InputField form={form} name="permissions_json" label="Permissions JSON" type="textarea" />
-        <InputField form={form} name="audit_reason" label="Audit reason" />
+        {record ? <InputField form={form} name="audit_reason" label="Audit reason" /> : null}
       </FormGrid>
     </FormShell>
   );
@@ -2029,6 +2074,14 @@ function AssignPermissionsDrawer({
     );
   }
 
+  function selectModule(ids: string[]) {
+    setLocalIds((current) => Array.from(new Set([...current, ...ids])));
+  }
+
+  function clearModule(ids: string[]) {
+    setLocalIds((current) => current.filter((id) => !ids.includes(id)));
+  }
+
   return (
     <AppDrawer
       open={open}
@@ -2073,12 +2126,12 @@ function AssignPermissionsDrawer({
           ))}
         </select>
       </div>
-      <div className="permission-diff">
+      <div className="permission-diff permission-diff--sticky">
         <span>{localIds.length} selected</span>
         <span>{added} added</span>
         <span>{removed} removed</span>
       </div>
-      <div className="permission-groups">
+      <div className="permission-groups permission-groups--assign">
         {Object.entries(groups)
           .filter(([module]) => !moduleFilter || module === moduleFilter)
           .map(([module, permissions]) => {
@@ -2089,24 +2142,36 @@ function AssignPermissionsDrawer({
                 .includes(search.toLowerCase())
             );
             if (filtered.length === 0) return null;
+            const filteredIds = filtered.map(idOf);
+            const selectedInModule = filteredIds.filter((id) => localIds.includes(id)).length;
             return (
               <section key={module}>
                 <header>
-                  <strong>{module}</strong>
-                  <span>{filtered.length} permissions</span>
+                  <div>
+                    <strong>{titleCaseOption(module)}</strong>
+                    <span>{selectedInModule} of {filtered.length} selected</span>
+                  </div>
+                  <div className="permission-module-actions">
+                    <button type="button" onClick={() => selectModule(filteredIds)}>Select all</button>
+                    <button type="button" onClick={() => clearModule(filteredIds)}>Clear</button>
+                  </div>
                 </header>
                 <div>
-                  {filtered.map((permission) => (
-                    <label key={idOf(permission)}>
-                      <input
-                        checked={localIds.includes(idOf(permission))}
-                        type="checkbox"
-                        onChange={() => toggle(idOf(permission))}
-                      />
-                      <span>{textOf(permission, ['display_name', 'name'])}</span>
-                      <small>{textOf(permission, ['name'])}</small>
-                    </label>
-                  ))}
+                  {filtered.map((permission) => {
+                    const permissionId = idOf(permission);
+                    const checked = localIds.includes(permissionId);
+                    return (
+                      <label key={permissionId} className={checked ? 'is-selected' : undefined}>
+                        <input
+                          checked={checked}
+                          type="checkbox"
+                          onChange={() => toggle(permissionId)}
+                        />
+                        <span>{textOf(permission, ['display_name', 'name'])}</span>
+                        <small>{textOf(permission, ['name'])}</small>
+                      </label>
+                    );
+                  })}
                 </div>
               </section>
             );
@@ -2478,6 +2543,7 @@ function PermissionEditorModal({
       permission
         ? platformAccessApi.permissions.update(idOf(permission), values as PermissionPayload)
         : platformAccessApi.permissions.create(values as PermissionPayload),
+    onError: (error) => applyApiFieldErrors(form, error),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
         queryKey: platformQueryKeys.resource(resourceMeta.permissions.resourceKey)
@@ -2493,7 +2559,7 @@ function PermissionEditorModal({
       name: textOf(permission, ['name'], ''),
       display_name: textOf(permission, ['display_name'], ''),
       description: textOf(permission, ['description'], ''),
-      guard_name: textOf(permission, ['guard_name'], 'platform'),
+      guard_name: guardNameValue(permission?.guard_name),
       is_system: Boolean(permission?.is_system),
       status: textOf(permission, ['status'], 'active')
     });
@@ -2528,7 +2594,7 @@ function PermissionEditorModal({
           placeholder="billing.invoice.view"
         />
         <InputField form={form} name="display_name" label="Display name" />
-        <InputField form={form} name="guard_name" label="Guard name" />
+        <SelectField form={form} name="guard_name" label="Guard name" options={guardNameOptions} formatOption={titleCaseOption} />
         <SelectField form={form} name="status" label="Status" options={['active', 'inactive']} />
         <CheckboxField form={form} name="is_system" label="System permission" />
         <div className="modal-form-span">
@@ -2855,13 +2921,14 @@ function TeamRoleEditorModal({
         sort_order: values.sort_order,
         is_system: values.is_system,
         status: values.status,
-        audit_reason: values.audit_reason
+        audit_reason: values.audit_reason || (role ? 'Team role update' : 'Team role created')
       };
 
       return role
         ? platformAccessApi.teamRoles.update(idOf(role), payload)
         : platformAccessApi.teamRoles.create(payload);
     },
+    onError: (error) => applyApiFieldErrors(form, error),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
         queryKey: platformQueryKeys.resource(resourceMeta.teamRoles.resourceKey)
@@ -2920,7 +2987,7 @@ function TeamRoleEditorModal({
         <InputField form={form} name="sort_order" label="Sort order" type="number" />
         <SelectField form={form} name="status" label="Status" options={['active', 'inactive']} />
         <CheckboxField form={form} name="is_system" label="System role" />
-        <InputField form={form} name="audit_reason" label="Audit reason" />
+        {role ? <InputField form={form} name="audit_reason" label="Audit reason" /> : null}
         <div className="modal-form-span">
           <InputField form={form} name="description" label="Description" type="textarea" />
         </div>
@@ -3050,15 +3117,21 @@ function InputField({
   type?: string;
 }) {
   const error = form.formState.errors[name]?.message;
+  const errorId = `${name}-error`;
+  const fieldProps = {
+    'aria-invalid': Boolean(error),
+    'aria-describedby': error ? errorId : undefined,
+    ...form.register(name)
+  };
   return (
-    <label>
+    <label className={error ? 'form-field-invalid' : undefined}>
       <span>{label}</span>
       {type === 'textarea' ? (
-        <textarea placeholder={placeholder} {...form.register(name)} />
+        <textarea placeholder={placeholder} {...fieldProps} />
       ) : (
-        <input type={type} placeholder={placeholder} {...form.register(name)} />
+        <input type={type} placeholder={placeholder} {...fieldProps} />
       )}
-      {error ? <strong role="alert">{String(error)}</strong> : null}
+      {error ? <strong id={errorId} role="alert">{String(error)}</strong> : null}
     </label>
   );
 }
@@ -3067,32 +3140,94 @@ function SelectField({
   form,
   name,
   label,
-  options
+  options,
+  formatOption = (option: string) => option
 }: {
   form: any;
   name: string;
   label: string;
   options: string[];
+  formatOption?: (option: string) => string;
 }) {
+  const error = form.formState.errors[name]?.message;
+  const errorId = `${name}-error`;
   return (
-    <label>
+    <label className={error ? 'form-field-invalid' : undefined}>
       <span>{label}</span>
-      <select {...form.register(name)}>
+      <select aria-invalid={Boolean(error)} aria-describedby={error ? errorId : undefined} {...form.register(name)}>
         {options.map((option) => (
           <option key={option} value={option}>
-            {option}
+            {formatOption(option)}
           </option>
         ))}
       </select>
+      {error ? <strong id={errorId} role="alert">{String(error)}</strong> : null}
     </label>
   );
 }
 
-function CheckboxField({ form, name, label }: { form: any; name: string; label: string }) {
+function titleCaseOption(option: string) {
+  return option.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function userLabel(user: Record<string, unknown>) {
+  return textOf(user, ['display_name'], [textOf(user, ['first_name'], ''), textOf(user, ['last_name'], '')].join(' ').trim() || textOf(user, ['email'], 'Unnamed user'));
+}
+
+function UserSelectField({
+  form,
+  name,
+  label,
+  users,
+  loading
+}: {
+  form: any;
+  name: string;
+  label: string;
+  users: Array<Record<string, unknown>>;
+  loading?: boolean;
+}) {
+  const error = form.formState.errors[name]?.message;
+  const errorId = `${name}-error`;
   return (
-    <label className="check-row">
-      <input type="checkbox" {...form.register(name)} />
+    <label className={error ? 'form-field-invalid' : undefined}>
       <span>{label}</span>
+      <select
+        aria-invalid={Boolean(error)}
+        aria-describedby={error ? errorId : undefined}
+        {...form.register(name)}
+        disabled={loading}
+      >
+        <option value="">{loading ? 'Loading users...' : 'Select user'}</option>
+        {users.map((user) => (
+          <option key={idOf(user)} value={idOf(user)}>
+            {userLabel(user)}
+          </option>
+        ))}
+      </select>
+      {error ? <strong id={errorId} role="alert">{String(error)}</strong> : null}
+    </label>
+  );
+}
+
+function generateTeamCode(name: string) {
+  const code = toSnakeCase(name).toUpperCase();
+  return code || 'TEAM';
+}
+
+function CheckboxField({ form, name, label }: { form: any; name: string; label: string }) {
+  const error = form.formState.errors[name]?.message;
+  const errorId = `${name}-error`;
+  return (
+    <label className={`check-row${error ? ' form-field-invalid' : ''}`}>
+      <input
+        type="checkbox"
+        aria-invalid={Boolean(error)}
+        aria-describedby={error ? errorId : undefined}
+        {...form.register(name)}
+      />
+      <span>{label}</span>
+      {error ? <strong id={errorId} role="alert">{String(error)}</strong> : null}
     </label>
   );
 }
@@ -3547,20 +3682,28 @@ function formatDateTime(value: unknown) {
 
 function RoleSummary({
   record,
+  values,
   selectedCount
 }: {
   record?: PlatformRecord;
+  values?: Partial<RoleForm>;
   selectedCount: number;
 }) {
+  const displayName = String(values?.display_name || values?.name || textOf(record, ['display_name', 'name'], 'New role'));
+  const guardName = String(values?.guard_name || textOf(record, ['guard_name'], 'platform'));
+  const status = String(values?.status || textOf(record, ['status'], 'active'));
+  const isSystem = Boolean(values?.is_system ?? record?.is_system);
+
   return (
     <>
       <h2>Role Summary</h2>
       <RecordDetails
         record={{
-          status: textOf(record, ['status'], 'active'),
-          guard_name: textOf(record, ['guard_name'], 'platform'),
+          role: displayName,
+          status,
+          guard_name: titleCaseOption(guardName),
           selected_permissions: selectedCount,
-          system_role: Boolean(record?.is_system)
+          system_role: isSystem
         }}
       />
       <div className="surface-state">Select at least one permission for a production role.</div>
@@ -3583,15 +3726,33 @@ function PermissionTip({ record }: { record?: PlatformRecord }) {
   );
 }
 
-function TeamSummary({ record }: { record?: PlatformRecord }) {
+function TeamSummary({
+  record,
+  values,
+  users
+}: {
+  record?: PlatformRecord;
+  values?: Partial<TeamForm>;
+  users?: Array<Record<string, unknown>>;
+}) {
+  const name = String(values?.name || textOf(record, ['name'], 'New team'));
+  const code = String(values?.code || textOf(record, ['code'], generateTeamCode(name)));
+  const lead = users?.find((user) => idOf(user) === values?.lead_platform_user_id);
+  const assistantLead = users?.find((user) => idOf(user) === values?.assistant_lead_platform_user_id);
+
   return (
     <>
       <h2>Team Summary</h2>
       <RecordDetails
         record={{
+          team: name,
+          team_code: code,
+          lead: lead ? userLabel(lead) : textOf(record, ['lead_name', 'lead_platform_user_id'], '-'),
+          assistant_lead: assistantLead ? userLabel(assistantLead) : textOf(record, ['assistant_lead_name', 'assistant_lead_platform_user_id'], '-'),
           members: textOf(record, ['members_count'], '0'),
           tenants: textOf(record, ['assigned_tenants_count'], '0'),
-          visibility: textOf(record, ['visibility'], 'internal')
+          visibility: values?.visibility || textOf(record, ['visibility'], 'internal'),
+          status: values?.status || textOf(record, ['status'], 'active')
         }}
       />
     </>
@@ -3613,3 +3774,4 @@ function descriptionFor(kind: ResourceKind) {
     return 'Manage internal platform teams, members, record assignments, and releases.';
   return 'Create and maintain reusable roles for platform team members.';
 }
+
