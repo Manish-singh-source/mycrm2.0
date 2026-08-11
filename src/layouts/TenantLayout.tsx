@@ -36,7 +36,15 @@ export function TenantLayout() {
 
   return (
     <AppShell
-      sidebar={<AppSidebar guard="tenant" groups={tenantNavigation} title="Tenant CRM" />}
+      sidebar={({ sidebarOpen, toggleSidebar }) => (
+        <AppSidebar
+          guard="tenant"
+          groups={tenantNavigation}
+          title="Tenant CRM"
+          isCollapsed={!sidebarOpen}
+          onToggleCollapse={toggleSidebar}
+        />
+      )}
       topbar={({ toggleSidebar }) => (
         <AppTopbar
           title={tenant?.organizationName ?? 'Tenant CRM'}

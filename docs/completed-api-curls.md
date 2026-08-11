@@ -2335,3 +2335,211 @@ Common errors:
 ```json
 {"success":false,"message":"Validation failed.","data":null,"meta":{"request_id":"{{REQUEST_ID}}"},"errors":{"code":"VALIDATION_ERROR","details":{"notes":["The notes field is required."]}}}
 ```
+
+
+# 9. Tenant Dashboard, Teams, Users, and Staff APIs
+
+Use `Authorization: Bearer {{TENANT_TOKEN}}`, `Accept: application/json`, and `X-Tenant: {{TENANT_SLUG}}` or your configured tenant resolver headers/domain.
+
+## 9.1 Dashboard and Widget Preferences
+
+```bash
+curl -X GET "{{BASE_URL}}/api/tenant/v1/navigation/sidebar" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X GET "{{BASE_URL}}/api/tenant/v1/dashboard/summary" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X GET "{{BASE_URL}}/api/tenant/v1/dashboard/charts/leads-pipeline" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X GET "{{BASE_URL}}/api/tenant/v1/dashboard/charts/projects" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X GET "{{BASE_URL}}/api/tenant/v1/dashboard/charts/tasks" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X GET "{{BASE_URL}}/api/tenant/v1/dashboard/charts/revenue" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X GET "{{BASE_URL}}/api/tenant/v1/dashboard/charts/attendance" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X GET "{{BASE_URL}}/api/tenant/v1/dashboard/charts/support" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X GET "{{BASE_URL}}/api/tenant/v1/dashboard/my-tasks" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X GET "{{BASE_URL}}/api/tenant/v1/dashboard/upcoming-events" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X GET "{{BASE_URL}}/api/tenant/v1/dashboard/recent-leads" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X GET "{{BASE_URL}}/api/tenant/v1/dashboard/overdue-invoices" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X GET "{{BASE_URL}}/api/tenant/v1/dashboard/recent-activities" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X GET "{{BASE_URL}}/api/tenant/v1/dashboard/widgets" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X PUT "{{BASE_URL}}/api/tenant/v1/dashboard/widgets" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"widgets":[{"code":"my_tasks","position":1,"visible":true,"settings":{"limit":10}},{"code":"calendar","position":2,"visible":true}]}'
+curl -X POST "{{BASE_URL}}/api/tenant/v1/dashboard/export" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"format":"csv","widgets":["summary","revenue"]}'
+```
+
+Success example:
+
+```json
+{"success":true,"message":"OK","data":{"summary":{"leads":0,"clients":0,"staff_count":1}},"meta":{"request_id":"{{REQUEST_ID}}"},"errors":null}
+```
+
+## 9.2 Tenant Teams and Team Roles
+
+```bash
+curl -X GET "{{BASE_URL}}/api/tenant/v1/team-roles" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/tenant/v1/team-roles" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"name":"Delivery Lead","code":"delivery_lead","permissions":["project.view"],"status":"active"}'
+curl -X PATCH "{{BASE_URL}}/api/tenant/v1/team-roles/{team_role_uuid}" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"description":"Can lead delivery assignments"}'
+curl -X DELETE "{{BASE_URL}}/api/tenant/v1/team-roles/{team_role_uuid}" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X GET "{{BASE_URL}}/api/tenant/v1/teams?filter[status]=active" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/tenant/v1/teams" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"name":"Sales Team","code":"sales","department_id":"department_uuid","office_id":"office_uuid","lead_user_id":"user_uuid","visibility":"tenant","status":"active"}'
+curl -X GET "{{BASE_URL}}/api/tenant/v1/teams/{team_uuid}" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X PATCH "{{BASE_URL}}/api/tenant/v1/teams/{team_uuid}" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"color":"#2563eb","status":"active"}'
+curl -X DELETE "{{BASE_URL}}/api/tenant/v1/teams/{team_uuid}" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X GET "{{BASE_URL}}/api/tenant/v1/teams/{team_uuid}/members" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/tenant/v1/teams/{team_uuid}/members" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"members":[{"user_id":"user_uuid","staff_id":"staff_uuid","team_role_id":"team_role_uuid","member_type":"primary","allocation_percent":100,"is_primary":true,"effective_from":"2026-08-06","status":"active"}]}'
+curl -X PATCH "{{BASE_URL}}/api/tenant/v1/teams/{team_uuid}/members/{member_uuid}" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"allocation_percent":50,"status":"active"}'
+curl -X DELETE "{{BASE_URL}}/api/tenant/v1/teams/{team_uuid}/members/{member_uuid}" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X GET "{{BASE_URL}}/api/tenant/v1/teams/{team_uuid}/permissions" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X PUT "{{BASE_URL}}/api/tenant/v1/teams/{team_uuid}/permissions" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"permission_ids":["permission_uuid"]}'
+curl -X GET "{{BASE_URL}}/api/tenant/v1/teams/{team_uuid}/settings" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X PUT "{{BASE_URL}}/api/tenant/v1/teams/{team_uuid}/settings" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"settings":[{"group":"notifications","key":"daily_digest","value":true}]}'
+curl -X GET "{{BASE_URL}}/api/tenant/v1/teams/{team_uuid}/assignments" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/tenant/v1/teams/{team_uuid}/assignments" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"assignable_type":"project","assignable_id":"project_uuid","assignment_role":"delivery_owner","status":"active"}'
+curl -X DELETE "{{BASE_URL}}/api/tenant/v1/teams/{team_uuid}/assignments/{assignment_id}" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/tenant/v1/teams/export" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"format":"csv","filters":{"status":"active"}}'
+```
+
+## 9.3 Tenant Login Users
+
+```bash
+curl -X GET "{{BASE_URL}}/api/tenant/v1/users?filter[status]=active" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/tenant/v1/users/invite" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"first_name":"Asha","last_name":"Patel","email":"asha@example.com","staff_id":"staff_uuid","account_type":"staff","role_ids":["role_uuid"]}'
+curl -X GET "{{BASE_URL}}/api/tenant/v1/users/{user_uuid}" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X PATCH "{{BASE_URL}}/api/tenant/v1/users/{user_uuid}" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"mobile":"+919999999999","status":"active"}'
+curl -X PUT "{{BASE_URL}}/api/tenant/v1/users/{user_uuid}/roles" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"role_ids":["role_uuid"]}'
+curl -X POST "{{BASE_URL}}/api/tenant/v1/users/{user_uuid}/suspend" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/tenant/v1/users/{user_uuid}/activate" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/tenant/v1/users/{user_uuid}/reset-password" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+```
+
+## 9.4 Staff and Child Resources
+
+Bank and salary routes require `staff.manage_bank` and `staff.manage_salary`; bank responses only expose `account_number_masked`.
+
+```bash
+curl -X GET "{{BASE_URL}}/api/tenant/v1/staff/dashboard" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X GET "{{BASE_URL}}/api/tenant/v1/staff" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X GET "{{BASE_URL}}/api/tenant/v1/staff/grid" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/tenant/v1/staff" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"employee_code":"EMP0001","first_name":"Sahil","last_name":"Khan","display_name":"Sahil Khan","work_email":"sahil@example.com","joining_date":"2026-08-06","department_id":"department_uuid","designation_id":"designation_uuid","office_id":"office_uuid","primary_team_id":"team_uuid","employment_type":"full_time","employment_status":"active","create_user":true}'
+curl -X GET "{{BASE_URL}}/api/tenant/v1/staff/{staff_uuid}" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X PATCH "{{BASE_URL}}/api/tenant/v1/staff/{staff_uuid}" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"mobile":"+919999999999","employment_status":"active"}'
+curl -X DELETE "{{BASE_URL}}/api/tenant/v1/staff/{staff_uuid}" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/tenant/v1/staff/{staff_uuid}/restore" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/tenant/v1/staff/import" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"file_id":"file_uuid","mapping":{"employee_code":"Employee Code"}}'
+curl -X POST "{{BASE_URL}}/api/tenant/v1/staff/export" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"format":"csv","filters":{"employment_status":"active"}}'
+curl -X GET "{{BASE_URL}}/api/tenant/v1/staff/{staff_uuid}/activity" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+
+curl -X GET "{{BASE_URL}}/api/tenant/v1/staff/{staff_uuid}/employment-history" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/tenant/v1/staff/{staff_uuid}/employment-history" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"department_id":"department_uuid","designation_id":"designation_uuid","office_id":"office_uuid","effective_from":"2026-08-06"}'
+curl -X GET "{{BASE_URL}}/api/tenant/v1/staff/{staff_uuid}/bank-accounts" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/tenant/v1/staff/{staff_uuid}/bank-accounts" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"account_holder_name":"Sahil Khan","bank_name":"HDFC Bank","account_number":"1234567890","ifsc_code":"HDFC0000001","is_primary":true}'
+curl -X PATCH "{{BASE_URL}}/api/tenant/v1/staff/{staff_uuid}/bank-accounts/{account_id}" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"is_primary":true}'
+curl -X DELETE "{{BASE_URL}}/api/tenant/v1/staff/{staff_uuid}/bank-accounts/{account_id}" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X GET "{{BASE_URL}}/api/tenant/v1/staff/{staff_uuid}/salary-structures" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/tenant/v1/staff/{staff_uuid}/salary-structures" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"effective_from":"2026-08-06","annual_ctc":1200000,"monthly_gross":100000,"currency":"INR"}'
+curl -X PATCH "{{BASE_URL}}/api/tenant/v1/staff/{staff_uuid}/salary-structures/{salary_id}" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"monthly_gross":110000}'
+```
+
+For `documents`, `emergency-contacts`, `assets`, `certifications`, `appraisals`, and `training`, use the same pattern:
+
+```bash
+curl -X GET "{{BASE_URL}}/api/tenant/v1/staff/{staff_uuid}/{resource}" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/tenant/v1/staff/{staff_uuid}/{resource}" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"name":"Example","status":"active"}'
+curl -X DELETE "{{BASE_URL}}/api/tenant/v1/staff/{staff_uuid}/{resource}/{id}" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+```
+
+Common errors:
+
+```json
+{"success":false,"message":"Unauthenticated.","data":null,"meta":{"request_id":"{{REQUEST_ID}}"},"errors":{"code":"AUTHENTICATION_REQUIRED","details":[]}}
+```
+
+```json
+{"success":false,"message":"Missing tenant permission.","data":null,"meta":{"request_id":"{{REQUEST_ID}}"},"errors":{"code":"TENANT_PERMISSION_DENIED","details":{"permissions":["staff.manage_bank"]}}}
+```
+
+```json
+{"success":false,"message":"Cannot remove the final owner/admin role from this tenant.","data":null,"meta":{"request_id":"{{REQUEST_ID}}"},"errors":{"code":"FINAL_OWNER_ADMIN_ROLE_REQUIRED","details":[]}}
+```
+
+# 10. Tenant CRM Clients, Vendors, and Leads APIs
+
+Use `Authorization: Bearer {{TENANT_TOKEN}}`, `Accept: application/json`, and your tenant resolver (`X-Tenant: {{TENANT_SLUG}}` if configured).
+
+## 10.1 Clients
+
+```bash
+curl -X GET "{{BASE_URL}}/api/tenant/v1/clients?search=acme" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/tenant/v1/clients" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"party":{"party_type":"company","display_name":"Acme Pvt Ltd","legal_name":"Acme Private Limited","email":"hello@acme.example","phone":"+919999999999","owner_user_id":"user_uuid"},"profile":{"client_code":"CL0001","client_type":"enterprise","credit_limit":"500000.00","payment_terms_days":30,"onboarding_date":"2026-08-06","account_manager_id":"user_uuid"},"contacts":[{"first_name":"Amit","last_name":"Shah","email":"amit@acme.example","is_primary":true,"portal_enabled":false}],"addresses":[{"address_type":"billing","address_line_1":"Address 1","country_id":1,"state_id":1,"city_id":1,"postal_code":"400001","is_default":true}]}'
+curl -X GET "{{BASE_URL}}/api/tenant/v1/clients/{client_uuid}" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X PATCH "{{BASE_URL}}/api/tenant/v1/clients/{client_uuid}" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"party":{"phone":"+918888888888"},"profile":{"payment_terms_days":45}}'
+curl -X DELETE "{{BASE_URL}}/api/tenant/v1/clients/{client_uuid}" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/tenant/v1/clients/{client_uuid}/restore" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/tenant/v1/clients/import" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"file_id":"file_uuid","mapping":{"client_code":"Client Code"}}'
+curl -X POST "{{BASE_URL}}/api/tenant/v1/clients/export" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"format":"csv"}'
+curl -X POST "{{BASE_URL}}/api/tenant/v1/clients/merge" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"primary_client_id":"client_uuid","duplicate_client_ids":["client_uuid_2"],"reason":"Duplicate cleanup"}'
+curl -X GET "{{BASE_URL}}/api/tenant/v1/clients/{client_uuid}/contacts" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/tenant/v1/clients/{client_uuid}/contacts" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"first_name":"Amit","email":"amit@acme.example","portal_enabled":true,"create_portal_user":true}'
+curl -X PATCH "{{BASE_URL}}/api/tenant/v1/clients/{client_uuid}/contacts/{contact_uuid}" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"first_name":"Amit","status":"active"}'
+curl -X DELETE "{{BASE_URL}}/api/tenant/v1/clients/{client_uuid}/contacts/{contact_uuid}" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X GET "{{BASE_URL}}/api/tenant/v1/clients/{client_uuid}/addresses" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/tenant/v1/clients/{client_uuid}/addresses" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"address_type":"shipping","address_line_1":"Warehouse Road","postal_code":"400001"}'
+curl -X PATCH "{{BASE_URL}}/api/tenant/v1/clients/{client_uuid}/addresses/{address_id}" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"address_type":"billing","address_line_1":"Updated Address"}'
+curl -X DELETE "{{BASE_URL}}/api/tenant/v1/clients/{client_uuid}/addresses/{address_id}" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X GET "{{BASE_URL}}/api/tenant/v1/clients/{client_uuid}/projects" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X GET "{{BASE_URL}}/api/tenant/v1/clients/{client_uuid}/invoices" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X GET "{{BASE_URL}}/api/tenant/v1/clients/{client_uuid}/payments" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X GET "{{BASE_URL}}/api/tenant/v1/clients/{client_uuid}/renewals" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X GET "{{BASE_URL}}/api/tenant/v1/clients/{client_uuid}/issues" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X GET "{{BASE_URL}}/api/tenant/v1/clients/{client_uuid}/activity" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+```
+
+## 10.2 Vendors
+
+```bash
+curl -X GET "{{BASE_URL}}/api/tenant/v1/vendors" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/tenant/v1/vendors" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"party":{"party_type":"company","display_name":"Supply Co","email":"accounts@supply.example"},"profile":{"vendor_code":"VN0001","payment_terms_days":15,"rating":4},"contacts":[],"addresses":[]}'
+curl -X GET "{{BASE_URL}}/api/tenant/v1/vendors/{vendor_uuid}" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X PATCH "{{BASE_URL}}/api/tenant/v1/vendors/{vendor_uuid}" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"profile":{"rating":4.5}}'
+curl -X DELETE "{{BASE_URL}}/api/tenant/v1/vendors/{vendor_uuid}" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/tenant/v1/vendors/import" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"file_id":"file_uuid"}'
+curl -X POST "{{BASE_URL}}/api/tenant/v1/vendors/export" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"format":"csv"}'
+curl -X GET "{{BASE_URL}}/api/tenant/v1/vendors/{vendor_uuid}/contacts" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/tenant/v1/vendors/{vendor_uuid}/contacts" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"first_name":"Neha","email":"neha@supply.example"}'
+curl -X PATCH "{{BASE_URL}}/api/tenant/v1/vendors/{vendor_uuid}/contacts/{contact_uuid}" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"first_name":"Neha","status":"active"}'
+curl -X GET "{{BASE_URL}}/api/tenant/v1/vendors/{vendor_uuid}/addresses" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/tenant/v1/vendors/{vendor_uuid}/addresses" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"address_type":"office","address_line_1":"Vendor Street"}'
+curl -X PATCH "{{BASE_URL}}/api/tenant/v1/vendors/{vendor_uuid}/addresses/{address_id}" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"address_type":"office","address_line_1":"Updated Vendor Street"}'
+curl -X GET "{{BASE_URL}}/api/tenant/v1/vendors/{vendor_uuid}/bank-accounts" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/tenant/v1/vendors/{vendor_uuid}/bank-accounts" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"bank_name":"HDFC Bank","account_number":"1234567890","ifsc_code":"HDFC0000001","is_primary":true}'
+curl -X GET "{{BASE_URL}}/api/tenant/v1/vendors/{vendor_uuid}/expenses" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X GET "{{BASE_URL}}/api/tenant/v1/vendors/{vendor_uuid}/renewals" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X GET "{{BASE_URL}}/api/tenant/v1/vendors/{vendor_uuid}/activity" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+```
+
+## 10.3 Leads
+
+```bash
+curl -X GET "{{BASE_URL}}/api/tenant/v1/leads/dashboard" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X GET "{{BASE_URL}}/api/tenant/v1/leads" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X GET "{{BASE_URL}}/api/tenant/v1/leads/kanban" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/tenant/v1/leads" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"party":{"party_type":"company","display_name":"Prospect Ltd","email":"info@prospect.example"},"profile":{"lead_number":"LD0001","expected_value":"250000.00","probability":40,"expected_close_date":"2026-09-15"},"contacts":[],"addresses":[]}'
+curl -X GET "{{BASE_URL}}/api/tenant/v1/leads/{lead_uuid}" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X PATCH "{{BASE_URL}}/api/tenant/v1/leads/{lead_uuid}" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"profile":{"probability":60}}'
+curl -X DELETE "{{BASE_URL}}/api/tenant/v1/leads/{lead_uuid}" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/tenant/v1/leads/import" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"file_id":"file_uuid"}'
+curl -X POST "{{BASE_URL}}/api/tenant/v1/leads/export" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"format":"csv"}'
+curl -X POST "{{BASE_URL}}/api/tenant/v1/leads/{lead_uuid}/duplicate" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"lead_number":"LD0002"}'
+curl -X POST "{{BASE_URL}}/api/tenant/v1/leads/{lead_uuid}/convert" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"client_code":"CL0002","client_type":"enterprise","account_manager_id":"user_uuid","move_open_tasks":true,"create_project":false,"conversion_note":"Lead won after proposal approval."}'
+curl -X POST "{{BASE_URL}}/api/tenant/v1/leads/{lead_uuid}/mark-lost" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"lost_reason":"Budget not approved"}'
+curl -X POST "{{BASE_URL}}/api/tenant/v1/leads/merge" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"primary_lead_id":"lead_uuid","duplicate_lead_ids":["lead_uuid_2"],"reason":"Duplicate inquiry"}'
+curl -X GET "{{BASE_URL}}/api/tenant/v1/leads/{lead_uuid}/activities" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+curl -X POST "{{BASE_URL}}/api/tenant/v1/leads/{lead_uuid}/activities" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"activity_type":"call","subject":"Discovery call","scheduled_at":"2026-08-07T10:00:00Z","assigned_to":"user_uuid"}'
+curl -X PATCH "{{BASE_URL}}/api/tenant/v1/leads/{lead_uuid}/activities/{activity_uuid}" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{"completed_at":"2026-08-07T10:30:00Z","outcome":"Qualified"}'
+curl -X GET "{{BASE_URL}}/api/tenant/v1/leads/{lead_uuid}/activity" -H "Authorization: Bearer {{TENANT_TOKEN}}" -H "Accept: application/json"
+```
+
+Common errors:
+
+```json
+{"success":false,"message":"client_code already exists for this tenant.","data":null,"meta":{"request_id":"{{REQUEST_ID}}"},"errors":{"code":"BUSINESS_ERROR","details":[]}}
+```
+
+```json
+{"success":false,"message":"Missing tenant permission.","data":null,"meta":{"request_id":"{{REQUEST_ID}}"},"errors":{"code":"TENANT_PERMISSION_DENIED","details":{"permissions":["lead.convert"]}}}
+```

@@ -20,7 +20,15 @@ export function PlatformLayout() {
 
   return (
     <AppShell
-      sidebar={<AppSidebar guard="platform" groups={platformNavigation} title="SaaS CRM" />}
+      sidebar={({ sidebarOpen, toggleSidebar }) => (
+        <AppSidebar
+          guard="platform"
+          groups={platformNavigation}
+          title="SaaS CRM"
+          isCollapsed={!sidebarOpen}
+          onToggleCollapse={toggleSidebar}
+        />
+      )}
       topbar={({ toggleSidebar }) => (
         <AppTopbar
           title="Platform"

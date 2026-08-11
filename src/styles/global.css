@@ -3050,7 +3050,7 @@ input:focus,
 select:focus,
 textarea:focus {
   border-color: var(--crm-primary);
-  box-shadow: 0 0 0 3px rgb(37 99 235 / 14%);
+  /* box-shadow: 0 0 0 3px rgb(37 99 235 / 14%); */
   outline: 0;
 }
 
@@ -3059,7 +3059,7 @@ a:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: 2px solid var(--crm-primary);
+  /* outline: 2px solid var(--crm-primary); */
   outline-offset: 2px;
 }
 
@@ -3155,6 +3155,42 @@ textarea:focus-visible {
 .nav-badge {
   background: rgb(56 189 248 / 18%);
   color: #bae6fd;
+}
+
+@media (min-width: 960px) {
+  .app-shell--sidebar-collapsed {
+    grid-template-columns: 72px minmax(0, 1fr);
+  }
+
+  .app-shell--sidebar-collapsed .app-sidebar {
+    padding-inline: 10px;
+  }
+
+  .app-shell--sidebar-collapsed .app-sidebar__brand {
+    justify-content: center;
+    padding-inline: 0;
+  }
+
+  .app-shell--sidebar-collapsed .app-sidebar__brand > div,
+  .app-shell--sidebar-collapsed .app-sidebar__brand-icon,
+  .app-shell--sidebar-collapsed .nav-group h2,
+  .app-shell--sidebar-collapsed .nav-link span,
+  .app-shell--sidebar-collapsed .nav-link__chevron {
+    display: none;
+  }
+
+  .app-shell--sidebar-collapsed .app-sidebar__brand button {
+    background: rgb(255 255 255 / 8%);
+  }
+
+  .app-shell--sidebar-collapsed .nav-link {
+    justify-content: center;
+    padding-inline: 0;
+  }
+
+  .app-shell--sidebar-collapsed .nav-group {
+    margin-bottom: 10px;
+  }
 }
 
 .app-workspace {
@@ -3338,7 +3374,7 @@ textarea:focus-visible {
 
 .table-search:focus-within {
   border-color: var(--crm-primary);
-  box-shadow: 0 0 0 3px rgb(37 99 235 / 14%);
+  /* box-shadow: 0 0 0 3px rgb(37 99 235 / 14%); */
 }
 
 .table-result-pill {

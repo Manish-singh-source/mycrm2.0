@@ -1,4 +1,4 @@
-import { ChevronRight, PanelLeftClose, Shield } from 'lucide-react';
+import { ChevronRight, PanelLeftClose, PanelLeftOpen, Shield } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 
 import { hasPermission, isModuleEnabled } from '@/features/auth/permissions/permissions';
@@ -10,6 +10,8 @@ type AppSidebarProps = {
   guard: AuthGuard;
   title: string;
   groups: NavGroup[];
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
 };
 
 function canShowItem(auth: ReturnType<typeof useAuthStore>, guard: AuthGuard, item: NavItem) {
@@ -22,8 +24,9 @@ function canShowGroup(auth: ReturnType<typeof useAuthStore>, guard: AuthGuard, g
   return guard !== 'tenant' || !group.moduleCode || isModuleEnabled(auth, group.moduleCode);
 }
 
-export function AppSidebar({ guard, title, groups }: AppSidebarProps) {
+export function AppSidebar({ guard, title, groups, isCollapsed = false, onToggleCollapse }: AppSidebarProps) {
   const auth = useAuthStore();
+  const CollapseIcon = isCollapsed ? PanelLeftOpen : PanelLeftClose;
 
   return (
     <aside className="app-sidebar">
@@ -33,8 +36,13 @@ export function AppSidebar({ guard, title, groups }: AppSidebarProps) {
           <strong>{title}</strong>
           <span>{guard === 'platform' ? 'Super Admin' : 'Tenant workspace'}</span>
         </div>
-        <button type="button" aria-label="Collapse sidebar">
-          <PanelLeftClose size={16} aria-hidden />
+        <button
+          type="button"
+          aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-expanded={!isCollapsed}
+          onClick={onToggleCollapse}
+        >
+          <CollapseIcon size={16} aria-hidden />
         </button>
       </div>
       <nav aria-label={`${title} navigation`}>
