@@ -53,6 +53,7 @@ export type ListQuery = {
   per_page?: number;
   search?: string;
   sort?: string;
+  direction?: 'asc' | 'desc';
   include?: string;
   fields?: string;
   date_from?: string;

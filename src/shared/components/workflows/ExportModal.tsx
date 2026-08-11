@@ -1,4 +1,4 @@
-﻿import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 
 import { AppModal } from '@/shared/components/modal';
 import { Button } from '@/shared/components/ui';
@@ -6,6 +6,7 @@ import type { AuthGuard, Permission } from '@/features/auth/types/authTypes';
 
 export type ExportOptions = {
   format: string;
+  delivery: 'job' | 'download';
   scope: 'filtered' | 'selected';
   timezone: string;
   emailWhenReady: boolean;
@@ -25,6 +26,7 @@ type ExportModalProps = {
 
 export function ExportModal({ columns, selectedCount = 0, onExport, ...props }: ExportModalProps) {
   const [format, setFormat] = useState('CSV');
+  const [delivery, setDelivery] = useState<'job' | 'download'>('job');
   const [scope, setScope] = useState<'filtered' | 'selected'>('filtered');
   const [timezone, setTimezone] = useState('Asia/Kolkata');
   const [emailWhenReady, setEmailWhenReady] = useState(false);
@@ -49,7 +51,7 @@ export function ExportModal({ columns, selectedCount = 0, onExport, ...props }: 
           </Button>
           <Button
             type="button"
-            onClick={() => onExport({ format, scope, timezone, emailWhenReady })}
+            onClick={() => onExport({ format, delivery, scope, timezone, emailWhenReady })}
             disabled={columns.length === 0}
           >
             Export
@@ -72,6 +74,13 @@ export function ExportModal({ columns, selectedCount = 0, onExport, ...props }: 
             <option>CSV</option>
             <option>XLSX</option>
             <option>PDF</option>
+          </select>
+        </label>
+        <label>
+          Delivery
+          <select value={delivery} onChange={(event) => setDelivery(event.target.value as 'job' | 'download')}>
+            <option value="job">Queue job</option>
+            <option value="download">Immediate CSV</option>
           </select>
         </label>
         <label>

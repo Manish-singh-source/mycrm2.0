@@ -37,6 +37,18 @@ export type PlatformListResult<TRecord extends PlatformRecord> = {
 
 export type GroupedPermissions = Record<string, PlatformRecord[]>;
 
+export type AccessExportPayload = {
+  format: 'csv';
+  delivery: 'job' | 'download';
+  scope: 'filtered' | 'selected';
+  filters?: Record<string, unknown>;
+  sort?: string;
+  direction?: 'asc' | 'desc';
+  columns?: string[];
+  selected_ids?: string[];
+  timezone?: string;
+  email_when_ready?: boolean;
+};
 export type RolePayload = {
   name: string;
   display_name: string;
@@ -140,7 +152,7 @@ export const platformAccessApi = {
       platformClient.delete(`/access-control/roles/${encodeURIComponent(id)}/users/${encodeURIComponent(userId)}`, {
         body: { audit_reason }
       }),
-    export: (body: Record<string, unknown>) => platformClient.post('/access-control/roles/export', body)
+    export: (body: AccessExportPayload) => platformClient.post('/access-control/roles/export', body)
   },
   permissions: {
     list: (query?: ApiQuery) => list<PlatformRecord>('/access-control/permissions', query),
@@ -150,7 +162,7 @@ export const platformAccessApi = {
     update: async (id: string, body: Partial<PermissionPayload>) =>
       unwrapRecord(await platformClient.patch(`/access-control/permissions/${encodeURIComponent(id)}`, body)),
     delete: (id: string) => platformClient.delete(`/access-control/permissions/${encodeURIComponent(id)}`),
-    export: (body: Record<string, unknown>) => platformClient.post('/access-control/permissions/export', body)
+    export: (body: AccessExportPayload) => platformClient.post('/access-control/permissions/export', body)
   },
   teams: {
     list: (query?: ApiQuery) => list<PlatformRecord>('/platform-teams', query),
@@ -172,6 +184,10 @@ export const platformAccessApi = {
       platformClient.post(`/platform-teams/${encodeURIComponent(id)}/assignments`, body),
     releaseAssignment: (id: string, assignmentId: string, body: Record<string, unknown>) =>
       platformClient.delete(`/platform-teams/${encodeURIComponent(id)}/assignments/${encodeURIComponent(assignmentId)}`, { body })
+  },
+  audit: {
+    list: (query?: ApiQuery) => list<PlatformRecord>('/audit/activity-logs', query),
+    export: (body: AccessExportPayload) => platformClient.post('/audit/export', body)
   },
   teamRoles: {
     list: (query?: ApiQuery) => list<PlatformRecord>('/platform-team-roles', query),

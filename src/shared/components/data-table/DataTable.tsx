@@ -1,4 +1,4 @@
-﻿import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import {
   ArrowDown,
   ArrowUpDown,
@@ -45,6 +45,8 @@ type DataTableProps<TRow> = {
   selectedRowIds?: string[];
   onSelectionChange?: (ids: string[]) => void;
   bulkActions?: ReactNode;
+  sortValue?: { id: string; direction: 'asc' | 'desc' } | null;
+  onSortChange?: (sort: { id: string; direction: 'asc' | 'desc' } | null) => void;
   page?: number;
   perPage?: number;
   total?: number;
@@ -71,6 +73,8 @@ export function DataTable<TRow>({
   selectedRowIds,
   onSelectionChange,
   bulkActions,
+  sortValue,
+  onSortChange,
   page = 1,
   perPage = 25,
   total = data.length,
@@ -78,6 +82,7 @@ export function DataTable<TRow>({
 }: DataTableProps<TRow>) {
   const [internalHiddenColumns, setInternalHiddenColumns] = useState<string[]>([]);
   const [sort, setSort] = useState<{ id: string; direction: 'asc' | 'desc' } | null>(null);
+  const activeSort = sortValue !== undefined ? sortValue : sort;
   const selected = selectedRowIds ?? [];
   const hiddenColumns = hiddenColumnIds ?? internalHiddenColumns;
   const setHiddenColumns = onHiddenColumnIdsChange ?? setInternalHiddenColumns;
@@ -91,17 +96,18 @@ export function DataTable<TRow>({
   );
 
   const sortedData = useMemo(() => {
-    if (!sort) return data;
-    const column = columns.find((item) => item.id === sort.id);
+    if (onSortChange) return data;
+    if (!activeSort) return data;
+    const column = columns.find((item) => item.id === activeSort.id);
     if (!column?.accessor) return data;
 
     return [...data].sort((a, b) => {
       const left = column.accessor?.(a);
       const right = column.accessor?.(b);
-      const direction = sort.direction === 'asc' ? 1 : -1;
+      const direction = activeSort.direction === 'asc' ? 1 : -1;
       return String(left ?? '').localeCompare(String(right ?? '')) * direction;
     });
-  }, [columns, data, sort]);
+  }, [activeSort, columns, data, onSortChange]);
 
   const allVisibleSelected =
     sortedData.length > 0 && sortedData.every((row) => selected.includes(getRowId(row)));
@@ -120,16 +126,21 @@ export function DataTable<TRow>({
 
   function toggleSort(column: DataTableColumn<TRow>) {
     if (!column.enableSorting) return;
-    setSort((current) => {
-      if (current?.id !== column.id) return { id: column.id, direction: 'asc' };
-      if (current.direction === 'asc') return { id: column.id, direction: 'desc' };
+    const nextSort = (current: { id: string; direction: 'asc' | 'desc' } | null) => {
+      if (current?.id !== column.id) return { id: column.id, direction: 'asc' as const };
+      if (current.direction === 'asc') return { id: column.id, direction: 'desc' as const };
       return null;
-    });
+    };
+    if (onSortChange) {
+      onSortChange(nextSort(activeSort));
+      return;
+    }
+    setSort(nextSort);
   }
 
   function renderSortIcon(column: DataTableColumn<TRow>) {
     if (!column.enableSorting) return null;
-    if (sort?.id !== column.id) {
+    if (activeSort?.id !== column.id) {
       return (
         <ArrowUpDown
           aria-hidden="true"
@@ -139,7 +150,7 @@ export function DataTable<TRow>({
         />
       );
     }
-    return sort.direction === 'asc' ? (
+    return activeSort.direction === 'asc' ? (
       <ArrowUp aria-hidden="true" size={14} strokeWidth={2.4} />
     ) : (
       <ArrowDown aria-hidden="true" size={14} strokeWidth={2.4} />

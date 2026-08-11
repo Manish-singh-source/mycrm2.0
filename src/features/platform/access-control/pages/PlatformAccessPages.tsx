@@ -382,6 +382,7 @@ function ResourceList({ kind }: { kind: ResourceKind }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
+  const [sort, setSort] = useState<{ id: string; direction: 'asc' | 'desc' } | null>(null);
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [filters, setFilters] = useState<Record<string, string>>({});
@@ -394,6 +395,8 @@ function ResourceList({ kind }: { kind: ResourceKind }) {
     page,
     per_page: 25,
     search,
+    sort: sort?.id,
+    direction: sort?.direction,
     filter: {
       status: filters.status || undefined,
       ...(kind === 'roles'
@@ -401,7 +404,12 @@ function ResourceList({ kind }: { kind: ResourceKind }) {
             type: filters.type || undefined,
             guard_name: filters.guard_name || undefined
           }
-        : {})
+        : kind === 'permissions'
+          ? {
+              module: filters.module || undefined,
+              guard_name: filters.guard_name || undefined
+            }
+          : {})
     }
   });
 
@@ -535,7 +543,12 @@ function ResourceList({ kind }: { kind: ResourceKind }) {
       onOpenFilters={() => setDrawer('filters')}
       onOpenColumns={() => setModal('columns')}
       onOpenSavedViews={() => setModal('views')}
-      onOpenExport={() => setModal('export')}
+      onOpenExport={kind === 'roles' || kind === 'permissions' ? () => setModal('export') : undefined}
+      sortValue={sort}
+      onSortChange={(nextSort) => {
+        setSort(nextSort);
+        setPage(1);
+      }}
       selectedRowIds={selectedIds}
       onSelectionChange={setSelectedIds}
       page={page}
@@ -543,34 +556,42 @@ function ResourceList({ kind }: { kind: ResourceKind }) {
       onPageChange={setPage}
       bulkActions={
         <div className="table-actions">
-          <PermissionButton
-            guard="platform"
-            permission={`${meta.permission}.edit`}
-            type="button"
-            size="sm"
-            variant="secondary"
-          >
-            Activate
-          </PermissionButton>
-          <PermissionButton
-            guard="platform"
-            permission={`${meta.permission}.edit`}
-            type="button"
-            size="sm"
-            variant="secondary"
-          >
-            Deactivate
-          </PermissionButton>
-          <PermissionButton
-            guard="platform"
-            permission={`${meta.permission}.view`}
-            type="button"
-            size="sm"
-            variant="secondary"
-            onClick={() => setModal('export')}
-          >
-            Export Selected
-          </PermissionButton>
+          {kind === 'roles' ? (
+            <>
+              <PermissionButton
+                guard="platform"
+                permission="platform_role.edit"
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={() => rows.filter((row) => selectedIds.includes(idOf(row))).forEach((record) => actionMutation.mutate({ action: 'activate', record, payload: auditPayload('Bulk role activation') }))}
+              >
+                Activate
+              </PermissionButton>
+              <PermissionButton
+                guard="platform"
+                permission="platform_role.edit"
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={() => rows.filter((row) => selectedIds.includes(idOf(row))).forEach((record) => actionMutation.mutate({ action: 'deactivate', record, payload: auditPayload('Bulk role deactivation') }))}
+              >
+                Deactivate
+              </PermissionButton>
+            </>
+          ) : null}
+          {kind === 'roles' || kind === 'permissions' ? (
+            <PermissionButton
+              guard="platform"
+              permission={`${meta.permission}.view`}
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={() => setModal('export')}
+            >
+              Export Selected
+            </PermissionButton>
+          ) : null}
         </div>
       }
     />
@@ -598,7 +619,9 @@ function ResourceList({ kind }: { kind: ResourceKind }) {
             setPage(1);
           }}
           hiddenColumnIds={hiddenColumnIds}
-          selectedCount={selectedIds.length}
+          selectedIds={selectedIds}
+        selectedCount={selectedIds.length}
+          sort={sort}
           onHiddenColumnIdsChange={setHiddenColumnIds}
           onClose={() => {
             setModal(null);
@@ -630,7 +653,9 @@ function ResourceList({ kind }: { kind: ResourceKind }) {
           setPage(1);
         }}
         hiddenColumnIds={hiddenColumnIds}
+        selectedIds={selectedIds}
         selectedCount={selectedIds.length}
+          sort={sort}
         onHiddenColumnIdsChange={setHiddenColumnIds}
         onClose={() => {
           setModal(null);
@@ -1772,7 +1797,9 @@ function StandardListControls({
   filters = {},
   onFiltersChange,
   hiddenColumnIds = [],
+  selectedIds = [],
   selectedCount = 0,
+  sort,
   onHiddenColumnIdsChange,
   onClose,
   onAction
@@ -1785,7 +1812,9 @@ function StandardListControls({
   filters?: Record<string, string>;
   onFiltersChange?: (filters: Record<string, string>) => void;
   hiddenColumnIds?: string[];
+  selectedIds?: string[];
   selectedCount?: number;
+  sort?: { id: string; direction: 'asc' | 'desc' } | null;
   onHiddenColumnIdsChange?: (ids: string[]) => void;
   onClose: () => void;
   onAction?: (action: string, payload: Record<string, unknown>) => void;
@@ -1794,8 +1823,8 @@ function StandardListControls({
   const [draftFilters, setDraftFilters] = useState(filters);
   const exportMutation = useMutation({
     mutationFn: (options: Record<string, unknown>) => {
-      if (kind === 'roles') return platformAccessApi.roles.export(options);
-      if (kind === 'permissions') return platformAccessApi.permissions.export(options);
+      if (kind === 'roles') return platformAccessApi.roles.export(options as any);
+      if (kind === 'permissions') return platformAccessApi.permissions.export(options as any);
       return Promise.resolve({ data: null });
     },
     onSuccess: () => {
@@ -1835,17 +1864,41 @@ function StandardListControls({
                 <option value="system">System</option>
               </select>
             )
-          },
+          }
+        ]
+      : []),
+    ...(kind === 'roles' || kind === 'permissions'
+      ? [
           {
             name: 'guard_name',
             label: 'Guard name',
             input: (
-              <input
+              <select
                 value={draftFilters.guard_name ?? ''}
                 onChange={(event) =>
                   setDraftFilters({ ...draftFilters, guard_name: event.target.value })
                 }
-                placeholder="platform"
+              >
+                <option value="">Any guard</option>
+                <option value="platform">Platform</option>
+                <option value="tenant">Tenant</option>
+              </select>
+            )
+          }
+        ]
+      : []),
+    ...(kind === 'permissions'
+      ? [
+          {
+            name: 'module',
+            label: 'Module',
+            input: (
+              <input
+                value={draftFilters.module ?? ''}
+                onChange={(event) =>
+                  setDraftFilters({ ...draftFilters, module: event.target.value })
+                }
+                placeholder="billing"
               />
             )
           }
@@ -1919,13 +1972,19 @@ function StandardListControls({
         error={exportMutation.error ? errorMessage(exportMutation.error) : null}
         onExport={(options) =>
           exportMutation.mutate({
-            ...options,
-            format: String(options.format).toLowerCase(),
+            format: 'csv',
+            delivery: options.delivery,
+            scope: options.scope,
             filters,
+            sort: sort?.id,
+            direction: sort?.direction,
             columns: columns
               .filter((column) => !hiddenColumnIds.includes(column.id) && column.id !== 'actions')
               .map((column) => column.id),
-            selected_count: selectedCount
+            selected_ids: selectedIds,
+            selected_count: selectedCount,
+            timezone: options.timezone,
+            email_when_ready: options.emailWhenReady
           })
         }
       />
@@ -2392,7 +2451,6 @@ function CloneRoleModal({
     `${textOf(role, ['display_name', 'name'], 'Role')} Copy`
   );
   const [copyPermissions, setCopyPermissions] = useState(true);
-  const [copyUsers, setCopyUsers] = useState(false);
   const [status, setStatus] = useState('inactive');
   const [auditReason, setAuditReason] = useState('Create restricted clone');
 
@@ -2401,7 +2459,6 @@ function CloneRoleModal({
     setName(`${textOf(role, ['name'], 'role')}_copy`);
     setDisplayName(`${textOf(role, ['display_name', 'name'], 'Role')} Copy`);
     setCopyPermissions(true);
-    setCopyUsers(false);
     setStatus('inactive');
     setAuditReason('Create restricted clone');
   }, [open, role]);
@@ -2412,7 +2469,6 @@ function CloneRoleModal({
         name: toSnakeCase(name),
         display_name: toTitleCase(displayName),
         copy_permissions: copyPermissions,
-        copy_users: copyUsers,
         copy_description: true,
         status,
         audit_reason: auditReason
@@ -2469,14 +2525,7 @@ function CloneRoleModal({
           />{' '}
           Copy permissions
         </label>
-        <label className="check-row">
-          <input
-            checked={copyUsers}
-            type="checkbox"
-            onChange={(event) => setCopyUsers(event.target.checked)}
-          />{' '}
-          Copy users
-        </label>
+
         <label>
           Audit reason
           <textarea value={auditReason} onChange={(event) => setAuditReason(event.target.value)} />
@@ -3607,7 +3656,21 @@ function ResourceStats({ kind, rows }: { kind: ResourceKind; rows: PlatformRecor
 function AuditRail({ rows, compact = false }: { rows: PlatformRecord[]; compact?: boolean }) {
   const [visible, setVisible] = useState(true);
   const [activeTab, setActiveTab] = useState<'activity' | 'details'>('activity');
-  const activity = rows.slice(0, 6);
+  const [showFull, setShowFull] = useState(false);
+  const auditQuery = useQuery({
+    queryKey: platformQueryKeys.list('platform-audit-logs-access-control', { per_page: showFull ? 25 : 6 }),
+    queryFn: () => platformAccessApi.audit.list({ per_page: showFull ? 25 : 6, sort: 'created_at', direction: 'desc' })
+  });
+  const exportMutation = useMutation({
+    mutationFn: (delivery: 'job' | 'download') =>
+      platformAccessApi.audit.export({
+        format: 'csv',
+        delivery,
+        scope: 'filtered',
+        columns: ['id', 'actor_platform_user_id', 'subject_type', 'subject_id', 'event', 'description', 'created_at']
+      })
+  });
+  const activity = auditQuery.data?.data ?? rows.slice(0, showFull ? 25 : 6);
 
   if (!visible) return null;
 
@@ -3637,33 +3700,40 @@ function AuditRail({ rows, compact = false }: { rows: PlatformRecord[]; compact?
           Details
         </button>
       </div>
+      {auditQuery.isLoading ? <div className="surface-state">Loading audit logs...</div> : null}
+      {auditQuery.isError ? <div className="surface-error">{errorMessage(auditQuery.error)}</div> : null}
       {activeTab === 'activity' ? (
         <>
           {activity.map((row) => (
-            <article key={idOf(row) || textOf(row, ['name'])}>
+            <article key={idOf(row) || String(row.id ?? row.event ?? row.created_at)}>
               <span className="audit-avatar" aria-hidden="true">
-                {textOf(row, ['updated_by', 'created_by'], 'System').slice(0, 1).toUpperCase()}
+                {textOf(row, ['actor_platform_user_id', 'updated_by', 'created_by'], 'S').slice(0, 1).toUpperCase()}
               </span>
               <div>
-                <strong>{toTitleCase(textOf(row, ['updated_by', 'created_by'], 'System'))}</strong>
-                <small>
-                  {displayText(row, ['guard_name', 'module', 'visibility'], 'Platform')}
-                </small>
-                <p>{displayText(row, ['event', 'action', 'display_name', 'name'])} Changed</p>
-                <time>{formatDateTime(row.updated_at ?? row.created_at)}</time>
+                <strong>{toTitleCase(textOf(row, ['event', 'display_name', 'name'], 'Activity'))}</strong>
+                <small>{displayText(row, ['subject_type', 'guard_name', 'module'], 'Platform')}</small>
+                <p>{textOf(row, ['description', 'event', 'display_name', 'name'])}</p>
+                <time>{formatDateTime(row.created_at ?? row.updated_at)}</time>
               </div>
             </article>
           ))}
-          {activity.length === 0 ? (
+          {activity.length === 0 && !auditQuery.isLoading ? (
             <div className="empty-state">No audit activity loaded.</div>
           ) : null}
         </>
       ) : (
         <RecordDetails record={activity[0] ? roleDisplayDetails(activity[0], 'roles') : {}} />
       )}
-      <Button type="button" variant="secondary" size="sm" onClick={() => setActiveTab('details')}>
-        View Full Audit Logs
+      <Button type="button" variant="secondary" size="sm" onClick={() => setShowFull((value) => !value)}>
+        {showFull ? 'Show Recent Audit Logs' : 'View Full Audit Logs'}
       </Button>
+      <Button type="button" variant="secondary" size="sm" onClick={() => exportMutation.mutate('job')} disabled={exportMutation.isPending}>
+        Export Audit Logs
+      </Button>
+      <Button type="button" variant="secondary" size="sm" onClick={() => exportMutation.mutate('download')} disabled={exportMutation.isPending}>
+        Download Audit CSV
+      </Button>
+      {exportMutation.error ? <div className="surface-error">{errorMessage(exportMutation.error)}</div> : null}
     </aside>
   );
 }
