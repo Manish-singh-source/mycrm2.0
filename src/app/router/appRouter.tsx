@@ -96,9 +96,7 @@ import { TenantDashboardPage, TenantMyDashboardPage } from '@/features/tenant/pa
 import { TenantProfilePage } from '@/features/tenant/pages/TenantProfilePages';
 import {
   TenantActivityPage,
-  TenantHelpCenterPage,
-  TenantNotificationsPage,
-  TenantPlaceholderModulePage
+  TenantHelpCenterPage
 } from '@/features/tenant/pages/TenantWorkspacePages';
 import {
   TenantPermissionsPage,
@@ -190,6 +188,18 @@ import {
   TenantLeavePage,
   TenantPayrollPage
 } from '@/features/tenant/pages/TenantHrmsPages';
+import {
+  TenantAuditPage,
+  TenantDocumentsPage,
+  TenantFinanceBankAccountsPage,
+  TenantFinanceExpensesPage,
+  TenantFinanceInvoicesPage,
+  TenantFinancePaymentsPage,
+  TenantIntegrationsPage,
+  TenantNotificationsCommunicationPage,
+  TenantReportsPage,
+  TenantSettingsPage
+} from '@/features/tenant/pages/TenantBusinessPages';
 
 export const appRouter = createBrowserRouter([
   {
@@ -788,7 +798,7 @@ export const appRouter = createBrowserRouter([
         path: 'notifications',
         element: (
           <RequirePermission guard="tenant" anyOf={['notification.view']}>
-            <TenantNotificationsPage />
+            <TenantNotificationsCommunicationPage />
           </RequirePermission>
         )
       },
@@ -1152,13 +1162,15 @@ export const appRouter = createBrowserRouter([
           </RequirePermission>
         )
       },
-      { path: 'finance/invoices', element: <TenantPlaceholderModulePage title="Invoices" /> },
-      { path: 'finance/payments', element: <TenantPlaceholderModulePage title="Payments" /> },
-      { path: 'finance/expenses', element: <TenantPlaceholderModulePage title="Expenses" /> },
-      { path: 'finance/bank-accounts', element: <TenantPlaceholderModulePage title="Bank Accounts" /> },
-      { path: 'documents', element: <TenantPlaceholderModulePage title="Documents" /> },
-      { path: 'reports', element: <TenantPlaceholderModulePage title="Reports" /> },
-      { path: 'settings', element: <TenantPlaceholderModulePage title="Settings" /> },
+      { path: 'finance/invoices', element: <RequirePermission guard="tenant" anyOf={['finance.invoice.view']}><TenantFinanceInvoicesPage /></RequirePermission> },
+      { path: 'finance/payments', element: <RequirePermission guard="tenant" anyOf={['finance.payment.view']}><TenantFinancePaymentsPage /></RequirePermission> },
+      { path: 'finance/expenses', element: <RequirePermission guard="tenant" anyOf={['finance.expense.view']}><TenantFinanceExpensesPage /></RequirePermission> },
+      { path: 'finance/bank-accounts', element: <RequirePermission guard="tenant" anyOf={['finance.bank_account.view']}><TenantFinanceBankAccountsPage /></RequirePermission> },
+      { path: 'documents', element: <RequirePermission guard="tenant" anyOf={['document.view']}><TenantDocumentsPage /></RequirePermission> },
+      { path: 'reports', element: <RequirePermission guard="tenant" anyOf={['report.view']}><TenantReportsPage /></RequirePermission> },
+      { path: 'settings', element: <RequirePermission guard="tenant" anyOf={['setting.view']}><TenantSettingsPage /></RequirePermission> },
+      { path: 'integrations', element: <RequirePermission guard="tenant" anyOf={['setting.view']}><TenantIntegrationsPage /></RequirePermission> },
+      { path: 'audit', element: <RequirePermission guard="tenant" anyOf={['audit_log.view', 'activity_log.view']}><TenantAuditPage /></RequirePermission> },
       {
         path: '*',
         element: <PlaceholderPage title="Tenant workspace" description="Tenant CRM routes are registered as constants first." />
