@@ -100,6 +100,43 @@ import {
   TenantNotificationsPage,
   TenantPlaceholderModulePage
 } from '@/features/tenant/pages/TenantWorkspacePages';
+import {
+  TenantPermissionsPage,
+  TenantRoleCreatePage,
+  TenantRoleEditPage,
+  TenantRolesListPage,
+  TenantRoleViewPage,
+  TenantStaffCreatePage,
+  TenantStaffDashboardPage,
+  TenantStaffEditPage,
+  TenantStaffGridPage,
+  TenantStaffListPage,
+  TenantStaffViewPage,
+  TenantTeamCreatePage,
+  TenantTeamEditPage,
+  TenantTeamsListPage,
+  TenantTeamViewPage,
+  TenantUsersPage
+} from '@/features/tenant/pages/TenantAccessStaffPages';
+import {
+  TenantClientCreatePage,
+  TenantClientEditPage,
+  TenantClientsGridPage,
+  TenantClientsListPage,
+  TenantClientViewPage,
+  TenantLeadCreatePage,
+  TenantLeadEditPage,
+  TenantLeadsDashboardPage,
+  TenantLeadsGridPage,
+  TenantLeadsKanbanPage,
+  TenantLeadsListPage,
+  TenantLeadViewPage,
+  TenantVendorCreatePage,
+  TenantVendorEditPage,
+  TenantVendorsGridPage,
+  TenantVendorsListPage,
+  TenantVendorViewPage
+} from '@/features/tenant/pages/TenantCrmPages';
 
 export const appRouter = createBrowserRouter([
   {
@@ -720,9 +757,142 @@ export const appRouter = createBrowserRouter([
       },
       { path: 'profile/api-tokens', element: <ApiTokensPage guard="tenant" /> },
       { path: 'help-center', element: <TenantHelpCenterPage /> },
-      { path: 'crm/leads', element: <TenantPlaceholderModulePage title="Leads" /> },
-      { path: 'crm/clients', element: <TenantPlaceholderModulePage title="Clients" /> },
-      { path: 'crm/vendors', element: <TenantPlaceholderModulePage title="Vendors" /> },
+      {
+        path: 'crm/leads/dashboard',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['lead.view']}>
+            <TenantLeadsDashboardPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'crm/leads/grid',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['lead.view']}>
+            <TenantLeadsGridPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'crm/leads/kanban',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['lead.view']}>
+            <TenantLeadsKanbanPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'crm/leads',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['lead.view']}>
+            <TenantLeadsListPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'crm/leads/create',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['lead.create']}>
+            <TenantLeadCreatePage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'crm/leads/:id',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['lead.view']}>
+            <TenantLeadViewPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'crm/leads/:id/edit',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['lead.edit']}>
+            <TenantLeadEditPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'crm/clients/grid',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['client.view']}>
+            <TenantClientsGridPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'crm/clients',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['client.view']}>
+            <TenantClientsListPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'crm/clients/create',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['client.create']}>
+            <TenantClientCreatePage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'crm/clients/:id',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['client.view']}>
+            <TenantClientViewPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'crm/clients/:id/edit',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['client.edit']}>
+            <TenantClientEditPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'crm/vendors/grid',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['vendor.view']}>
+            <TenantVendorsGridPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'crm/vendors',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['vendor.view']}>
+            <TenantVendorsListPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'crm/vendors/create',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['vendor.create']}>
+            <TenantVendorCreatePage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'crm/vendors/:id',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['vendor.view']}>
+            <TenantVendorViewPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'crm/vendors/:id/edit',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['vendor.edit']}>
+            <TenantVendorEditPage />
+          </RequirePermission>
+        )
+      },
       { path: 'crm/client-renewals', element: <TenantPlaceholderModulePage title="Client Renewals" /> },
       { path: 'crm/vendor-renewals', element: <TenantPlaceholderModulePage title="Vendor Renewals" /> },
       { path: 'projects', element: <TenantPlaceholderModulePage title="Projects" /> },
@@ -730,7 +900,134 @@ export const appRouter = createBrowserRouter([
       { path: 'calendar', element: <TenantPlaceholderModulePage title="Calendar" /> },
       { path: 'to-do', element: <TenantPlaceholderModulePage title="To-Do" /> },
       { path: 'support/issues', element: <TenantPlaceholderModulePage title="Client Issues" /> },
-      { path: 'hrms/staff', element: <TenantPlaceholderModulePage title="Staff" /> },
+      {
+        path: 'access-control/roles',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['role.view']}>
+            <TenantRolesListPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'access-control/roles/create',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['role.create']}>
+            <TenantRoleCreatePage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'access-control/roles/:id',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['role.view']}>
+            <TenantRoleViewPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'access-control/roles/:id/edit',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['role.edit']}>
+            <TenantRoleEditPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'access-control/permissions',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['permission.view']}>
+            <TenantPermissionsPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'access-control/teams',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['team.view']}>
+            <TenantTeamsListPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'access-control/teams/create',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['team.create']}>
+            <TenantTeamCreatePage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'access-control/teams/:id',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['team.view']}>
+            <TenantTeamViewPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'access-control/teams/:id/edit',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['team.edit']}>
+            <TenantTeamEditPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'access-control/users',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['staff.view']}>
+            <TenantUsersPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'hrms/staff/dashboard',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['staff.view']}>
+            <TenantStaffDashboardPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'hrms/staff/grid',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['staff.view']}>
+            <TenantStaffGridPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'hrms/staff',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['staff.view']}>
+            <TenantStaffListPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'hrms/staff/create',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['staff.create']}>
+            <TenantStaffCreatePage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'hrms/staff/:id',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['staff.view']}>
+            <TenantStaffViewPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'hrms/staff/:id/edit',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['staff.edit']}>
+            <TenantStaffEditPage />
+          </RequirePermission>
+        )
+      },
       { path: 'hrms/attendance', element: <TenantPlaceholderModulePage title="Attendance" /> },
       { path: 'hrms/leave', element: <TenantPlaceholderModulePage title="Leave Management" /> },
       { path: 'hrms/payroll', element: <TenantPlaceholderModulePage title="Payroll" /> },

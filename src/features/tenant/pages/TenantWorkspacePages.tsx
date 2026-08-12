@@ -38,7 +38,7 @@ export function TenantActivityPage() {
         total={query.data?.total ?? query.data?.data.length ?? 0}
       />
       <AppDrawer open={Boolean(selected)} onClose={() => setSelected(null)} title="Activity Compare" guard="tenant" permission="activity_log.view" size="lg">
-        <pre className="json-preview">{JSON.stringify(selected ?? {}, null, 2)}</pre>
+        <RecordDetails record={selected ?? {}} />
       </AppDrawer>
     </section>
   );
@@ -107,6 +107,21 @@ function RecordList({ rows, loading }: { rows: TenantRecord[]; loading?: boolean
   return <div className="record-list">{rows.map((row) => <article key={idOf(row)}><strong>{String(row.title ?? row.question ?? row.name ?? row.slug ?? 'Record')}</strong><p>{String(row.answer ?? row.content ?? row.description ?? row.status ?? '-').slice(0, 220)}</p></article>)}</div>;
 }
 
+function RecordDetails({ record }: { record: TenantRecord }) {
+  const entries = Object.entries(record).filter(([key, value]) => value !== null && value !== undefined && value !== '' && !['id', 'tenant_id'].includes(key));
+  if (entries.length === 0) return <div className="empty-state">No details returned.</div>;
+  return (
+    <dl className="detail-grid">
+      {entries.map(([key, value]) => (
+        <div key={key}>
+          <dt>{label(key)}</dt>
+          <dd>{displayValue(value)}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 function activityColumns(onSelect: (record: TenantRecord) => void): DataTableColumn<TenantRecord>[] {
   return [
     { id: 'event', header: 'Event', cell: (row) => <strong>{String(row.event ?? '-')}</strong> },
@@ -124,7 +139,22 @@ function extract(payload: unknown, key: string): TenantRecord[] {
 }
 
 function idOf(row: TenantRecord) {
-  return String(row.uuid ?? row.id ?? row.slug ?? row.title ?? JSON.stringify(row).slice(0, 40));
+  return String(row.uuid ?? row.id ?? row.slug ?? row.title ?? row.name ?? 'record');
+}
+
+function label(value: string) {
+  return value.replace(/[-_]/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function displayValue(value: unknown) {
+  if (value === null || value === undefined || value === '') return '-';
+  if (Array.isArray(value)) return `${value.length} item${value.length === 1 ? '' : 's'}`;
+  if (typeof value === 'object') {
+    const record = value as TenantRecord;
+    return String(record.title ?? record.name ?? record.display_name ?? record.email ?? record.status ?? record.uuid ?? 'Details available');
+  }
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  return String(value);
 }
 
 function errorMessage(error: unknown) {

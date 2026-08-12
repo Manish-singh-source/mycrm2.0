@@ -94,7 +94,7 @@ function PreferencesPanel() {
   useEffect(() => {
     accountApi.preferences('tenant').then((response) => {
       const preferences = (response.data.preferences ?? response.data) as Record<string, unknown>;
-      setForm((current) => ({ ...current, ...Object.fromEntries(Object.entries(preferences).map(([key, value]) => [key, typeof value === 'object' ? JSON.stringify(value) : String(value ?? '')])) }));
+      setForm((current) => ({ ...current, ...Object.fromEntries(Object.entries(preferences).map(([key, value]) => [key, preferenceValue(value)])) }));
     }).catch((err) => setError(errorMessage(err)));
   }, []);
   async function submit(event: FormEvent) {
@@ -289,6 +289,13 @@ function csv(value: string) {
 
 function label(value: string) {
   return value.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function preferenceValue(value: unknown) {
+  if (value === null || value === undefined) return '';
+  if (Array.isArray(value)) return `${value.length} selected`;
+  if (typeof value === 'object') return 'Configured';
+  return String(value);
 }
 
 function errorMessage(error: unknown) {

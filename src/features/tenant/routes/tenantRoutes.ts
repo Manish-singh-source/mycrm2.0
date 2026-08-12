@@ -8,6 +8,8 @@ export const TENANT_ROUTES = {
   activity: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/activity`,
   accessControl: {
     roles: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/access-control/roles`,
+    permissions: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/access-control/permissions`,
+    users: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/access-control/users`,
     teams: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/access-control/teams`
   },
   crm: {
@@ -27,6 +29,8 @@ export const TENANT_ROUTES = {
     issues: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/support/issues`
   },
   hrms: {
+    staffDashboard: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/hrms/staff/dashboard`,
+    staffGrid: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/hrms/staff/grid`,
     staff: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/hrms/staff`,
     attendance: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/hrms/attendance`,
     leave: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/hrms/leave`,

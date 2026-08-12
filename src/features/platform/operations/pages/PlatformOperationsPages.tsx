@@ -256,7 +256,7 @@ function ActionSurface({ area, action, selectedIds, onClose, onComplete }: { are
   if (action.key === 'payload' || action.key === 'auditCompare') {
     return (
       <AppDrawer open onClose={onClose} title={action.key === 'auditCompare' ? 'Audit Compare' : 'Raw Payload / Exception'} guard="platform" permission="audit_log.view" size="lg">
-        <pre className="json-preview">{JSON.stringify(mask(action.record ?? {}), null, 2)}</pre>
+        <DetailGrid record={mask(action.record ?? {})} />
       </AppDrawer>
     );
   }
@@ -593,7 +593,33 @@ function label(value: string) {
 function printable(value: unknown) {
   if (value === null || value === undefined || value === '') return '-';
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
-  if (typeof value === 'object') return JSON.stringify(mask(value)).slice(0, 120);
+  if (typeof value === 'object') return displayValue(mask(value));
+  return String(value);
+}
+
+function DetailGrid({ record }: { record: unknown }) {
+  if (!record || typeof record !== 'object') return <div className="empty-state">No details returned.</div>;
+  const entries = Object.entries(record as Record<string, unknown>).filter(([key, value]) => value !== null && value !== undefined && value !== '' && !['id'].includes(key));
+  if (entries.length === 0) return <div className="empty-state">No displayable details returned.</div>;
+  return (
+    <dl className="detail-grid">
+      {entries.map(([key, value]) => (
+        <div key={key}>
+          <dt>{label(key)}</dt>
+          <dd>{displayValue(value)}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function displayValue(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '-';
+  if (Array.isArray(value)) return `${value.length} item${value.length === 1 ? '' : 's'}`;
+  if (typeof value === 'object') {
+    const record = value as PlatformRecord;
+    return String(record.name ?? record.display_name ?? record.title ?? record.email ?? record.status ?? record.uuid ?? 'Details available');
+  }
   return String(value);
 }
 

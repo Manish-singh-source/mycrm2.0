@@ -116,7 +116,7 @@ function ChartWidget({ code }: { code: string }) {
       <div className="mini-bars">
         {rows.slice(0, 6).map((row, index) => {
           const value = Number(row.total ?? row.count ?? row.value ?? 0);
-          return <div key={index} style={{ height: `${Math.max(0, Math.min(100, value))}%` }} title={JSON.stringify(row)} />;
+          return <div key={index} style={{ height: `${Math.max(0, Math.min(100, value))}%` }} title={displayValue(row)} />;
         })}
       </div>
     </article>
@@ -201,7 +201,7 @@ function DashboardSurfaces({
   if (modal === 'activity') {
     return (
       <AppDrawer open onClose={onClose} title="Recent Activity Compare" guard="tenant" permission="activity_log.view" size="lg">
-        <pre className="json-preview">{JSON.stringify(selectedRecord ?? {}, null, 2)}</pre>
+        <RecordDetails record={selectedRecord ?? {}} />
       </AppDrawer>
     );
   }
@@ -231,9 +231,12 @@ function DashboardSurfaces({
 function WidgetLibrary({ open, widgets, onClose, onSave }: { open: boolean; widgets: unknown; onClose: () => void; onSave: (widgets: Record<string, unknown>[]) => void }) {
   const [selected, setSelected] = useState(['my_tasks', 'calendar', 'notifications']);
   const available = ['my_tasks', 'my_leads', 'my_projects', 'my_issues', 'calendar', 'reminders', 'attendance', 'leave_balance', 'notifications', 'recent_files'];
+  const currentWidgets = extractRows(widgets);
   return (
     <AppModal open={open} onClose={onClose} title="Widget Library" guard="tenant" permission="dashboard.customize" footer={<><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="button" onClick={() => onSave(selected.map((code, index) => ({ code, position: index + 1, visible: true, settings: { limit: 10 } })))}>Save Layout</Button></>}>
-      <div className="surface-state">Current layout: {JSON.stringify(widgets ?? {})}</div>
+      <div className="surface-state">
+        Current layout: {currentWidgets.length > 0 ? currentWidgets.map((widget) => String(widget.code ?? widget.name ?? widget.title ?? widget.id)).join(', ') : 'No widgets returned.'}
+      </div>
       <div className="settings-list">
         {available.map((code) => (
           <label key={code} className="check-row">
@@ -281,7 +284,7 @@ export function TenantNotificationsDrawer({ open, onClose }: { open: boolean; on
       </div>
       {selected ? (
         <AppDrawer open onClose={() => setSelected(null)} title="Notification Detail" guard="tenant" permission="notification.view" size="md">
-          <pre className="json-preview">{JSON.stringify(selected, null, 2)}</pre>
+          <RecordDetails record={selected} />
         </AppDrawer>
       ) : null}
     </AppDrawer>
@@ -328,13 +331,49 @@ function extractRows(payload: unknown): TenantRecord[] {
 }
 
 function idOf(record: TenantRecord) {
-  return String(record.uuid ?? record.id ?? record.code ?? JSON.stringify(record).slice(0, 40));
+  return String(record.uuid ?? record.id ?? record.code ?? textOf(record, ['name', 'title', 'display_name'], 'record'));
 }
 
 function printable(value: unknown) {
   if (value === null || value === undefined || value === '') return '-';
-  if (typeof value === 'object') return JSON.stringify(value).slice(0, 80);
+  if (typeof value === 'object') return displayValue(value);
   return String(value);
+}
+
+function RecordDetails({ record }: { record: TenantRecord }) {
+  const entries = Object.entries(record).filter(([key, value]) => value !== null && value !== undefined && value !== '' && !['id', 'tenant_id'].includes(key));
+  if (entries.length === 0) return <div className="empty-state">No details returned.</div>;
+  return (
+    <dl className="detail-grid">
+      {entries.map(([key, value]) => (
+        <div key={key}>
+          <dt>{label(key)}</dt>
+          <dd>{displayValue(value)}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function displayValue(value: unknown) {
+  if (value === null || value === undefined || value === '') return '-';
+  if (Array.isArray(value)) return `${value.length} item${value.length === 1 ? '' : 's'}`;
+  if (typeof value === 'object') {
+    const record = value as TenantRecord;
+    return String(record.title ?? record.name ?? record.display_name ?? record.email ?? record.status ?? record.uuid ?? 'Details available');
+  }
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  return String(value);
+}
+
+function textOf(record: unknown, keys: string[], fallback = '') {
+  if (!record || typeof record !== 'object') return fallback;
+  const payload = record as Record<string, unknown>;
+  for (const key of keys) {
+    const value = payload[key];
+    if (value !== null && value !== undefined && value !== '') return String(value);
+  }
+  return fallback;
 }
 
 function label(value: string) {

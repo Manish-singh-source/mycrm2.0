@@ -6,6 +6,7 @@ import {
   FileText,
   Gauge,
   HelpCircle,
+  KeyRound,
   LayoutList,
   LifeBuoy,
   Receipt,
@@ -88,6 +89,16 @@ export function buildTenantNavigation(tenantSlug: string, badges: TenantNavigati
         { label: 'Leave Management', to: TENANT_ROUTES.hrms.leave(tenantSlug), icon: ShieldCheck, permission: 'leave.view', moduleCode: 'hrms', badge: badges.pendingApprovals },
         { label: 'Payroll', to: TENANT_ROUTES.hrms.payroll(tenantSlug), icon: Receipt, permission: 'payroll.view', moduleCode: 'hrms', badge: badges.pendingApprovals },
         { label: 'Holidays', to: TENANT_ROUTES.hrms.holidays(tenantSlug), icon: BellRing, permission: 'holiday.view', moduleCode: 'hrms' }
+      ]
+    },
+    {
+      id: 'access-control',
+      label: 'Access Control',
+      items: [
+        { label: 'Roles', to: TENANT_ROUTES.accessControl.roles(tenantSlug), icon: ShieldCheck, permission: 'role.view' },
+        { label: 'Permissions', to: TENANT_ROUTES.accessControl.permissions(tenantSlug), icon: KeyRound, permission: 'permission.view' },
+        { label: 'Teams', to: TENANT_ROUTES.accessControl.teams(tenantSlug), icon: Users, permission: 'team.view' },
+        { label: 'Tenant Users', to: TENANT_ROUTES.accessControl.users(tenantSlug), icon: Users, permission: 'staff.view' }
       ]
     },
     {
