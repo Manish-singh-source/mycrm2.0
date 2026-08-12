@@ -47,6 +47,8 @@ export const TENANT_ROUTES = {
   documents: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/documents`,
   reports: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/reports`,
   settings: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/settings`,
+  integrations: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/integrations`,
+  audit: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/audit`,
   profile: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/profile`,
   helpCenter: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/help-center`
 } as const;

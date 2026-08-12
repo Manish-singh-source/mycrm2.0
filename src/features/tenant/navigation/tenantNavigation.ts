@@ -125,7 +125,11 @@ export function buildTenantNavigation(tenantSlug: string, badges: TenantNavigati
     {
       id: 'settings',
       label: 'Settings',
-      items: [{ label: 'Settings', to: TENANT_ROUTES.settings(tenantSlug), icon: Settings, permission: 'setting.view' }]
+      items: [
+        { label: 'Settings', to: TENANT_ROUTES.settings(tenantSlug), icon: Settings, permission: 'setting.view' },
+        { label: 'Integrations', to: TENANT_ROUTES.integrations(tenantSlug), icon: KeyRound, permission: 'setting.view' },
+        { label: 'Audit Logs', to: TENANT_ROUTES.audit(tenantSlug), icon: ShieldCheck, permission: 'audit_log.view' }
+      ]
     },
     {
       id: 'profile',
