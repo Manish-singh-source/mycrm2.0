@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
@@ -18,6 +18,7 @@ import {
   UploadCloud,
   Wrench
 } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
 
 import { platformQueryKeys } from '@/features/platform/api/platformQueryKeys';
 import { platformOperationsApi, type PlatformRecord } from '@/features/platform/operations/api/platformOperationsApi';
@@ -125,7 +126,10 @@ export function PlatformAnnouncementsPage() { return <OperationsPage config={con
 export function PlatformWebhooksPage() { return <OperationsPage config={configs.webhooks} />; }
 
 function OperationsPage({ config }: { config: AreaConfig }) {
-  const [activeTab, setActiveTab] = useState(config.tabs[0].id);
+  const location = useLocation();
+  const requestedTab = new URLSearchParams(location.search).get('tab');
+  const initialTab = requestedTab && config.tabs.some((entry) => entry.id === requestedTab) ? requestedTab : config.tabs[0].id;
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -138,6 +142,20 @@ function OperationsPage({ config }: { config: AreaConfig }) {
   });
   const rows = query.data?.data ?? [];
   const columns = useMemo(() => buildColumns(tab.columns, tab.primary ?? [], tab.actions ?? [], setAction, activeTab), [activeTab, tab]);
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const nextTab = searchParams.get('tab');
+    if (nextTab && config.tabs.some((entry) => entry.id === nextTab)) {
+      setActiveTab(nextTab);
+      setPage(1);
+      setSelectedIds([]);
+    }
+    const nextAction = searchParams.get('action');
+    if (config.id === 'monitoring' && nextAction === 'incidentEditor') {
+      setAction({ key: 'incidentEditor', tab: nextTab ?? activeTab });
+    }
+  }, [activeTab, config.id, config.tabs, location.search]);
 
   return (
     <section className="enterprise-module-page">

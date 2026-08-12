@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BadgeDollarSign, Eye, FileSpreadsheet, FileText, MoreVertical, Pencil, Receipt, RefreshCw, RotateCw, Send, Tags, Trash2 } from 'lucide-react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import { platformQueryKeys } from '@/features/platform/api/platformQueryKeys';
 import { platformBillingApi, type BillingRecord } from '@/features/platform/billing/api/platformBillingApi';
@@ -131,6 +131,7 @@ export function PlatformCouponViewPage() { return <BillingView kind="coupons" />
 
 function BillingList({ kind }: { kind: BillingKind }) {
   const meta = billingMeta[kind];
+  const location = useLocation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
@@ -152,6 +153,14 @@ function BillingList({ kind }: { kind: BillingKind }) {
       setSelectedRecord(null);
     }
   });
+
+  useEffect(() => {
+    const action = new URLSearchParams(location.search).get('action');
+    if (kind === 'invoices' && action === 'manualInvoice') {
+      setSelectedRecord(null);
+      setModal('manualInvoice');
+    }
+  }, [kind, location.search]);
 
   const columns = useMemo(() => columnsFor(kind, {
     onView: (record) => navigate(`${meta.route}/${idOf(record)}`),
