@@ -32,6 +32,8 @@ import { useAuth } from '@/features/auth/hooks/useAuth';
 import { useAuthStore } from '@/features/auth/store/authStore';
 import { useTenantContext } from '@/features/auth/hooks/useTenantContext';
 import type { AuthGuard } from '@/features/auth/types/authTypes';
+import { PLATFORM_ROUTES } from '@/features/platform/routes/platformRoutes';
+import { TENANT_ROUTES } from '@/features/tenant/routes/tenantRoutes';
 import { Button, PermissionButton } from '@/shared/components/ui';
 
 type ShellDashboardPageProps = {
@@ -149,6 +151,7 @@ export function ShellDashboardPage({ guard }: ShellDashboardPageProps) {
   const { tenant } = useTenantContext();
   const isPlatform = guard === 'platform';
   const kpis = kpisFor(guard);
+  const tenantSlug = tenant?.slug || tenant?.uuid;
 
   async function handleLogout() {
     await logout();
@@ -193,32 +196,32 @@ export function ShellDashboardPage({ guard }: ShellDashboardPageProps) {
       <div className="dashboard-actions">
         {isPlatform ? (
           <>
-            <PermissionButton guard="platform" permission="tenant.create" type="button" size="sm">
+            <PermissionButton guard="platform" permission="tenant.create" type="button" size="sm" onClick={() => navigate(`${PLATFORM_ROUTES.tenants}/create`)}>
               <Plus size={16} aria-hidden="true" />
               Create Tenant
             </PermissionButton>
-            <PermissionButton guard="platform" permission="billing.invoice.create" type="button" size="sm">
+            <PermissionButton guard="platform" permission="billing.invoice.create" type="button" size="sm" onClick={() => navigate(`${PLATFORM_ROUTES.billing.invoices}?action=manualInvoice`)}>
               <Plus size={16} aria-hidden="true" />
               Create Invoice
             </PermissionButton>
-            <PermissionButton guard="platform" permission="monitoring.view" type="button" size="sm">
+            <PermissionButton guard="platform" permission="monitoring.view" type="button" size="sm" onClick={() => navigate(`${PLATFORM_ROUTES.monitoring}?tab=queue`)}>
               View Failed Jobs
             </PermissionButton>
-            <PermissionButton guard="platform" permission="monitoring.view" type="button" size="sm">
+            <PermissionButton guard="platform" permission="monitoring.view" type="button" size="sm" onClick={() => navigate(`${PLATFORM_ROUTES.monitoring}?tab=incidents`)}>
               View Incidents
             </PermissionButton>
           </>
         ) : (
           <>
-            <PermissionButton guard="tenant" permission="lead.create" type="button" size="sm">
+            <PermissionButton guard="tenant" permission="lead.create" type="button" size="sm" onClick={() => navigate(`${TENANT_ROUTES.crm.leads(tenantSlug)}/create`)}>
               <Plus size={16} aria-hidden="true" />
               New Lead
             </PermissionButton>
-            <PermissionButton guard="tenant" permission="finance.invoice.create" type="button" size="sm">
+            <PermissionButton guard="tenant" permission="finance.invoice.create" type="button" size="sm" onClick={() => navigate(TENANT_ROUTES.finance.invoices(tenantSlug))}>
               <Plus size={16} aria-hidden="true" />
               New Invoice
             </PermissionButton>
-            <PermissionButton guard="tenant" permission="task.view" type="button" size="sm">
+            <PermissionButton guard="tenant" permission="task.view" type="button" size="sm" onClick={() => navigate(TENANT_ROUTES.projects.tasks(tenantSlug))}>
               Open Tasks
             </PermissionButton>
           </>

@@ -26,6 +26,7 @@ import {
   XAxis,
   YAxis
 } from 'recharts';
+import { useNavigate } from 'react-router-dom';
 
 import {
   usePlatformDashboardMutations,
@@ -36,6 +37,7 @@ import type {
   DashboardDateRange,
   DashboardTableRow
 } from '@/features/platform/dashboard/api/platformDashboardApi';
+import { PLATFORM_ROUTES } from '@/features/platform/routes/platformRoutes';
 import { DataTable, type DataTableColumn } from '@/shared/components/data-table';
 import { AppDrawer } from '@/shared/components/drawer';
 import { AppModal } from '@/shared/components/modal';
@@ -120,6 +122,7 @@ function statusClass(value: string) {
 }
 
 export function PlatformDashboardPage() {
+  const navigate = useNavigate();
   const [range, setRange] = useState<DashboardDateRange>({
     date_from: '2026-08-01',
     date_to: '2026-08-08'
@@ -203,18 +206,18 @@ export function PlatformDashboardPage() {
       </header>
 
       <div className="dashboard-actions">
-        <PermissionButton guard="platform" permission="tenant.create" type="button" size="sm">
+        <PermissionButton guard="platform" permission="tenant.create" type="button" size="sm" onClick={() => navigate(`${PLATFORM_ROUTES.tenants}/create`)}>
           <Plus size={16} aria-hidden="true" />
           Create Tenant
         </PermissionButton>
-        <PermissionButton guard="platform" permission="billing.invoice.create" type="button" size="sm">
+        <PermissionButton guard="platform" permission="billing.invoice.create" type="button" size="sm" onClick={() => navigate(`${PLATFORM_ROUTES.billing.invoices}?action=manualInvoice`)}>
           <Plus size={16} aria-hidden="true" />
           Create Invoice
         </PermissionButton>
-        <PermissionButton guard="platform" permission="monitoring.view" type="button" size="sm" onClick={() => failedJobs[0] && openRowDrawer('failed-job', failedJobs[0])}>
+        <PermissionButton guard="platform" permission="monitoring.view" type="button" size="sm" onClick={() => navigate(`${PLATFORM_ROUTES.monitoring}?tab=queue`)}>
           View Failed Jobs
         </PermissionButton>
-        <PermissionButton guard="platform" permission="monitoring.manage" type="button" size="sm" onClick={() => setDialog('incident')}>
+        <PermissionButton guard="platform" permission="monitoring.manage" type="button" size="sm" onClick={() => navigate(`${PLATFORM_ROUTES.monitoring}?tab=incidents&action=incidentEditor`)}>
           Create Incident
         </PermissionButton>
       </div>
