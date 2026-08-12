@@ -18,7 +18,7 @@ type EnterpriseModalActionsProps = {
   active: EnterpriseActionKey | null;
   onClose: () => void;
   selectedCount?: number;
-  onConfirm?: (action: EnterpriseActionKey, payload?: { reason?: string }) => void;
+  onConfirm?: (action: EnterpriseActionKey, payload?: Record<string, unknown>) => void;
 };
 
 const sampleActivity: ActivityTimelineItem[] = [
@@ -50,7 +50,10 @@ export function EnterpriseModalActions({
         permission={permission}
         userSelect={<select><option>Current owner</option><option>Sales Team Lead</option></select>}
         teamSelect={<select><option>Primary team</option><option>Support team</option></select>}
-        onAssign={() => onClose()}
+        onAssign={(payload) => {
+          onConfirm?.('assign', { ...payload, reason: payload.remarks });
+          onClose();
+        }}
       />
       <StatusChangeModal
         open={active === 'status'}
@@ -117,6 +120,7 @@ export function EnterpriseModalActions({
         confirmTone="primary"
         guard={guard}
         permission={permission}
+        reasonRequired
         onConfirm={(payload) => {
           onConfirm?.('restore', payload);
           onClose();
@@ -131,6 +135,7 @@ export function EnterpriseModalActions({
         typedConfirmation="DELETE"
         guard={guard}
         permission={permission}
+        reasonRequired
         onConfirm={(payload) => {
           onConfirm?.('delete', payload);
           onClose();

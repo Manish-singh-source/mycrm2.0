@@ -25,6 +25,7 @@ import { AppDrawer } from '@/shared/components/drawer';
 import { PageHeader, StatusBadge, Tabs } from '@/shared/components/layout';
 import { AppModal } from '@/shared/components/modal';
 import { Button, PermissionButton } from '@/shared/components/ui';
+import { ConfirmDialog } from '@/shared/components/workflows';
 
 const tenantKey = 'current';
 
@@ -417,10 +418,13 @@ function HolidayGroups() {
 function AttendanceActionModal({ action, record, onClose }: { action: ModalState; record?: HrmsRecord | null; onClose: () => void }) {
   const mutation = useActionMutation('attendance', action, record, onClose);
   if (!action || !['checkIn', 'checkOut', 'correction', 'approveCorrection', 'rejectCorrection', 'bulkAttendance', 'attendanceImport', 'attendanceExport'].includes(action)) return null;
-  const isConfirm = ['checkIn', 'checkOut', 'approveCorrection', 'rejectCorrection', 'attendanceExport'].includes(action);
+  const confirm = hrmsConfirmSpec(action, record);
+  if (confirm) {
+    return <ConfirmDialog open title={confirm.title} description={confirm.description} confirmLabel={confirm.label} confirmTone={confirm.tone} typedConfirmation={confirm.typed} reasonRequired={confirm.reasonRequired} guard="tenant" loading={mutation.isPending} error={mutation.error instanceof ApiError ? mutation.error.message : undefined} onClose={onClose} onConfirm={(payload) => mutation.mutate(payload)} />;
+  }
   return (
-    <AppModal open title={modalTitle(action)} onClose={onClose} guard="tenant" size="md" error={mutation.error instanceof ApiError ? mutation.error.message : undefined} footer={<ModalFooter onClose={onClose} onSubmit={() => mutation.mutate({})} loading={mutation.isPending} submitLabel={isConfirm ? 'Confirm' : 'Save'} />}>
-      {isConfirm ? <p className="surface-state">{confirmText(action, record)}</p> : <HrmsDynamicForm action={action} record={record} onSubmit={(body) => mutation.mutate(body)} loading={mutation.isPending} />}
+    <AppModal open title={modalTitle(action)} onClose={onClose} guard="tenant" size="md" error={mutation.error instanceof ApiError ? mutation.error.message : undefined}>
+      <HrmsDynamicForm action={action} record={record} onSubmit={(body) => mutation.mutate(body)} loading={mutation.isPending} />
     </AppModal>
   );
 }
@@ -428,10 +432,13 @@ function AttendanceActionModal({ action, record, onClose }: { action: ModalState
 function LeaveActionModal({ action, record, onClose }: { action: ModalState; record?: HrmsRecord | null; onClose: () => void }) {
   const mutation = useActionMutation('leave', action, record, onClose);
   if (!action || !['applyLeave', 'approveLeave', 'rejectLeave', 'cancelLeave', 'adjustBalance'].includes(action)) return null;
-  const isConfirm = ['approveLeave', 'rejectLeave', 'cancelLeave'].includes(action);
+  const confirm = hrmsConfirmSpec(action, record);
+  if (confirm) {
+    return <ConfirmDialog open title={confirm.title} description={confirm.description} confirmLabel={confirm.label} confirmTone={confirm.tone} typedConfirmation={confirm.typed} reasonRequired={confirm.reasonRequired} guard="tenant" loading={mutation.isPending} error={mutation.error instanceof ApiError ? mutation.error.message : undefined} onClose={onClose} onConfirm={(payload) => mutation.mutate(payload)} />;
+  }
   return (
-    <AppDrawer open title={modalTitle(action)} onClose={onClose} guard="tenant" size="lg" error={mutation.error instanceof ApiError ? mutation.error.message : undefined} footer={isConfirm ? <ModalFooter onClose={onClose} onSubmit={() => mutation.mutate({})} loading={mutation.isPending} submitLabel="Confirm" /> : undefined}>
-      {isConfirm ? <p className="surface-state">{confirmText(action, record)}</p> : <><BalancePreview /><HrmsDynamicForm action={action} record={record} onSubmit={(body) => mutation.mutate(body)} loading={mutation.isPending} /></>}
+    <AppDrawer open title={modalTitle(action)} onClose={onClose} guard="tenant" size="lg" error={mutation.error instanceof ApiError ? mutation.error.message : undefined}>
+      <><BalancePreview /><HrmsDynamicForm action={action} record={record} onSubmit={(body) => mutation.mutate(body)} loading={mutation.isPending} /></>
     </AppDrawer>
   );
 }
@@ -448,10 +455,13 @@ function LeaveTypeModal({ open, onClose }: { open: boolean; onClose: () => void 
 function PayrollActionModal({ action, record, onClose }: { action: ModalState; record?: HrmsRecord | null; onClose: () => void }) {
   const mutation = useActionMutation('payroll', action, record, onClose);
   if (!action || !['cycle', 'generatePayroll', 'payrollPreview', 'submitPayroll', 'approvePayroll', 'lockPayroll', 'reopenPayroll', 'payslipPreview', 'emailPayslips', 'component', 'assignment', 'loan', 'reimbursement', 'bankTransfer', 'taxSettings'].includes(action)) return null;
-  const confirm = ['submitPayroll', 'approvePayroll', 'lockPayroll', 'reopenPayroll', 'emailPayslips', 'payslipPreview'].includes(action);
+  const confirm = hrmsConfirmSpec(action, record);
+  if (confirm) {
+    return <ConfirmDialog open title={confirm.title} description={confirm.description} confirmLabel={confirm.label} confirmTone={confirm.tone} typedConfirmation={confirm.typed} reasonRequired={confirm.reasonRequired} guard="tenant" loading={mutation.isPending} error={mutation.error instanceof ApiError ? mutation.error.message : undefined} onClose={onClose} onConfirm={(payload) => mutation.mutate(payload)} />;
+  }
   return (
-    <AppModal open title={modalTitle(action)} onClose={onClose} guard="tenant" size="lg" error={mutation.error instanceof ApiError ? mutation.error.message : undefined} footer={confirm ? <ModalFooter onClose={onClose} onSubmit={() => mutation.mutate({})} loading={mutation.isPending} submitLabel="Confirm" /> : undefined}>
-      {action === 'payrollPreview' ? <PayrollPreviewDrawerContent cycle={record} onGenerate={(body) => mutation.mutate(body)} loading={mutation.isPending} /> : confirm ? <p className="surface-state">{confirmText(action, record)}</p> : <HrmsDynamicForm action={action} record={record} onSubmit={(body) => mutation.mutate(body)} loading={mutation.isPending} />}
+    <AppModal open title={modalTitle(action)} onClose={onClose} guard="tenant" size="lg" error={mutation.error instanceof ApiError ? mutation.error.message : undefined}>
+      {action === 'payrollPreview' ? <PayrollPreviewDrawerContent cycle={record} onGenerate={(body) => mutation.mutate(body)} loading={mutation.isPending} /> : <HrmsDynamicForm action={action} record={record} onSubmit={(body) => mutation.mutate(body)} loading={mutation.isPending} />}
     </AppModal>
   );
 }
@@ -764,6 +774,35 @@ function statusTone(value: unknown): 'neutral' | 'success' | 'warning' | 'danger
 
 function modalTitle(action: ModalState) {
   return label(String(action ?? 'Action'));
+}
+
+type HrmsConfirmSpec = {
+  title: string;
+  label: string;
+  tone?: 'primary' | 'danger';
+  typed?: string;
+  reasonRequired?: boolean;
+  description: ReactNode;
+};
+
+function hrmsConfirmSpec(action: ModalState, record?: HrmsRecord | null): HrmsConfirmSpec | null {
+  if (!action) return null;
+  const subject = record ? recordTitle(record) : 'this record';
+  if (action === 'checkIn') return { title: 'Check in?', label: 'Check In', tone: 'primary', description: `Create a live attendance check-in entry for ${subject}.` };
+  if (action === 'checkOut') return { title: 'Check out?', label: 'Check Out', tone: 'primary', description: `Create a live attendance check-out entry for ${subject}.` };
+  if (action === 'approveCorrection') return { title: 'Approve correction?', label: 'Approve', tone: 'primary', reasonRequired: true, description: `Approve attendance correction for ${subject}.` };
+  if (action === 'rejectCorrection') return { title: 'Reject correction?', label: 'Reject', tone: 'danger', reasonRequired: true, description: `Reject attendance correction for ${subject}.` };
+  if (action === 'attendanceExport') return { title: 'Queue attendance export?', label: 'Queue Export', tone: 'primary', description: 'Export jobs can run in the background when the dataset is large.' };
+  if (action === 'approveLeave') return { title: 'Approve leave?', label: 'Approve Leave', tone: 'primary', reasonRequired: true, description: `Approve leave request for ${subject}.` };
+  if (action === 'rejectLeave') return { title: 'Reject leave?', label: 'Reject Leave', tone: 'danger', reasonRequired: true, description: `Reject leave request for ${subject}.` };
+  if (action === 'cancelLeave') return { title: 'Cancel leave?', label: 'Cancel Leave', tone: 'danger', reasonRequired: true, description: `Cancel leave request for ${subject}.` };
+  if (action === 'submitPayroll') return { title: 'Submit payroll?', label: 'Submit Payroll', tone: 'primary', reasonRequired: true, description: `Submit payroll cycle ${subject} for approval.` };
+  if (action === 'approvePayroll') return { title: 'Approve payroll?', label: 'Approve Payroll', tone: 'primary', reasonRequired: true, description: `Approve payroll cycle ${subject}.` };
+  if (action === 'lockPayroll') return { title: 'Lock payroll?', label: 'Lock Payroll', tone: 'danger', typed: 'LOCK', reasonRequired: true, description: `Lock payroll cycle ${subject}. Payslips and transfers should be verified first.` };
+  if (action === 'reopenPayroll') return { title: 'Reopen payroll?', label: 'Reopen Payroll', tone: 'danger', typed: 'REOPEN', reasonRequired: true, description: `Reopen payroll cycle ${subject}. This can affect payslips and bank exports.` };
+  if (action === 'emailPayslips') return { title: 'Email payslips?', label: 'Email Payslips', tone: 'primary', reasonRequired: true, description: `Queue payslip emails for ${subject}.` };
+  if (action === 'payslipPreview') return { title: 'Generate payslips?', label: 'Generate Payslips', tone: 'primary', reasonRequired: true, description: `Generate payslips for ${subject}.` };
+  return null;
 }
 
 function confirmText(action: ModalState, record?: HrmsRecord | null) {

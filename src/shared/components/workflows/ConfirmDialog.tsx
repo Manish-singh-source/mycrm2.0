@@ -13,6 +13,8 @@ type ConfirmDialogProps = {
   confirmTone?: 'primary' | 'danger';
   typedConfirmation?: string;
   reasonRequired?: boolean;
+  reasonLabel?: string;
+  reasonPlaceholder?: string;
   onConfirm: (payload: { reason?: string }) => void;
   guard?: AuthGuard;
   permission?: Permission;
@@ -23,7 +25,7 @@ type ConfirmDialogProps = {
 export function ConfirmDialog(props: ConfirmDialogProps) {
   const [typed, setTyped] = useState('');
   const [reason, setReason] = useState('');
-  const typedOk = !props.typedConfirmation || typed === props.typedConfirmation;
+  const typedOk = !props.typedConfirmation || typed.trim() === props.typedConfirmation;
   const reasonOk = !props.reasonRequired || reason.trim().length > 0;
 
   useEffect(() => {
@@ -50,10 +52,10 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
           <Button
             type="button"
             variant={props.confirmTone ?? 'danger'}
-            disabled={!typedOk || !reasonOk}
-            onClick={() => props.onConfirm({ reason })}
+            disabled={props.loading || !typedOk || !reasonOk}
+            onClick={() => props.onConfirm({ reason: reason.trim() })}
           >
-            {props.confirmLabel ?? 'Confirm'}
+            {props.loading ? 'Working...' : props.confirmLabel ?? 'Confirm'}
           </Button>
         </>
       }
@@ -68,8 +70,8 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
         ) : null}
         {props.reasonRequired ? (
           <label>
-            Reason
-            <textarea value={reason} onChange={(event) => setReason(event.target.value)} />
+            {props.reasonLabel ?? 'Reason'}
+            <textarea rows={4} placeholder={props.reasonPlaceholder ?? 'Add the operational reason for this action.'} value={reason} onChange={(event) => setReason(event.target.value)} />
           </label>
         ) : null}
       </div>

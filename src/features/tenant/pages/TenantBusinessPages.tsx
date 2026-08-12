@@ -11,6 +11,7 @@ import { AppDrawer } from '@/shared/components/drawer';
 import { PageHeader, StatusBadge, Tabs } from '@/shared/components/layout';
 import { AppModal } from '@/shared/components/modal';
 import { Button, PermissionButton } from '@/shared/components/ui';
+import { ConfirmDialog } from '@/shared/components/workflows';
 
 const tenantKey = 'current';
 
@@ -53,6 +54,7 @@ type Action =
   | 'deleteLookup'
   | 'connectIntegration'
   | 'rotateCredential'
+  | 'disconnectIntegration'
   | 'fieldMapping'
   | 'backup'
   | 'restore'
@@ -264,6 +266,26 @@ function BusinessActionModal({ action, record, context, onClose }: { action: Act
     );
   }
   const fields = fieldsFor(action);
+  const confirm = confirmSpec(action, record);
+  if (confirm) {
+    return (
+      <ConfirmDialog
+        open={Boolean(action)}
+        onClose={onClose}
+        title={confirm.title}
+        description={confirm.description(record)}
+        confirmLabel={confirm.label}
+        confirmTone={confirm.tone}
+        typedConfirmation={confirm.typed}
+        reasonRequired={confirm.reasonRequired}
+        reasonLabel={confirm.reasonLabel}
+        guard="tenant"
+        loading={mutation.isPending}
+        error={mutation.error ? errorMessage(mutation.error) : null}
+        onConfirm={(payload) => mutation.mutate({ ...payload, ...confirm.extraBody?.(record, context) })}
+      />
+    );
+  }
   return (
     <AppModal open={Boolean(action)} onClose={onClose} title={modalTitle(action)} guard="tenant" size="lg">
       {warningFor(action) ? <div className="surface-warning">{warningFor(action)}</div> : null}
@@ -341,7 +363,7 @@ function runAction(action: Action, record: BusinessRecord | null | undefined, co
   if (action === 'approveExpense') return tenantBusinessApi.finance.expenses.approve(id, body);
   if (action === 'rejectExpense') return tenantBusinessApi.finance.expenses.reject(id, body);
   if (action === 'bankAccount') return record?.id ? tenantBusinessApi.finance.bankAccounts.update(String(record.id), body) : tenantBusinessApi.finance.bankAccounts.create(body);
-  if (action === 'primaryBank') return tenantBusinessApi.finance.bankAccounts.primary(String(record?.id ?? body.account_id));
+  if (action === 'primaryBank') return tenantBusinessApi.finance.bankAccounts.primary(String(record?.id ?? body.account_id), body);
   if (action === 'reportExport') {
     if (context?.reportCode) return tenantBusinessApi.reports.export(String(context.reportCode), body);
     if (context?.financeTab === 'payments') return tenantBusinessApi.finance.payments.export(body);
@@ -360,9 +382,10 @@ function runAction(action: Action, record: BusinessRecord | null | undefined, co
   if (action === 'saveReport') return tenantBusinessApi.reports.saveCustom(body);
   if (action === 'setting') return tenantBusinessApi.settings.saveGroup(String(context?.settingsGroup ?? 'general'), { settings: body });
   if (action === 'lookupReorder') return tenantBusinessApi.settings.reorderLookups([]);
-  if (action === 'deleteLookup') return tenantBusinessApi.settings.deleteLookup(id || String(body.lookup_uuid));
+  if (action === 'deleteLookup') return tenantBusinessApi.settings.deleteLookup(id || String(body.lookup_uuid), body);
   if (action === 'connectIntegration') return tenantBusinessApi.integrations.connect({ provider_id: record?.id ?? record?.code, name: record?.name, ...body });
   if (action === 'rotateCredential') return tenantBusinessApi.integrations.rotate(id, { credentials: body });
+  if (action === 'disconnectIntegration') return tenantBusinessApi.integrations.disconnect(id, body);
   if (action === 'backup') return tenantBusinessApi.settings.runBackup(body);
   if (action === 'restore') return tenantBusinessApi.settings.restoreBackup(body);
   if (action === 'auditExport') return tenantBusinessApi.audit.export(body);
@@ -378,7 +401,8 @@ function usePaged(key: string, fn: (query?: ApiQuery) => Promise<{ data: Busines
 
 function useSelectors() {
   const query = useQuery({ queryKey: tenantQueryKeys.resource(tenantKey, 'business-selectors'), queryFn: tenantBusinessApi.selectors });
-  return query.data?.data ?? {};
+  const backups = useQuery({ queryKey: tenantQueryKeys.resource(tenantKey, 'business-selector-backups'), queryFn: () => tenantBusinessApi.settings.backups({ per_page: 100 }) });
+  return { ...(query.data?.data ?? {}), backups: backups.data?.data ?? [] };
 }
 
 function documentQuery(tab: string, query?: ApiQuery): ApiQuery {
@@ -405,6 +429,7 @@ function selectOptions(field: string, selectors: Record<string, BusinessRecord[]
   if (field.includes('provider_id')) return optionRows(selectors.providers, ['name', 'category'], 'id');
   if (field.includes('user_uuid')) return optionRows(selectors.users, ['display_name', 'email']);
   if (field.includes('account_id')) return optionRows(selectors.accounts, ['bank_name', 'account_number_masked'], 'id');
+  if (field.includes('backup_uuid')) return optionRows(selectors.backups, ['backup_type', 'status', 'started_at']);
   if (field === 'category_id' || field === 'status_id') return optionRows(selectors.lookups, ['name', 'group'], 'uuid');
   return null;
 }
@@ -527,7 +552,7 @@ function settingsActions(row: BusinessRecord, tab: string, setSelected: (row: Bu
 function integrationActions(row: BusinessRecord, tab: string, setSelected: (row: BusinessRecord) => void, setAction: (action: Action) => void): [string, () => void][] {
   const open = (action: Action) => () => { setSelected(row); setAction(action); };
   if (tab === 'providers') return [['Connect', open('connectIntegration')]];
-  if (tab === 'integrations') return [['Rotate credentials', open('rotateCredential')], ['Field mappings', open('fieldMapping')], ['Rate limits', open('reportDrill')]];
+  if (tab === 'integrations') return [['Rotate credentials', open('rotateCredential')], ['Field mappings', open('fieldMapping')], ['Rate limits', open('reportDrill')], ['Disconnect', open('disconnectIntegration')]];
   if (tab === 'sync') return [['Retry', open('retryCommunication')], ['Exception payload', open('reportDrill')]];
   return [['Raw payload', open('reportDrill')]];
 }
@@ -547,16 +572,107 @@ function fieldsFor(action: Action): string[] {
     case 'connectIntegration': return ['provider_id', 'name', 'api_key', 'client_secret'];
     case 'rotateCredential': return ['api_key', 'client_secret', 'refresh_token'];
     case 'backup': return ['backup_type'];
-    case 'restore': return ['backup_uuid'];
+    case 'restore': return ['backup_uuid', 'reason'];
     case 'reportExport':
     case 'auditExport': return ['format', 'date_from', 'date_to'];
     case 'saveReport': return ['name', 'module', 'columns', 'filters'];
     case 'setting': return ['name', 'value'];
     case 'lookupReorder': return ['remarks'];
-    case 'deleteLookup': return ['lookup_uuid'];
+    case 'deleteLookup': return ['lookup_uuid', 'reason'];
     case 'testTemplate': return ['to'];
     default: return ['remarks'];
   }
+}
+
+type ConfirmSpec = {
+  title: string;
+  label: string;
+  tone?: 'primary' | 'danger';
+  typed?: string;
+  reasonRequired?: boolean;
+  reasonLabel?: string;
+  description: (record?: BusinessRecord | null) => ReactNode;
+  extraBody?: (record?: BusinessRecord | null, context?: Record<string, unknown>) => Record<string, unknown>;
+};
+
+function confirmSpec(action: Action, record?: BusinessRecord | null): ConfirmSpec | null {
+  if (action === 'restore' && !record) return null;
+  if (action === 'deleteLookup' && !record) return null;
+  const specs: Partial<Record<Exclude<Action, null>, ConfirmSpec>> = {
+    cancelInvoice: {
+      title: 'Cancel invoice?',
+      label: 'Cancel Invoice',
+      tone: 'danger',
+      typed: 'CANCEL',
+      reasonRequired: true,
+      reasonLabel: 'Cancellation reason',
+      description: (record) => <>Invoice <strong>{recordTitle(record)}</strong> will be cancelled and can affect receivables, payment collection, and report totals.</>
+    },
+    voidPayment: {
+      title: 'Void payment?',
+      label: 'Void Payment',
+      tone: 'danger',
+      typed: 'VOID',
+      reasonRequired: true,
+      reasonLabel: 'Void reason',
+      description: (record) => <>Payment <strong>{recordTitle(record)}</strong> will be voided. Use this only after finance review.</>
+    },
+    approveExpense: {
+      title: 'Approve expense?',
+      label: 'Approve Expense',
+      tone: 'primary',
+      reasonRequired: true,
+      description: (record) => <>Approve expense <strong>{recordTitle(record)}</strong> and update live finance data.</>
+    },
+    rejectExpense: {
+      title: 'Reject expense?',
+      label: 'Reject Expense',
+      tone: 'danger',
+      reasonRequired: true,
+      description: (record) => <>Reject expense <strong>{recordTitle(record)}</strong>. The rejection reason will be sent with the request.</>
+    },
+    primaryBank: {
+      title: 'Set primary bank account?',
+      label: 'Set Primary',
+      tone: 'primary',
+      reasonRequired: true,
+      description: (record) => <>Set <strong>{recordTitle(record)}</strong> as the primary account. Existing primary account for the owner will be replaced.</>
+    },
+    deleteLookup: {
+      title: 'Delete lookup value?',
+      label: 'Delete Lookup',
+      tone: 'danger',
+      typed: 'DELETE',
+      reasonRequired: true,
+      description: (record) => <>Delete lookup <strong>{recordTitle(record)}</strong>. The backend blocks deletion if records still use it.</>
+    },
+    disconnectIntegration: {
+      title: 'Disconnect integration?',
+      label: 'Disconnect',
+      tone: 'danger',
+      typed: 'DISCONNECT',
+      reasonRequired: true,
+      description: (record) => <>Disconnect <strong>{recordTitle(record)}</strong>. Sync jobs and webhooks can stop immediately.</>
+    },
+    restore: {
+      title: 'Restore backup?',
+      label: 'Request Restore',
+      tone: 'danger',
+      typed: 'RESTORE',
+      reasonRequired: true,
+      description: (record) => <>Request restore for <strong>{recordTitle(record)}</strong>. Restore requests enter the review queue before data changes.</>,
+      extraBody: (record) => ({ backup_uuid: record?.uuid })
+    },
+    backup: {
+      title: 'Run backup?',
+      label: 'Queue Backup',
+      tone: 'primary',
+      reasonRequired: true,
+      description: () => 'Queue a backup job. Large tenants may complete through the background worker.',
+      extraBody: () => ({ backup_type: 'manual' })
+    }
+  };
+  return action ? specs[action] ?? null : null;
 }
 
 function normalizeForm(form: Record<string, string>, action: Action): Record<string, unknown> {

@@ -92,7 +92,7 @@ export const tenantBusinessApi = {
       create: (body: Record<string, unknown>) => client().post('/bank-accounts', body),
       update: (id: string | number, body: Record<string, unknown>) => client().patch(`/bank-accounts/${encodeURIComponent(String(id))}`, body),
       delete: (id: string | number) => client().delete(`/bank-accounts/${encodeURIComponent(String(id))}`),
-      primary: (id: string | number) => client().post(`/bank-accounts/${encodeURIComponent(String(id))}/set-primary`)
+      primary: (id: string | number, body?: Record<string, unknown>) => client().post(`/bank-accounts/${encodeURIComponent(String(id))}/set-primary`, body)
     }
   },
   documents: {
@@ -122,7 +122,7 @@ export const tenantBusinessApi = {
     saveGroup: (group: string, body: Record<string, unknown>) => client().put(`/settings/${encodeURIComponent(group)}`, body),
     lookups: () => client().get<{ lookups: BusinessRecord[] }>('/settings/lookups'),
     reorderLookups: (items: BusinessRecord[]) => client().put('/settings/lookups/reorder', { items }),
-    deleteLookup: (id: string) => client().delete(`/settings/lookups/${encodeURIComponent(id)}`),
+    deleteLookup: (id: string, body?: Record<string, unknown>) => client().delete(`/settings/lookups/${encodeURIComponent(id)}`, { body }),
     templates: (query?: ApiQuery) => list('/settings/notification-templates', query, ['templates']),
     createTemplate: (body: Record<string, unknown>) => client().post('/settings/notification-templates', body),
     updateTemplate: (id: string, body: Record<string, unknown>) => client().patch(`/settings/notification-templates/${encodeURIComponent(id)}`, body),
@@ -138,7 +138,7 @@ export const tenantBusinessApi = {
     detail: (id: string) => detail(`/integrations/${encodeURIComponent(id)}`),
     update: (id: string, body: Record<string, unknown>) => client().patch(`/integrations/${encodeURIComponent(id)}`, body),
     rotate: (id: string, body: Record<string, unknown>) => client().post(`/integrations/${encodeURIComponent(id)}/credentials/rotate`, body),
-    disconnect: (id: string) => client().post(`/integrations/${encodeURIComponent(id)}/disconnect`),
+    disconnect: (id: string, body?: Record<string, unknown>) => client().post(`/integrations/${encodeURIComponent(id)}/disconnect`, body),
     webhooks: (query?: ApiQuery) => list('/integrations/webhooks', query, ['webhooks']),
     syncJobs: (query?: ApiQuery) => list('/integrations/sync-jobs', query, ['sync_jobs']),
     retrySync: (id: string | number) => client().post(`/integrations/sync-jobs/${encodeURIComponent(String(id))}/retry`),
