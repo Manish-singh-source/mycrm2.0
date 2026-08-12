@@ -3571,6 +3571,149 @@ textarea:focus-visible {
   color: var(--crm-primary);
 }
 
+.tenant-dashboard-page {
+  gap: 18px;
+  min-width: 0;
+}
+
+.tenant-dashboard-page .enterprise-page-header {
+  margin-bottom: 0;
+}
+
+.tenant-dashboard-page .enterprise-page-header__main {
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.tenant-dashboard-page .enterprise-page-header__main > div:first-child {
+  min-width: 0;
+}
+
+.tenant-dashboard-page .page-actions {
+  flex-shrink: 0;
+  justify-content: flex-end;
+  max-width: min(560px, 100%);
+}
+
+.summary-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  min-width: 0;
+}
+
+.tenant-dashboard-page .summary-card {
+  align-content: start;
+  min-height: 104px;
+  min-width: 0;
+}
+
+.tenant-dashboard-page .summary-card > span {
+  background: transparent;
+  color: var(--crm-muted);
+  display: block;
+  font-size: 12px;
+  font-weight: 800;
+  height: auto;
+  line-height: 1.35;
+  text-transform: uppercase;
+  width: auto;
+}
+
+.tenant-dashboard-page .summary-card strong {
+  color: #111827;
+  font-size: 24px;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.tenant-dashboard-page .dashboard-grid {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  min-width: 0;
+}
+
+.chart-card {
+  background: var(--crm-panel);
+  border: 1px solid var(--crm-line);
+  border-radius: 10px;
+  box-shadow: var(--crm-shadow);
+  display: grid;
+  gap: 12px;
+  min-height: 236px;
+  min-width: 0;
+  padding: 16px;
+}
+
+.chart-card header {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.chart-card h3 {
+  color: #111827;
+  font-size: 15px;
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mini-bars {
+  align-items: end;
+  border-bottom: 1px solid var(--crm-line);
+  display: flex;
+  gap: 8px;
+  height: 150px;
+  min-width: 0;
+  padding-top: 10px;
+}
+
+.mini-bars > div {
+  background: linear-gradient(180deg, #2563eb, #60a5fa);
+  border-radius: 6px 6px 0 0;
+  flex: 1 1 0;
+  min-height: 2px;
+  min-width: 12px;
+}
+
+.tenant-dashboard-page .settings-panel {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.quick-action-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.record-list article {
+  min-width: 0;
+}
+
+.inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.json-preview {
+  background: #111827;
+  border-radius: 8px;
+  color: #f8fafc;
+  margin: 0;
+  max-width: 100%;
+  overflow: auto;
+  padding: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .status-pill--active,
 .status-badge--success {
   background: #e9f8ef;
@@ -3602,15 +3745,21 @@ textarea:focus-visible {
 }
 
 @media (max-width: 860px) {
+  .tenant-dashboard-page .enterprise-page-header__main,
   .dashboard-head,
   .dashboard-profile-strip {
     align-items: stretch;
     flex-direction: column;
   }
 
+  .tenant-dashboard-page .page-actions,
   .dashboard-head__tools,
   .dashboard-actions {
     justify-content: flex-start;
+  }
+
+  .tenant-dashboard-page .page-actions .button {
+    flex: 1 1 150px;
   }
 
   .dashboard-search {

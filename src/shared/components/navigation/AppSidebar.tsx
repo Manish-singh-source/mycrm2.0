@@ -57,7 +57,13 @@ export function AppSidebar({ guard, title, groups, isCollapsed = false, onToggle
               {visibleItems.map((item) => {
                 const Icon = item.icon;
                 return (
-                  <NavLink className="nav-link" to={item.to} key={item.to}>
+                  <NavLink
+                    className="nav-link"
+                    to={item.to}
+                    key={item.to}
+                    title={item.moduleCode ? `${item.label} requires the ${item.moduleCode} module to be enabled.` : item.label}
+                  >
+                    {item.moduleCode ? <span className="sr-only">{item.moduleCode} module</span> : null}
                     {Icon ? <Icon size={18} aria-hidden /> : null}
                     <span>{item.label}</span>
                     {item.badge ? <span className="nav-badge">{item.badge}</span> : null}

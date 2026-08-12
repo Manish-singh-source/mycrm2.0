@@ -91,8 +91,15 @@ import { ForbiddenPage } from '@/pages/ForbiddenPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { PlaceholderPage } from '@/pages/PlaceholderPage';
 import { SampleEnterpriseModulePage } from '@/pages/SampleEnterpriseModulePage';
-import { ShellDashboardPage } from '@/pages/ShellDashboardPage';
 import { PLATFORM_ROUTES } from '@/features/platform/routes/platformRoutes';
+import { TenantDashboardPage, TenantMyDashboardPage } from '@/features/tenant/pages/TenantDashboardPages';
+import { TenantProfilePage } from '@/features/tenant/pages/TenantProfilePages';
+import {
+  TenantActivityPage,
+  TenantHelpCenterPage,
+  TenantNotificationsPage,
+  TenantPlaceholderModulePage
+} from '@/features/tenant/pages/TenantWorkspacePages';
 
 export const appRouter = createBrowserRouter([
   {
@@ -671,9 +678,70 @@ export const appRouter = createBrowserRouter([
     ),
     children: [
       { index: true, element: <Navigate to="dashboard" replace /> },
-      { path: 'dashboard', element: <ShellDashboardPage guard="tenant" /> },
-      { path: 'profile', element: <AccountSettingsPage guard="tenant" /> },
+      {
+        path: 'dashboard',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['dashboard.view']}>
+            <TenantDashboardPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'my-dashboard',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['dashboard.view']}>
+            <TenantMyDashboardPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'notifications',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['notification.view']}>
+            <TenantNotificationsPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'activity',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['activity_log.view', 'audit_log.view']}>
+            <TenantActivityPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'profile',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['profile.view']}>
+            <TenantProfilePage />
+          </RequirePermission>
+        )
+      },
       { path: 'profile/api-tokens', element: <ApiTokensPage guard="tenant" /> },
+      { path: 'help-center', element: <TenantHelpCenterPage /> },
+      { path: 'crm/leads', element: <TenantPlaceholderModulePage title="Leads" /> },
+      { path: 'crm/clients', element: <TenantPlaceholderModulePage title="Clients" /> },
+      { path: 'crm/vendors', element: <TenantPlaceholderModulePage title="Vendors" /> },
+      { path: 'crm/client-renewals', element: <TenantPlaceholderModulePage title="Client Renewals" /> },
+      { path: 'crm/vendor-renewals', element: <TenantPlaceholderModulePage title="Vendor Renewals" /> },
+      { path: 'projects', element: <TenantPlaceholderModulePage title="Projects" /> },
+      { path: 'tasks', element: <TenantPlaceholderModulePage title="Tasks" /> },
+      { path: 'calendar', element: <TenantPlaceholderModulePage title="Calendar" /> },
+      { path: 'to-do', element: <TenantPlaceholderModulePage title="To-Do" /> },
+      { path: 'support/issues', element: <TenantPlaceholderModulePage title="Client Issues" /> },
+      { path: 'hrms/staff', element: <TenantPlaceholderModulePage title="Staff" /> },
+      { path: 'hrms/attendance', element: <TenantPlaceholderModulePage title="Attendance" /> },
+      { path: 'hrms/leave', element: <TenantPlaceholderModulePage title="Leave Management" /> },
+      { path: 'hrms/payroll', element: <TenantPlaceholderModulePage title="Payroll" /> },
+      { path: 'hrms/holidays', element: <TenantPlaceholderModulePage title="Holidays" /> },
+      { path: 'finance/invoices', element: <TenantPlaceholderModulePage title="Invoices" /> },
+      { path: 'finance/payments', element: <TenantPlaceholderModulePage title="Payments" /> },
+      { path: 'finance/expenses', element: <TenantPlaceholderModulePage title="Expenses" /> },
+      { path: 'finance/bank-accounts', element: <TenantPlaceholderModulePage title="Bank Accounts" /> },
+      { path: 'documents', element: <TenantPlaceholderModulePage title="Documents" /> },
+      { path: 'reports', element: <TenantPlaceholderModulePage title="Reports" /> },
+      { path: 'settings', element: <TenantPlaceholderModulePage title="Settings" /> },
       {
         path: '*',
         element: <PlaceholderPage title="Tenant workspace" description="Tenant CRM routes are registered as constants first." />

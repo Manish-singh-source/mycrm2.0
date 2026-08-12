@@ -40,6 +40,12 @@ export function buildTenantNavigation(tenantSlug: string, badges: TenantNavigati
           icon: Gauge,
           permission: 'dashboard.view',
           badge: badges.unreadNotifications
+        },
+        {
+          label: 'My Dashboard',
+          to: TENANT_ROUTES.myDashboard(tenantSlug),
+          icon: LayoutList,
+          permission: 'dashboard.view'
         }
       ]
     },
