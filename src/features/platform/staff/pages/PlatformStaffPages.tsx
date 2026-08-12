@@ -1794,11 +1794,22 @@ function SafeRecordDetails({ record }: { record: PlatformStaffRecord | Record<st
         .map(([key, value]) => (
           <div key={key}>
             <dt>{key}</dt>
-            <dd>{typeof value === 'object' ? JSON.stringify(value) : String(value ?? '-')}</dd>
+            <dd>{humanValue(value)}</dd>
           </div>
         ))}
     </dl>
   );
+}
+
+function humanValue(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '-';
+  if (Array.isArray(value)) return `${value.length} item${value.length === 1 ? '' : 's'}`;
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (typeof value === 'object') {
+    const payload = value as PlatformStaffRecord;
+    return textOf(payload, ['display_name', 'name', 'title', 'email', 'uuid'], 'Details available');
+  }
+  return String(value);
 }
 
 function AccessTab({ staff }: { staff: PlatformStaffRecord }) {

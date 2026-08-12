@@ -16,6 +16,7 @@ export const TENANT_ROUTES = {
     leads: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/crm/leads`,
     clients: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/crm/clients`,
     vendors: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/crm/vendors`,
+    renewals: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/crm/renewals`,
     clientRenewals: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/crm/client-renewals`,
     vendorRenewals: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/crm/vendor-renewals`
   },

@@ -93,6 +93,33 @@ function maskRaw(value: unknown): unknown {
   ]));
 }
 
+function rawSummary(value: unknown): BillingRecord {
+  const masked = maskRaw(value);
+  if (!masked || typeof masked !== 'object' || Array.isArray(masked)) return { value: masked };
+  return masked as BillingRecord;
+}
+
+function DetailSummary({ record }: { record: BillingRecord }) {
+  return (
+    <dl className="enterprise-summary-list">
+      {Object.entries(record).map(([key, value]) => (
+        <div key={key}>
+          <dt>{key}</dt>
+          <dd>{displayValue(value)}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function displayValue(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '-';
+  if (Array.isArray(value)) return `${value.length} item${value.length === 1 ? '' : 's'}`;
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (typeof value === 'object') return textOf(value as BillingRecord, ['display_name', 'name', 'title', 'uuid'], 'Details available');
+  return String(value);
+}
+
 export function PlatformInvoicesListPage() { return <BillingList kind="invoices" />; }
 export function PlatformInvoiceViewPage() { return <BillingView kind="invoices" />; }
 export function PlatformPaymentsListPage() { return <BillingList kind="payments" />; }
@@ -302,12 +329,12 @@ function BillingActionSurface({ modal, kind, record, loading, error, onClose, on
             <strong>{textOf(record, ['invoice_number'], 'Invoice')}</strong>
             <span>{money(record?.total ?? record?.total_amount, record?.currency)}</span>
           </div>
-          <pre className="token-preview">{JSON.stringify(maskRaw(pdfQuery.data?.data ?? pdfQuery.data ?? { endpoint: `/billing/invoices/${recordId}/pdf`, note: 'PDF metadata will render here when returned by the API.' }), null, 2)}</pre>
+          <DetailSummary record={rawSummary(pdfQuery.data?.data ?? pdfQuery.data ?? { endpoint: `/billing/invoices/${recordId}/pdf`, note: 'PDF metadata will render here when returned by the API.' })} />
         </div>
       </AppDrawer>
     );
   }
-  if (modal === 'gatewayResponse') return <AppDrawer open onClose={onClose} title="Gateway Response" guard="platform" permission="billing.payment.view" size="lg"><pre className="token-preview">{JSON.stringify(maskRaw(record?.raw_response ?? record ?? {}), null, 2)}</pre></AppDrawer>;
+  if (modal === 'gatewayResponse') return <AppDrawer open onClose={onClose} title="Gateway Response" guard="platform" permission="billing.payment.view" size="lg"><DetailSummary record={rawSummary(record?.raw_response ?? record ?? {})} /></AppDrawer>;
   if (modal === 'cancelInvoice') return <ConfirmDialog open onClose={onClose} title="Cancel invoice?" description="This affects accounting records. If this invoice has been sent, type CANCEL and provide a reason before cancelling." confirmLabel="Cancel Invoice" confirmTone="danger" typedConfirmation="CANCEL" reasonRequired guard="platform" permission="billing.invoice.cancel" loading={loading} error={error ? errorMessage(error) : null} onConfirm={(values) => onConfirm({ reason: values.reason ?? payload.reason })} />;
   if (modal === 'disableCoupon') return <ConfirmDialog open onClose={onClose} title="Disable coupon?" description="Active and future redemptions may be affected. Existing redemptions remain in reporting." confirmLabel="Disable Coupon" confirmTone="danger" guard="platform" permission="coupon.delete" loading={loading} error={error ? errorMessage(error) : null} onConfirm={() => onConfirm({})} />;
   if (modal === 'refundPayment') {

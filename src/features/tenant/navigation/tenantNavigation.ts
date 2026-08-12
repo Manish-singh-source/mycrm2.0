@@ -58,6 +58,7 @@ export function buildTenantNavigation(tenantSlug: string, badges: TenantNavigati
         { label: 'Leads', to: TENANT_ROUTES.crm.leads(tenantSlug), icon: BriefcaseBusiness, permission: 'lead.view' },
         { label: 'Clients', to: TENANT_ROUTES.crm.clients(tenantSlug), icon: Users, permission: 'client.view' },
         { label: 'Vendors', to: TENANT_ROUTES.crm.vendors(tenantSlug), icon: Users, permission: 'vendor.view' },
+        { label: 'Renewals', to: TENANT_ROUTES.crm.renewals(tenantSlug), icon: TimerReset, permission: 'renewal.view', badge: badges.renewalsDueSoon },
         { label: 'Client Renewals', to: TENANT_ROUTES.crm.clientRenewals(tenantSlug), icon: TimerReset, permission: 'renewal.view', badge: badges.renewalsDueSoon },
         { label: 'Vendor Renewals', to: TENANT_ROUTES.crm.vendorRenewals(tenantSlug), icon: TimerReset, permission: 'renewal.view', badge: badges.renewalsDueSoon }
       ]

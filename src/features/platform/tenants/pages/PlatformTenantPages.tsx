@@ -2295,7 +2295,7 @@ function RecordDetails({ record }: { record: Record<string, unknown> }) {
       {Object.entries(record).map(([key, value]) => (
         <div key={key}>
           <dt>{key}</dt>
-          <dd>{typeof value === 'object' ? JSON.stringify(value) : String(value ?? '-')}</dd>
+          <dd>{humanValue(value)}</dd>
         </div>
       ))}
     </dl>
@@ -2311,15 +2311,22 @@ function SafeRecordDetails({ record }: { record: Record<string, unknown> }) {
         .map(([key, value]) => (
           <div key={key}>
             <dt>{key}</dt>
-            <dd>
-              {typeof value === 'object'
-                ? JSON.stringify(maskSecrets(value))
-                : String(value ?? '-')}
-            </dd>
+            <dd>{humanValue(maskSecrets(value))}</dd>
           </div>
         ))}
     </dl>
   );
+}
+
+function humanValue(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '-';
+  if (Array.isArray(value)) return `${value.length} item${value.length === 1 ? '' : 's'}`;
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (typeof value === 'object') {
+    const payload = value as Record<string, unknown>;
+    return textOf(payload as PlatformTenantRecord, ['display_name', 'name', 'title', 'email', 'uuid'], 'Details available');
+  }
+  return String(value);
 }
 
 function RecordList({ rows, fallback }: { rows: PlatformTenantRecord[]; fallback?: ReactNode }) {
