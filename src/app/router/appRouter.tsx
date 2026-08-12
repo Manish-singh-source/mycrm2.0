@@ -71,6 +71,22 @@ import {
   PlatformRefundViewPage,
   PlatformRefundsListPage
 } from '@/features/platform/billing/pages/PlatformBillingPages';
+import {
+  PlatformAnnouncementsPage,
+  PlatformAuditPage,
+  PlatformIntegrationsPage,
+  PlatformKnowledgeBasePage,
+  PlatformLegalPage,
+  PlatformModulesPage,
+  PlatformMonitoringPage,
+  PlatformOnboardingPage,
+  PlatformRemoteLoginPage,
+  PlatformReportsPage,
+  PlatformSettingsPage,
+  PlatformSupportTicketsPage,
+  PlatformTrialsPage,
+  PlatformWebhooksPage
+} from '@/features/platform/operations/pages/PlatformOperationsPages';
 import { ForbiddenPage } from '@/pages/ForbiddenPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { PlaceholderPage } from '@/pages/PlaceholderPage';
@@ -527,7 +543,118 @@ export const appRouter = createBrowserRouter([
           </RequirePermission>
         )
       },
-      { path: 'settings', element: <AccountSettingsPage guard="platform" /> },
+      {
+        path: 'catalog/modules',
+        element: (
+          <RequirePermission guard="platform" anyOf={['module.view']}>
+            <PlatformModulesPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'support/tickets',
+        element: (
+          <RequirePermission guard="platform" anyOf={['support.ticket.view']}>
+            <PlatformSupportTicketsPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'support/knowledge-base',
+        element: (
+          <RequirePermission guard="platform" anyOf={['support.knowledge_base.view']}>
+            <PlatformKnowledgeBasePage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'support/remote-login',
+        element: (
+          <RequirePermission guard="platform" anyOf={['tenant.impersonate']}>
+            <PlatformRemoteLoginPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'reports',
+        element: (
+          <RequirePermission guard="platform" anyOf={['report.view']}>
+            <PlatformReportsPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'monitoring',
+        element: (
+          <RequirePermission guard="platform" anyOf={['monitoring.view']}>
+            <PlatformMonitoringPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'integrations',
+        element: (
+          <RequirePermission guard="platform" anyOf={['integration.view']}>
+            <PlatformIntegrationsPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'settings',
+        element: (
+          <RequirePermission guard="platform" anyOf={['setting.view']}>
+            <PlatformSettingsPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'audit',
+        element: (
+          <RequirePermission guard="platform" anyOf={['audit_log.view']}>
+            <PlatformAuditPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'onboarding',
+        element: (
+          <RequirePermission guard="platform" anyOf={['tenant.view']}>
+            <PlatformOnboardingPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'trials',
+        element: (
+          <RequirePermission guard="platform" anyOf={['subscription.view']}>
+            <PlatformTrialsPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'legal',
+        element: (
+          <RequirePermission guard="platform" anyOf={['setting.view']}>
+            <PlatformLegalPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'announcements',
+        element: (
+          <RequirePermission guard="platform" anyOf={['setting.view']}>
+            <PlatformAnnouncementsPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'webhooks',
+        element: (
+          <RequirePermission guard="platform" anyOf={['integration.view']}>
+            <PlatformWebhooksPage />
+          </RequirePermission>
+        )
+      },
       { path: 'api-tokens', element: <ApiTokensPage guard="platform" /> },
       {
         path: '*',
