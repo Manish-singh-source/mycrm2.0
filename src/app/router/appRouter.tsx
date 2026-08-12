@@ -184,6 +184,12 @@ import {
   TenantTodoViewPage,
   TenantVendorRenewalsPage
 } from '@/features/tenant/pages/TenantOperationsPages';
+import {
+  TenantAttendancePage,
+  TenantHolidaysPage,
+  TenantLeavePage,
+  TenantPayrollPage
+} from '@/features/tenant/pages/TenantHrmsPages';
 
 export const appRouter = createBrowserRouter([
   {
@@ -1114,10 +1120,38 @@ export const appRouter = createBrowserRouter([
           </RequirePermission>
         )
       },
-      { path: 'hrms/attendance', element: <TenantPlaceholderModulePage title="Attendance" /> },
-      { path: 'hrms/leave', element: <TenantPlaceholderModulePage title="Leave Management" /> },
-      { path: 'hrms/payroll', element: <TenantPlaceholderModulePage title="Payroll" /> },
-      { path: 'hrms/holidays', element: <TenantPlaceholderModulePage title="Holidays" /> },
+      {
+        path: 'hrms/attendance',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['attendance.view']}>
+            <TenantAttendancePage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'hrms/leave',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['leave.view']}>
+            <TenantLeavePage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'hrms/payroll',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['payroll.view']}>
+            <TenantPayrollPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'hrms/holidays',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['holiday.view']}>
+            <TenantHolidaysPage />
+          </RequirePermission>
+        )
+      },
       { path: 'finance/invoices', element: <TenantPlaceholderModulePage title="Invoices" /> },
       { path: 'finance/payments', element: <TenantPlaceholderModulePage title="Payments" /> },
       { path: 'finance/expenses', element: <TenantPlaceholderModulePage title="Expenses" /> },
