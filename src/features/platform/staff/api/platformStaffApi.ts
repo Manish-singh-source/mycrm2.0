@@ -39,7 +39,7 @@ export type PlatformStaffListResult = {
 export type PlatformStaffPayload = {
   employee_code?: string;
   first_name: string;
-  last_name: string;
+  last_name?: string;
   display_name: string;
   email: string;
   mobile?: string;
@@ -55,6 +55,15 @@ export type PlatformStaffPayload = {
   team_ids?: string[];
 };
 
+type PlatformFileRecord = {
+  uuid?: string;
+  id?: string | number;
+  original_name?: string;
+  mime_type?: string;
+  size_bytes?: number;
+  [key: string]: unknown;
+};
+
 function paginationTotal(meta?: Record<string, unknown>, fallback = 0) {
   const pagination = meta?.pagination as { total?: number } | undefined;
   return Number(pagination?.total ?? meta?.total ?? fallback);
@@ -62,7 +71,18 @@ function paginationTotal(meta?: Record<string, unknown>, fallback = 0) {
 
 function unwrapUser(data: unknown): PlatformStaffRecord {
   if (data && typeof data === 'object' && 'user' in data) {
-    return (data as { user: PlatformStaffRecord }).user;
+    const wrapped = data as {
+      user: PlatformStaffRecord;
+      roles?: PlatformStaffRecord[];
+      teams?: PlatformStaffRecord[];
+      permissions?: PlatformStaffRecord['permissions'];
+    };
+    return {
+      ...wrapped.user,
+      roles: wrapped.roles ?? wrapped.user.roles,
+      teams: wrapped.teams ?? wrapped.user.teams,
+      permissions: wrapped.permissions ?? wrapped.user.permissions
+    };
   }
   return data as PlatformStaffRecord;
 }
@@ -104,13 +124,26 @@ export const platformStaffApi = {
   roles: (id: string) =>
     platformClient.get<{ roles: PlatformStaffRecord[] }>(`/platform-users/${encodeURIComponent(id)}/roles`),
   replaceRoles: (id: string, body: { role_ids: string[]; audit_reason: string }) =>
-    platformClient.put(`/platform-users/${encodeURIComponent(id)}/roles`, body),
+    platformClient.put(`/platform-users/${encodeURIComponent(id)}/roles`, {
+      role_uuids: body.role_ids,
+      audit_reason: body.audit_reason
+    }),
+  teams: (id: string) =>
+    platformClient.get<{ teams: PlatformStaffRecord[] }>(`/platform-users/${encodeURIComponent(id)}/teams`),
+  replaceTeams: (id: string, body: { team_ids: string[]; audit_reason: string }) =>
+    platformClient.put(`/platform-users/${encodeURIComponent(id)}/teams`, {
+      team_uuids: body.team_ids,
+      audit_reason: body.audit_reason
+    }),
   permissions: (id: string) =>
     platformClient.get<{ permissions: Record<string, PlatformStaffRecord[]> }>(`/platform-users/${encodeURIComponent(id)}/permissions`),
   replacePermissions: (id: string, body: { permission_ids: string[]; audit_reason: string }) =>
     platformClient.put(`/platform-users/${encodeURIComponent(id)}/permissions`, body),
   activity: (id: string) =>
     platformClient.get<{ activity: PlatformStaffRecord[] }>(`/platform-users/${encodeURIComponent(id)}/activity`),
+  files: {
+    upload: (body: FormData) => platformClient.post<{ file: PlatformFileRecord }, FormData>('/files', body)
+  },
   invite: (body: Record<string, unknown>) => platformClient.post('/platform-users/invite', body),
   export: (body: Record<string, unknown>) => platformClient.post('/platform-users/export', body)
 };

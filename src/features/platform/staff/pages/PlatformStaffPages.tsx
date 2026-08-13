@@ -22,6 +22,10 @@ import { z } from 'zod';
 
 import { platformQueryKeys } from '@/features/platform/api/platformQueryKeys';
 import {
+  platformAccessApi,
+  type PlatformRecord
+} from '@/features/platform/access-control/api/platformAccessApi';
+import {
   platformStaffApi,
   type PlatformStaffPayload,
   type PlatformStaffRecord
@@ -31,6 +35,8 @@ import { ApiError } from '@/lib/api/apiError';
 import { createListQuery } from '@/lib/api/listQuery';
 import { DataTable, type DataTableColumn } from '@/shared/components/data-table';
 import { AppDrawer } from '@/shared/components/drawer';
+import { FileDropzone } from '@/shared/components/file';
+import { applyApiValidationErrors } from '@/shared/module-pages/utils/apiValidation';
 import { PageHeader, StatusBadge, Tabs } from '@/shared/components/layout';
 import { AppModal } from '@/shared/components/modal';
 import { Button, PermissionButton } from '@/shared/components/ui';
@@ -47,6 +53,7 @@ type StaffModal =
   | 'assignRoles'
   | 'assignTeams'
   | 'suspend'
+  | 'delete'
   | 'resetPassword'
   | 'forceLogout'
   | 'require2fa'
@@ -60,19 +67,19 @@ type StaffDrawer = 'permissions' | 'filters' | null;
 
 const staffSchema = z.object({
   employee_code: z.string().optional(),
-  first_name: z.string().min(1),
-  last_name: z.string().min(1),
-  display_name: z.string().min(2),
-  email: z.string().email(),
+  first_name: z.string().min(1, 'Enter the first name.'),
+  last_name: z.string().optional(),
+  display_name: z.string().min(2, 'Enter a display name with at least 2 characters.'),
+  email: z.string().email('Enter a valid email address.'),
   mobile: z.string().optional(),
   password: z.string().optional(),
   profile_photo_file_id: z.string().optional(),
   designation: z.string().optional(),
   department: z.string().optional(),
-  timezone: z.string().min(1),
-  locale: z.string().min(1),
+  timezone: z.string().min(1, 'Select a timezone.'),
+  locale: z.string().min(1, 'Select a locale.'),
   two_factor_enabled: z.boolean(),
-  status: z.string(),
+  status: z.string().min(1, 'Select a status.'),
   role_ids: z.string().optional(),
   team_ids: z.string().optional()
 });
@@ -95,6 +102,49 @@ function errorMessage(error: unknown) {
   if (error instanceof ApiError) return error.message;
   if (error instanceof Error) return error.message;
   return 'Request failed.';
+}
+
+function hasApiValidationError(error: unknown) {
+  return error instanceof ApiError && error.isValidationError;
+}
+
+function applyStaffValidationErrors(form: ReturnType<typeof useForm<StaffForm>>, error: unknown) {
+  if (!applyApiValidationErrors(form, error) || !(error instanceof ApiError)) return;
+
+  Object.entries({
+    role_uuids: 'role_ids',
+    team_uuids: 'team_ids',
+    'role_uuids.0': 'role_ids',
+    'team_uuids.0': 'team_ids'
+  }).forEach(([apiField, formField]) => {
+    const messages = error.validationErrors[apiField];
+    if (messages?.length) {
+      form.setError(formField as keyof StaffForm, {
+        type: 'server',
+        message: messages.join(' ')
+      });
+    }
+  });
+}
+
+function relationIds(value: unknown) {
+  return Array.isArray(value)
+    ? value
+        .map((item) =>
+          typeof item === 'string'
+            ? item
+            : textOf(item as PlatformStaffRecord, ['uuid', 'id'], '')
+        )
+        .filter(Boolean)
+        .join(',')
+    : '';
+}
+
+function splitIds(value?: string) {
+  return value
+    ?.split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function formatDate(value: unknown) {
@@ -126,14 +176,8 @@ function cleanPayload(values: StaffForm, includePassword: boolean): PlatformStaf
     locale: values.locale,
     two_factor_enabled: values.two_factor_enabled,
     status: values.status,
-    role_ids: values.role_ids
-      ?.split(',')
-      .map((item) => item.trim())
-      .filter(Boolean),
-    team_ids: values.team_ids
-      ?.split(',')
-      .map((item) => item.trim())
-      .filter(Boolean)
+    role_ids: splitIds(values.role_ids),
+    team_ids: splitIds(values.team_ids)
   };
 }
 
@@ -364,6 +408,8 @@ export function PlatformStaffListPage() {
         onAction={(action, payload) =>
           selectedStaff && mutation.mutate({ action, staff: selectedStaff, payload })
         }
+        actionLoading={mutation.isPending}
+        actionError={mutation.error}
       />
     </section>
   );
@@ -381,6 +427,15 @@ export function PlatformStaffEditPage() {
 function PlatformStaffFormPage({ staff }: { staff?: PlatformStaffRecord }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [profilePhotoFile, setProfilePhotoFile] = useState<File | null>(null);
+  const rolesQuery = useQuery({
+    queryKey: platformQueryKeys.list('platform-role-options', { per_page: 100 }),
+    queryFn: () => platformAccessApi.roles.list({ per_page: 100 })
+  });
+  const teamsQuery = useQuery({
+    queryKey: platformQueryKeys.list('platform-team-options', { per_page: 100 }),
+    queryFn: () => platformAccessApi.teams.list({ per_page: 100 })
+  });
   const form = useForm<StaffForm>({
     resolver: zodResolver(staffSchema),
     defaultValues: {
@@ -398,15 +453,28 @@ function PlatformStaffFormPage({ staff }: { staff?: PlatformStaffRecord }) {
       locale: textOf(staff, ['locale'], 'en'),
       two_factor_enabled: Boolean(staff?.two_factor_enabled),
       status: textOf(staff, ['status'], 'active'),
-      role_ids: '',
-      team_ids: ''
+      role_ids: relationIds(staff?.roles),
+      team_ids: relationIds(staff?.teams)
     }
   });
   const mutation = useMutation({
-    mutationFn: (values: StaffForm) =>
-      staff
-        ? platformStaffApi.update(idOf(staff), cleanPayload(values, false))
-        : platformStaffApi.create(cleanPayload(values, true)),
+    mutationFn: async (values: StaffForm) => {
+      const payload = cleanPayload(values, !staff);
+      if (profilePhotoFile) {
+        const body = new FormData();
+        body.append('file', profilePhotoFile);
+        body.append('visibility', 'private');
+        body.append('purpose', 'platform-staff-profile-photo');
+        const upload = await platformStaffApi.files.upload(body);
+        payload.profile_photo_file_id = String(upload.data.file.uuid ?? upload.data.file.id ?? '');
+      }
+      return staff
+        ? platformStaffApi.update(idOf(staff), payload)
+        : platformStaffApi.create(payload);
+    },
+    onError: (error) => {
+      applyStaffValidationErrors(form, error);
+    },
     onSuccess: async (saved) => {
       await queryClient.invalidateQueries({
         queryKey: platformQueryKeys.resource('platform-staff')
@@ -431,7 +499,13 @@ function PlatformStaffFormPage({ staff }: { staff?: PlatformStaffRecord }) {
           </Button>
         }
       />
-      {mutation.error ? <div className="surface-error">{errorMessage(mutation.error)}</div> : null}
+      {mutation.error ? (
+        <div className="surface-error">
+          {hasApiValidationError(mutation.error)
+            ? 'Please fix the highlighted fields and save again.'
+            : errorMessage(mutation.error)}
+        </div>
+      ) : null}
       <form
         className="rbac-form-shell"
         onSubmit={form.handleSubmit((values) => mutation.mutate(values))}
@@ -442,7 +516,13 @@ function PlatformStaffFormPage({ staff }: { staff?: PlatformStaffRecord }) {
             <InputField form={form} name="first_name" label="First name" />
             <InputField form={form} name="last_name" label="Last name" />
             <InputField form={form} name="display_name" label="Display name" />
-            <InputField form={form} name="profile_photo_file_id" label="Profile photo file ID" />
+            <ProfilePhotoUploadField
+              currentFileId={form.watch('profile_photo_file_id')}
+              error={form.formState.errors.profile_photo_file_id?.message}
+              selectedFile={profilePhotoFile}
+              onFileSelected={(file) => setProfilePhotoFile(file)}
+            />
+            <input type="hidden" {...form.register('profile_photo_file_id')} />
           </FormSection>
           <FormSection title="Contact">
             <InputField form={form} name="email" label="Email" type="email" />
@@ -453,17 +533,23 @@ function PlatformStaffFormPage({ staff }: { staff?: PlatformStaffRecord }) {
             <InputField form={form} name="department" label="Department" />
           </FormSection>
           <FormSection title="Access">
-            <InputField
+            <RelationMultiSelectField
               form={form}
               name="role_ids"
-              label="Role IDs"
-              placeholder="role_uuid_1, role_uuid_2"
+              label="Roles"
+              options={rolesQuery.data?.data ?? []}
+              loading={rolesQuery.isLoading}
+              error={rolesQuery.error}
+              emptyLabel="No roles available"
             />
-            <InputField
+            <RelationMultiSelectField
               form={form}
               name="team_ids"
-              label="Team IDs"
-              placeholder="team_uuid_1, team_uuid_2"
+              label="Teams"
+              options={teamsQuery.data?.data ?? []}
+              loading={teamsQuery.isLoading}
+              error={teamsQuery.error}
+              emptyLabel="No teams available"
             />
             <SelectField
               form={form}
@@ -537,9 +623,20 @@ function StaffLoader({
 
 function StaffView({ staff }: { staff: PlatformStaffRecord }) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('profile');
   const [modal, setModal] = useState<StaffModal>(null);
   const [drawer, setDrawer] = useState<StaffDrawer>(null);
+  const mutation = useMutation({
+    mutationFn: (payload: Record<string, unknown>) =>
+      platformStaffApi.delete(idOf(staff), {
+        audit_reason: String(payload.audit_reason ?? payload.reason ?? 'Staff deleted from view')
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource('platform-staff') });
+      navigate(PLATFORM_ROUTES.staff);
+    }
+  });
   const tabs = [
     { id: 'profile', label: 'Profile' },
     { id: 'access', label: 'Access' },
@@ -607,6 +704,15 @@ function StaffView({ staff }: { staff: PlatformStaffRecord }) {
             >
               Direct Permissions
             </PermissionButton>
+            <PermissionButton
+              guard="platform"
+              permission="platform_user.delete"
+              type="button"
+              variant="danger"
+              onClick={() => setModal('delete')}
+            >
+              Delete
+            </PermissionButton>
           </>
         }
       />
@@ -656,6 +762,11 @@ function StaffView({ staff }: { staff: PlatformStaffRecord }) {
           setModal(null);
           setDrawer(null);
         }}
+        onAction={(action, payload) => {
+          if (action === 'delete') mutation.mutate(payload);
+        }}
+        actionLoading={mutation.isPending}
+        actionError={mutation.error}
       />
     </section>
   );
@@ -672,7 +783,9 @@ function StaffControls({
   selectedCount = 0,
   onHiddenColumnIdsChange,
   onClose,
-  onAction
+  onAction,
+  actionLoading,
+  actionError
 }: {
   modal: StaffModal;
   drawer: StaffDrawer;
@@ -685,6 +798,8 @@ function StaffControls({
   onHiddenColumnIdsChange?: (ids: string[]) => void;
   onClose: () => void;
   onAction?: (action: string, payload: Record<string, unknown>) => void;
+  actionLoading?: boolean;
+  actionError?: unknown;
 }) {
   const [draftFilters, setDraftFilters] = useState(filters);
 
@@ -794,6 +909,14 @@ function StaffControls({
         staff={staff}
         onClose={onClose}
         onAction={onAction}
+      />
+      <DeleteStaffDialog
+        open={modal === 'delete'}
+        staff={staff}
+        onClose={onClose}
+        onAction={onAction}
+        loading={actionLoading}
+        error={actionError}
       />
       <ResetPasswordModal open={modal === 'resetPassword'} staff={staff} onClose={onClose} />
       <ForceLogoutDialog open={modal === 'forceLogout'} staff={staff} onClose={onClose} />
@@ -950,6 +1073,18 @@ function StaffActionsMenu({
             onClick={() => run(() => onModal('photo'))}
           >
             <Camera size={15} aria-hidden /> Profile Photo
+          </PermissionButton>
+          <hr />
+          <PermissionButton
+            guard="platform"
+            permission="platform_user.delete"
+            type="button"
+            variant="ghost"
+            className="is-danger"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => run(() => onModal('delete'))}
+          >
+            <Lock size={15} aria-hidden /> Delete Staff
           </PermissionButton>
         </div>
       </PortalActionMenu>
@@ -1385,6 +1520,48 @@ function ResetPasswordModal({
   );
 }
 
+function DeleteStaffDialog({
+  open,
+  staff,
+  onClose,
+  onAction,
+  loading,
+  error
+}: {
+  open: boolean;
+  staff: PlatformStaffRecord | null;
+  onClose: () => void;
+  onAction?: (action: string, payload: Record<string, unknown>) => void;
+  loading?: boolean;
+  error?: unknown;
+}) {
+  return (
+    <ConfirmDialog
+      open={open}
+      onClose={onClose}
+      title="Delete staff?"
+      description={
+        <>
+          Delete <strong>{textOf(staff, ['display_name', 'email'], 'this staff member')}</strong>. This removes
+          the platform user from active staff lists and should only be used after access review.
+        </>
+      }
+      confirmLabel="Delete Staff"
+      confirmTone="danger"
+      typedConfirmation="DELETE"
+      reasonRequired
+      reasonLabel="Audit reason"
+      guard="platform"
+      permission="platform_user.delete"
+      loading={loading}
+      error={error ? errorMessage(error) : null}
+      onConfirm={(payload) => {
+        onAction?.('delete', { audit_reason: payload.reason ?? 'Staff deleted' });
+      }}
+    />
+  );
+}
+
 function ForceLogoutDialog({
   open,
   staff,
@@ -1667,6 +1844,95 @@ function FormSection({ title, children }: { title: string; children: ReactNode }
       <h2>{title}</h2>
       <div className="enterprise-form__grid">{children}</div>
     </section>
+  );
+}
+
+function optionLabel(option: PlatformRecord) {
+  const primary = textOf(option as PlatformStaffRecord, ['display_name', 'name', 'code'], 'Unnamed');
+  const secondary = textOf(option as PlatformStaffRecord, ['code', 'guard_name', 'status'], '');
+  return secondary && secondary !== primary ? `${primary} (${secondary})` : primary;
+}
+
+function ProfilePhotoUploadField({
+  currentFileId,
+  error,
+  selectedFile,
+  onFileSelected
+}: {
+  currentFileId?: string;
+  error?: unknown;
+  selectedFile: File | null;
+  onFileSelected: (file: File | null) => void;
+}) {
+  return (
+    <div className="staff-upload-field">
+      <span>Profile photo</span>
+      <FileDropzone
+        label="Choose profile photo"
+        accept="image/*"
+        onFilesSelected={(files) => onFileSelected(files[0] ?? null)}
+      />
+      <small>
+        {selectedFile
+          ? selectedFile.name
+            : currentFileId
+              ? 'Existing profile photo is linked.'
+            : 'PNG, JPG or WebP image.'}
+      </small>
+      {error ? <strong role="alert">{String(error)}</strong> : null}
+    </div>
+  );
+}
+
+function RelationMultiSelectField({
+  form,
+  name,
+  label,
+  options,
+  loading,
+  error,
+  emptyLabel
+}: {
+  form: any;
+  name: string;
+  label: string;
+  options: PlatformRecord[];
+  loading?: boolean;
+  error?: unknown;
+  emptyLabel: string;
+}) {
+  const selected = splitIds(form.watch(name)) ?? [];
+  const fieldError = form.formState.errors[name]?.message;
+  return (
+    <label>
+      <span>{label}</span>
+      <select
+        multiple
+        size={Math.min(Math.max(options.length, 3), 6)}
+        value={selected}
+        disabled={loading || Boolean(error)}
+        onChange={(event) => {
+          const values = Array.from(event.currentTarget.selectedOptions).map((option) => option.value);
+          form.setValue(name, values.join(','), { shouldDirty: true, shouldValidate: true });
+        }}
+      >
+        {loading ? <option value="">Loading {label.toLowerCase()}...</option> : null}
+        {error ? <option value="">Unable to load {label.toLowerCase()}</option> : null}
+        {!loading && !error && options.length === 0 ? <option value="">{emptyLabel}</option> : null}
+        {!loading && !error
+          ? options.map((option) => {
+              const value = idOf(option as PlatformStaffRecord);
+              return value ? (
+                <option key={value} value={value}>
+                  {optionLabel(option)}
+                </option>
+              ) : null;
+            })
+          : null}
+      </select>
+      <small>Select one or more {label.toLowerCase()} by name.</small>
+      {fieldError ? <strong role="alert">{String(fieldError)}</strong> : null}
+    </label>
   );
 }
 

@@ -1909,6 +1909,27 @@ textarea:disabled {
   padding: 18px;
 }
 
+.staff-upload-field {
+  display: grid;
+  gap: 8px;
+}
+
+.staff-upload-field > span {
+  color: #334155;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.staff-upload-field .file-dropzone {
+  min-height: 118px;
+}
+
+.staff-upload-field small,
+.enterprise-form__grid label small {
+  color: #64748b;
+  font-size: 12px;
+}
+
 .activity-timeline {
   display: grid;
   gap: 12px;
