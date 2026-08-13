@@ -528,7 +528,7 @@ function PlatformStaffFormPage({ staff }: { staff?: PlatformStaffRecord }) {
         <article className="enterprise-form">
           <FormSection title="Identity">
             <InputField form={form} name="employee_code" label="Employee code" />
-            <InputField form={form} name="first_name" label="First name" />
+            <InputField form={form} name="first_name" label={<RequiredLabel>First name</RequiredLabel>} />
             <InputField form={form} name="last_name" label="Last name" />
             <InputField form={form} name="display_name" label="Display name" />
             <ProfilePhotoUploadField
@@ -540,7 +540,7 @@ function PlatformStaffFormPage({ staff }: { staff?: PlatformStaffRecord }) {
             <input type="hidden" {...form.register('profile_photo_file_id')} />
           </FormSection>
           <FormSection title="Contact">
-            <InputField form={form} name="email" label="Email" type="email" />
+            <InputField form={form} name="email" label={<RequiredLabel>Email</RequiredLabel>} type="email" />
             <InputField form={form} name="mobile" label="Mobile" />
           </FormSection>
           <FormSection title="Employment">
@@ -1225,12 +1225,12 @@ function InviteStaffModal({ open, onClose }: { open: boolean; onClose: () => voi
       submitLabel="Send invite"
     >
       <SimpleInput
-        label="Email"
+        label={<RequiredLabel>Email</RequiredLabel>}
         value={payload.email}
         onChange={(email) => setPayload({ ...payload, email })}
       />
       <SimpleInput
-        label="First name"
+        label={<RequiredLabel>First name</RequiredLabel>}
         value={payload.first_name}
         onChange={(first_name) => setPayload({ ...payload, first_name })}
       />
@@ -2040,7 +2040,7 @@ function InputField({
 }: {
   form: any;
   name: string;
-  label: string;
+  label: ReactNode;
   placeholder?: string;
   type?: string;
 }) {
@@ -2079,7 +2079,7 @@ function SelectField({
   );
 }
 
-function CheckboxField({ form, name, label }: { form: any; name: string; label: string }) {
+function CheckboxField({ form, name, label }: { form: any; name: string; label: ReactNode }) {
   return (
     <label className="check-row">
       <input type="checkbox" {...form.register(name)} />
@@ -2095,7 +2095,7 @@ function SimpleInput({
   placeholder,
   type = 'text'
 }: {
-  label: string;
+  label: ReactNode;
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
@@ -2111,6 +2111,14 @@ function SimpleInput({
         onChange={(event) => onChange(event.target.value)}
       />
     </label>
+  );
+}
+
+function RequiredLabel({ children }: { children: ReactNode }) {
+  return (
+    <>
+      {children} <span className="required-mark" aria-label="required">*</span>
+    </>
   );
 }
 

@@ -1645,11 +1645,11 @@ function PermissionFormPage({ record, title }: { record?: PlatformRecord; title?
       side={<PermissionTip record={record} />}
     >
       <FormGrid>
-        <InputField form={form} name="module" label="Module" placeholder="billing" />
+        <InputField form={form} name="module" label={<RequiredLabel>Module</RequiredLabel>} placeholder="billing" />
         <InputField
           form={form}
           name="name"
-          label="Permission name"
+          label={<RequiredLabel>Permission name</RequiredLabel>}
           placeholder="billing.invoice.view"
         />
         <InputField form={form} name="display_name" label="Display name" />
@@ -1734,7 +1734,7 @@ function TeamFormPage({ record, title }: { record?: PlatformRecord; title?: stri
       side={<TeamSummary record={record} values={watchedTeam} users={platformUsers} />}
       >
         <FormGrid>
-          <InputField form={form} name="name" label="Team name" />
+          <InputField form={form} name="name" label={<RequiredLabel>Team name</RequiredLabel>} />
           <UserSelectField form={form} name="lead_platform_user_id" label="Lead platform user" users={platformUsers} loading={platformUsersQuery.isLoading} />
           <UserSelectField form={form} name="assistant_lead_platform_user_id" label="Assistant lead user" users={assistantLeadUsers} loading={platformUsersQuery.isLoading} />
           <InputField form={form} name="email" label="Team email" />
@@ -1817,7 +1817,7 @@ function TeamRoleFormPage({ record, title }: { record?: PlatformRecord; title?: 
       }
     >
       <FormGrid>
-        <InputField form={form} name="name" label="Name" />
+        <InputField form={form} name="name" label={<RequiredLabel>Name</RequiredLabel>} />
         <SelectField form={form} name="status" label="Status" options={['active', 'inactive']} />
         <CheckboxField form={form} name="is_system" label="System role" />
         <InputField form={form} name="description" label="Description" type="textarea" />
@@ -3470,7 +3470,7 @@ function TeamRoleEditorModal({
       }
     >
       <div className="form-grid form-grid--two">
-        <InputField form={form} name="name" label="Name" />
+        <InputField form={form} name="name" label={<RequiredLabel>Name</RequiredLabel>} />
         <SelectField form={form} name="status" label="Status" options={['active', 'inactive']} />
         <CheckboxField form={form} name="is_system" label="System role" />
         {role ? <InputField form={form} name="audit_reason" label="Audit reason" /> : null}
