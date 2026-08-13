@@ -1071,6 +1071,32 @@ textarea:disabled {
   margin: 0;
 }
 
+.staff-profile-preview {
+  align-items: center;
+  display: grid;
+  gap: 14px 16px;
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.staff-profile-preview > div:first-of-type {
+  display: grid;
+  gap: 3px;
+}
+
+.staff-profile-preview strong {
+  color: #0f172a;
+  font-size: 16px;
+}
+
+.staff-profile-preview span {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.staff-profile-preview .enterprise-summary-list {
+  grid-column: 1 / -1;
+}
+
 .row-action-menu {
   align-items: center;
   display: flex;
@@ -1748,6 +1774,11 @@ textarea:disabled {
   gap: 6px;
 }
 
+.required-mark {
+  color: #dc2626;
+  font-weight: 900;
+}
+
 .option-list,
 .record-list {
   display: grid;
@@ -2053,6 +2084,49 @@ textarea:disabled {
 .rbac-side-panel h2 {
   font-size: 16px;
   margin: 0;
+}
+
+.role-permission-selector {
+  align-items: center;
+  border: 1px solid #dfe4ea;
+  border-radius: 8px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 14px;
+}
+
+.role-permission-selector > div {
+  display: grid;
+  gap: 4px;
+}
+
+.role-permission-selector span {
+  color: #27364b;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.role-permission-selector strong:not([role='alert']) {
+  color: #101828;
+  font-size: 20px;
+}
+
+.role-permission-selector p {
+  color: #697386;
+  font-size: 13px;
+  margin: 0;
+}
+
+.role-permission-selector.form-field-invalid {
+  border-color: #b42318;
+  box-shadow: 0 0 0 3px rgb(180 35 24 / 12%);
+}
+
+.role-permission-selector strong[role='alert'] {
+  color: #b42318;
+  font-size: 12px;
+  grid-column: 1 / -1;
 }
 
 .rbac-sticky-footer {

@@ -153,6 +153,22 @@ async function parsePayload(response: Response) {
   return response.text().catch(() => undefined);
 }
 
+function errorDetails(payload: unknown) {
+  if (!payload || typeof payload !== 'object') return undefined;
+
+  const errors = (payload as { errors?: unknown }).errors;
+  if (!errors || typeof errors !== 'object' || Array.isArray(errors)) return undefined;
+
+  const details = (errors as { details?: unknown }).details;
+  if (details && typeof details === 'object' && !Array.isArray(details)) {
+    return details as Record<string, string[]>;
+  }
+
+  return Object.fromEntries(
+    Object.entries(errors as Record<string, unknown>).filter(([key]) => key !== 'code' && key !== 'details')
+  ) as Record<string, string[]>;
+}
+
 async function runRequest<TData>(url: string, options: RequestOptions) {
   const { guard, tenant, query, body, retry, idempotencyKey, timezone, locale, impersonationReason, office, ...init } =
     options;
@@ -200,9 +216,7 @@ async function runRequest<TData>(url: string, options: RequestOptions) {
             error_code:
               (payload as { error_code?: string }).error_code ??
               ((payload as { errors?: { code?: string } }).errors?.code),
-            errors:
-              (payload as { errors?: Record<string, string[]> }).errors ??
-              ((payload as { errors?: { details?: Record<string, string[]> } }).errors?.details),
+            errors: errorDetails(payload),
             request_id:
               (payload as { request_id?: string }).request_id ??
               ((payload as { meta?: { request_id?: string } }).meta?.request_id)

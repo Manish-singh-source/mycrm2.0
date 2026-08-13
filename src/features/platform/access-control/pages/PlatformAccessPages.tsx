@@ -44,7 +44,8 @@ import {
   ColumnManagerModal,
   ConfirmDialog,
   ExportModal,
-  SavedViewsModal
+  SavedViewsModal,
+  type SavedView
 } from '@/shared/components/workflows';
 
 type ResourceKind = 'roles' | 'permissions' | 'teams' | 'teamRoles';
@@ -68,6 +69,13 @@ type ModalKind =
   | null;
 
 type DrawerKind = 'assignPermissions' | 'permissionDetail' | 'filters' | null;
+type ListSort = { id: string; direction: 'asc' | 'desc' } | null;
+type AccessSavedView = SavedView & {
+  filters: Record<string, string>;
+  hiddenColumnIds: string[];
+  sort: ListSort;
+  search: string;
+};
 
 const guardNameOptions = ['platform', 'tenant'];
 
@@ -109,10 +117,8 @@ const teamSchema = z.object({
 
 const teamRoleSchema = z.object({
   name: z.string().min(2),
-  code: z.string().min(2),
   description: z.string().optional(),
-  permissions_json: z.string().optional(),
-  sort_order: z.coerce.number().default(0),
+  permissions: z.array(z.string()).optional(),
   is_system: z.boolean(),
   status: z.string(),
   audit_reason: z.string().optional()
@@ -201,6 +207,18 @@ function roleDisplayDetails(record: Record<string, unknown>, kind: ResourceKind)
     const hidden = new Set(['uuid', 'id', 'deleted_at', 'created_at', 'updated_at']);
     return Object.fromEntries(Object.entries(record).filter(([key]) => !hidden.has(key)));
   }
+  if (kind === 'teams') {
+    const hidden = new Set([
+      'uuid',
+      'id',
+      'deleted_at',
+      'lead_platform_user_id',
+      'assistant_lead_platform_user_id',
+      'lead_uuid',
+      'assistant_lead_uuid'
+    ]);
+    return Object.fromEntries(Object.entries(record).filter(([key]) => !hidden.has(key)));
+  }
   if (kind !== 'roles') return record;
   const hidden = new Set([
     'uuid',
@@ -222,6 +240,11 @@ function errorMessage(error: unknown) {
   }
   if (error instanceof Error) return error.message;
   return 'Request failed.';
+}
+
+function formErrorMessage(error: unknown) {
+  if (error instanceof ApiError && Object.keys(error.validationErrors).length > 0) return '';
+  return error ? errorMessage(error) : '';
 }
 
 function firstValidationMessage(error: ApiError) {
@@ -248,6 +271,18 @@ function applyApiFieldErrors(form: any, error: unknown) {
   });
 }
 
+function apiFieldError(error: unknown, fields: string[]) {
+  if (!(error instanceof ApiError)) return '';
+
+  for (const field of fields) {
+    const messages = error.validationErrors[field];
+    const message = Array.isArray(messages) ? messages[0] : messages;
+    if (message) return String(message);
+  }
+
+  return '';
+}
+
 function totalFromQuery(data?: { total: number; data: PlatformRecord[] }) {
   return data?.total ?? data?.data.length ?? 0;
 }
@@ -260,7 +295,26 @@ function groupedPermissionIds(grouped?: GroupedPermissions) {
 }
 
 function groupedPermissionsForDisplay(value: unknown): GroupedPermissions {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  if (!value) return {};
+  if (Array.isArray(value)) {
+    return {
+      assigned: value.map((permission) => {
+        if (permission && typeof permission === 'object' && !Array.isArray(permission)) {
+          return permission as PlatformRecord;
+        }
+
+        const code = String(permission ?? '');
+
+        return {
+          uuid: code,
+          module: 'assigned',
+          name: code,
+          display_name: toTitleCase(code)
+        };
+      })
+    };
+  }
+  if (typeof value !== 'object') return {};
 
   return Object.fromEntries(
     Object.entries(value as Record<string, unknown>).map(([module, permissions]) => {
@@ -293,6 +347,28 @@ function guardNameValue(value: unknown): 'platform' | 'tenant' {
 function selectedPermissionIds(record?: PlatformRecord | null) {
   if (!record?.permissions) return [];
   return groupedPermissionIds(groupedPermissionsForDisplay(record.permissions));
+}
+
+function selectedTeamRolePermissions(record?: PlatformRecord | null) {
+  return permissionValues(record?.permissions);
+}
+
+function permissionValues(value: unknown): string[] {
+  if (!value) return [];
+  if (typeof value === 'string') return value ? [value] : [];
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => {
+      if (typeof item === 'string') return item;
+      if (item && typeof item === 'object') {
+        return textOf(item as Record<string, unknown>, ['name', 'code', 'uuid', 'id'], '');
+      }
+      return [];
+    }).filter(Boolean);
+  }
+  if (typeof value === 'object') {
+    return Object.values(value as Record<string, unknown>).flatMap(permissionValues);
+  }
+  return [];
 }
 
 function auditPayload(value: string) {
@@ -417,7 +493,7 @@ function ResourceList({ kind }: { kind: ResourceKind }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
-  const [sort, setSort] = useState<{ id: string; direction: 'asc' | 'desc' } | null>(null);
+  const [sort, setSort] = useState<ListSort>(null);
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [filters, setFilters] = useState<Record<string, string>>({});
@@ -426,6 +502,8 @@ function ResourceList({ kind }: { kind: ResourceKind }) {
   const [modal, setModal] = useState<ModalKind>(null);
   const [drawer, setDrawer] = useState<DrawerKind>(null);
   const [hiddenColumnIds, setHiddenColumnIds] = useState<string[]>([]);
+  const [activeViewId, setActiveViewId] = useState('all');
+  const [customSavedViews, setCustomSavedViews] = useState<AccessSavedView[]>([]);
   const queryParams = createListQuery({
     page,
     per_page: 25,
@@ -531,6 +609,76 @@ function ResourceList({ kind }: { kind: ResourceKind }) {
       }),
     [actionMutation, kind, meta.route, navigate]
   );
+  const savedViews = useMemo<AccessSavedView[]>(
+    () => [
+      {
+        id: 'all',
+        name: 'All records',
+        visibility: 'shared',
+        isDefault: true,
+        filters: {},
+        hiddenColumnIds: [],
+        sort: null,
+        search: ''
+      },
+      {
+        id: 'active',
+        name: 'Active records',
+        visibility: 'shared',
+        filters: { status: 'active' },
+        hiddenColumnIds: [],
+        sort: null,
+        search: ''
+      },
+      {
+        id: 'system',
+        name: 'System records',
+        visibility: 'shared',
+        filters: kind === 'roles' ? { type: 'system' } : { status: 'active' },
+        hiddenColumnIds: [],
+        sort: null,
+        search: ''
+      },
+      ...customSavedViews
+    ],
+    [customSavedViews, kind]
+  );
+
+  function applySavedView(id: string) {
+    const view = savedViews.find((item) => item.id === id);
+    if (!view) return;
+
+    setFilters(view.filters);
+    setHiddenColumnIds(view.hiddenColumnIds);
+    setSort(view.sort);
+    setSearch(view.search);
+    setSearchInput(view.search);
+    setSelectedIds([]);
+    setActiveViewId(id);
+    setPage(1);
+    setModal(null);
+  }
+
+  function saveCurrentView(name?: string) {
+    const view: AccessSavedView = {
+      id: `custom-${Date.now()}`,
+      name: name?.trim() || `Custom view ${customSavedViews.length + 1}`,
+      visibility: 'personal',
+      filters,
+      hiddenColumnIds,
+      sort,
+      search
+    };
+
+    setCustomSavedViews((current) => [...current, view]);
+    setActiveViewId(view.id);
+    setModal(null);
+  }
+
+  function deleteSavedView(id: string) {
+    setCustomSavedViews((current) => current.filter((view) => view.id !== id));
+    if (activeViewId === id) setActiveViewId('all');
+  }
 
   const header = (
     <PageHeader
@@ -662,7 +810,12 @@ function ResourceList({ kind }: { kind: ResourceKind }) {
           selectedIds={selectedIds}
         selectedCount={selectedIds.length}
           sort={sort}
+          savedViews={savedViews}
+          activeViewId={activeViewId}
           onHiddenColumnIdsChange={setHiddenColumnIds}
+          onApplySavedView={applySavedView}
+          onSaveCurrentView={saveCurrentView}
+          onDeleteSavedView={deleteSavedView}
           actionLoading={actionMutation.isPending}
           actionError={actionMutation.error}
           onClose={() => {
@@ -698,7 +851,12 @@ function ResourceList({ kind }: { kind: ResourceKind }) {
         selectedIds={selectedIds}
         selectedCount={selectedIds.length}
           sort={sort}
+        savedViews={savedViews}
+        activeViewId={activeViewId}
         onHiddenColumnIdsChange={setHiddenColumnIds}
+        onApplySavedView={applySavedView}
+        onSaveCurrentView={saveCurrentView}
+        onDeleteSavedView={deleteSavedView}
         actionLoading={actionMutation.isPending}
         actionError={actionMutation.error}
         onClose={() => {
@@ -853,7 +1011,7 @@ function columnsFor(
         header: 'Team',
         accessor: (row) => row.name,
         enableSorting: true,
-        cell: (row) => textOf(row, ['name'])
+        cell: (row) => displayText(row, ['name'])
       },
       {
         id: 'code',
@@ -874,16 +1032,16 @@ function columnsFor(
         cell: (row) => textOf(row, ['members_count'], '0')
       },
       {
-        id: 'assigned_tenants_count',
-        header: 'Tenants',
-        accessor: (row) => row.assigned_tenants_count,
-        cell: (row) => textOf(row, ['assigned_tenants_count'], '0')
+        id: 'assignments_count',
+        header: 'Assignments',
+        accessor: (row) => Number(row.assignments_count ?? 0),
+        cell: (row) => textOf(row, ['assignments_count'], '0')
       },
       {
         id: 'visibility',
         header: 'Visibility',
         accessor: (row) => row.visibility,
-        cell: (row) => textOf(row, ['visibility'])
+        cell: (row) => displayText(row, ['visibility'])
       },
       statusColumn,
       actionColumn
@@ -976,9 +1134,7 @@ function DateCell({ value }: { value: unknown }) {
   if (Number.isNaN(date.getTime())) return <span className="muted-cell">{String(value)}</span>;
   return (
     <span className="date-cell">
-      <strong>
-        {date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-      </strong>
+      <strong>{formatDate(value)}</strong>
       <small>{date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}</small>
     </span>
   );
@@ -1374,19 +1530,20 @@ function RoleFormPage({ record, title }: { record?: PlatformRecord; title?: stri
     }
   });
   const watchedRole = form.watch();
+  function setSelectedPermissionIds(ids: string[]) {
+    setSelectedPermissionIdsState(ids);
+    form.setValue('permission_ids', ids.join(','), { shouldDirty: true });
+    form.clearErrors('permission_ids');
+  }
+
   const mutation = useMutation({
     mutationFn: (values: RoleForm) => {
       const payload: RolePayload = {
         ...values,
         name: toSnakeCase(values.name),
         display_name: toTitleCase(values.display_name),
-        permission_ids:
-          selectedPermissionIdsState.length > 0
-            ? selectedPermissionIdsState
-            : values.permission_ids
-                ?.split(',')
-                .map((item) => item.trim())
-                .filter(Boolean),
+        guard_name: 'platform',
+        permission_ids: selectedPermissionIdsState,
         audit_reason: values.audit_reason || (record ? 'Role updated from platform access control UI' : 'Role created from platform access control UI')
       };
       return record
@@ -1418,24 +1575,29 @@ function RoleFormPage({ record, title }: { record?: PlatformRecord; title?: stri
       }
     >
       <FormGrid>
-        <InputField form={form} name="name" label="Role name" placeholder="Billing Manager" />
+        <InputField form={form} name="name" label={<RequiredLabel>Role name</RequiredLabel>} placeholder="Billing Manager" />
         <InputField
           form={form}
           name="display_name"
-          label="Display name"
+          label={<RequiredLabel>Display name</RequiredLabel>}
           placeholder="Billing Manager"
         />
-        <SelectField form={form} name="guard_name" label="Guard name" options={guardNameOptions} formatOption={titleCaseOption} />
+        <SelectField form={form} name="guard_name" label="Guard name" options={['platform']} formatOption={titleCaseOption} />
         <InputField form={form} name="description" label="Description" type="textarea" />
         <SelectField form={form} name="status" label="Status" options={['active', 'inactive']} />
         <CheckboxField form={form} name="is_system" label="System role" />
         {record ? <InputField form={form} name="audit_reason" label="Audit reason" /> : null}
       </FormGrid>
+      <RolePermissionSelector
+        form={form}
+        selectedCount={selectedPermissionIdsState.length}
+        onOpen={() => setDrawerOpen(true)}
+      />
       <AssignPermissionsDrawer
         open={drawerOpen}
         role={record}
         selectedIds={selectedPermissionIdsState}
-        onSelectedIdsChange={setSelectedPermissionIdsState}
+        onSelectedIdsChange={setSelectedPermissionIds}
         onClose={() => setDrawerOpen(false)}
         onSaved={() => setDrawerOpen(false)}
       />
@@ -1521,11 +1683,26 @@ function TeamFormPage({ record, title }: { record?: PlatformRecord; title?: stri
     }
   });
   const watchedTeam = form.watch();
+  const selectedLeadUserId = String(watchedTeam.lead_platform_user_id ?? '');
   const platformUsersQuery = useQuery({
     queryKey: platformQueryKeys.list('platform-users-for-team-form', { per_page: 100 }),
     queryFn: () => platformStaffApi.list({ per_page: 100, filter: { status: 'active' } })
   });
   const platformUsers = platformUsersQuery.data?.data ?? [];
+  const assistantLeadUsers = useMemo(
+    () => platformUsers.filter((user) => userSelectValue(user) !== selectedLeadUserId),
+    [platformUsers, selectedLeadUserId]
+  );
+
+  useEffect(() => {
+    if (
+      selectedLeadUserId &&
+      watchedTeam.assistant_lead_platform_user_id === selectedLeadUserId
+    ) {
+      form.setValue('assistant_lead_platform_user_id', '', { shouldDirty: true });
+    }
+  }, [form, selectedLeadUserId, watchedTeam.assistant_lead_platform_user_id]);
+
   const mutation = useMutation({
     mutationFn: (values: TeamForm) => {
       const payload: TeamPayload = {
@@ -1555,13 +1732,12 @@ function TeamFormPage({ record, title }: { record?: PlatformRecord; title?: stri
       title={title ?? `Edit ${textOf(record, ['name'])}`}
       permission={record ? 'platform_team.edit' : 'platform_team.create'}
       side={<TeamSummary record={record} values={watchedTeam} users={platformUsers} />}
-    >
-      <FormGrid>
-        <InputField form={form} name="name" label="Team name" />
-        {record ? <InputField form={form} name="code" label="Team code" /> : null}
-        <UserSelectField form={form} name="lead_platform_user_id" label="Lead platform user" users={platformUsers} loading={platformUsersQuery.isLoading} />
-        <UserSelectField form={form} name="assistant_lead_platform_user_id" label="Assistant lead user" users={platformUsers} loading={platformUsersQuery.isLoading} />
-        <InputField form={form} name="email" label="Team email" />
+      >
+        <FormGrid>
+          <InputField form={form} name="name" label="Team name" />
+          <UserSelectField form={form} name="lead_platform_user_id" label="Lead platform user" users={platformUsers} loading={platformUsersQuery.isLoading} />
+          <UserSelectField form={form} name="assistant_lead_platform_user_id" label="Assistant lead user" users={assistantLeadUsers} loading={platformUsersQuery.isLoading} />
+          <InputField form={form} name="email" label="Team email" />
         <InputField form={form} name="phone" label="Phone" />
         <InputField form={form} name="color" label="Color" type="color" />
         <InputField form={form} name="icon" label="Icon" />
@@ -1587,14 +1763,16 @@ function TeamFormPage({ record, title }: { record?: PlatformRecord; title?: stri
 function TeamRoleFormPage({ record, title }: { record?: PlatformRecord; title?: string }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [permissionsOpen, setPermissionsOpen] = useState(false);
+  const [selectedPermissions, setSelectedPermissions] = useState<string[]>(
+    selectedTeamRolePermissions(record)
+  );
   const form = useForm<TeamRoleForm>({
     resolver: zodResolver(teamRoleSchema),
     defaultValues: {
       name: textOf(record, ['name'], ''),
-      code: textOf(record, ['code'], ''),
       description: textOf(record, ['description'], ''),
-      permissions_json: JSON.stringify(record?.permissions ?? {}, null, 2),
-      sort_order: Number(record?.sort_order ?? 0),
+      permissions: selectedTeamRolePermissions(record),
       is_system: Boolean(record?.is_system),
       status: textOf(record, ['status'], 'active'),
       audit_reason: record ? 'Team role update' : 'Team role created'
@@ -1604,10 +1782,8 @@ function TeamRoleFormPage({ record, title }: { record?: PlatformRecord; title?: 
     mutationFn: (values: TeamRoleForm) => {
       const payload: Partial<TeamRolePayload> = {
         name: values.name,
-        ...(!record || values.code !== textOf(record, ['code'], '') ? { code: values.code } : {}),
         description: values.description,
-        permissions: values.permissions_json ? JSON.parse(values.permissions_json) : {},
-        sort_order: values.sort_order,
+        permissions: selectedPermissions,
         is_system: values.is_system,
         status: values.status,
         audit_reason: values.audit_reason || (record ? 'Team role update' : 'Team role created')
@@ -1634,17 +1810,35 @@ function TeamRoleFormPage({ record, title }: { record?: PlatformRecord; title?: 
       title={title ?? `Edit ${textOf(record, ['name'])}`}
       permission={record ? 'platform_team.edit' : 'platform_team.create'}
       side={<PermissionTip record={record} />}
+      footerExtra={
+        <Button type="button" variant="secondary" onClick={() => setPermissionsOpen(true)}>
+          Assign permissions
+        </Button>
+      }
     >
       <FormGrid>
         <InputField form={form} name="name" label="Name" />
-        <InputField form={form} name="code" label="Code" />
-        <InputField form={form} name="sort_order" label="Sort order" type="number" />
         <SelectField form={form} name="status" label="Status" options={['active', 'inactive']} />
         <CheckboxField form={form} name="is_system" label="System role" />
         <InputField form={form} name="description" label="Description" type="textarea" />
-        <InputField form={form} name="permissions_json" label="Permissions JSON" type="textarea" />
         {record ? <InputField form={form} name="audit_reason" label="Audit reason" /> : null}
       </FormGrid>
+      <TeamRolePermissionSelector
+        form={form}
+        selectedCount={selectedPermissions.length}
+        onOpen={() => setPermissionsOpen(true)}
+      />
+      <TeamRolePermissionsDrawer
+        open={permissionsOpen}
+        selectedValues={selectedPermissions}
+        onSelectedValuesChange={(values) => {
+          setSelectedPermissions(values);
+          form.setValue('permissions', values, { shouldDirty: true });
+          form.clearErrors('permissions');
+        }}
+        onClose={() => setPermissionsOpen(false)}
+        permission={record ? 'platform_team.edit' : 'platform_team.create'}
+      />
     </FormShell>
   );
 }
@@ -1656,19 +1850,18 @@ function ResourceView({ kind, record }: { kind: ResourceKind; record: PlatformRe
   const [modal, setModal] = useState<ModalKind>(null);
   const [drawer, setDrawer] = useState<DrawerKind>(null);
   const permissionGroups = groupedPermissionsForDisplay(record.permissions);
-  const tabs = kind === 'teamRoles'
-    ? [
-        { id: 'details', label: 'Details' },
-        { id: 'permissions', label: 'Permissions' },
-        { id: 'activity', label: 'Activity' }
-      ]
-    : [
-        { id: 'details', label: 'Details' },
-        { id: 'permissions', label: 'Permissions' },
-        { id: 'users', label: kind === 'teams' ? 'Members' : 'Assigned Users' },
-        { id: 'assignments', label: 'Assignments' },
-        { id: 'activity', label: 'Activity' }
-      ];
+  const tabs = [
+    { id: 'details', label: 'Details' },
+    ...(kind !== 'teams' ? [{ id: 'permissions', label: 'Permissions' }] : []),
+    ...(kind === 'roles' ? [{ id: 'users', label: 'Assigned Users' }] : []),
+    ...(kind === 'teams'
+      ? [
+          { id: 'users', label: 'Members' },
+          { id: 'assignments', label: 'Assignments' }
+        ]
+      : []),
+    { id: 'activity', label: 'Activity' }
+  ];
 
   return (
     <section className="enterprise-module-page platform-access-page">
@@ -1677,7 +1870,11 @@ function ResourceView({ kind, record }: { kind: ResourceKind; record: PlatformRe
         description={textOf(
           record,
           ['description'],
-          'Manage details, assignments, permissions, and activity.'
+            kind === 'roles'
+              ? 'Manage details, assigned users, permissions, and activity.'
+              : kind === 'teams'
+                ? 'Manage details, members, assignments, permissions, and activity.'
+                : 'Manage details, permissions, and activity.'
         )}
         meta={
           <StatusBadge tone={record.status === 'active' ? 'success' : 'neutral'}>
@@ -1773,32 +1970,38 @@ function ResourceView({ kind, record }: { kind: ResourceKind; record: PlatformRe
       />
 
       <div className="platform-access-summary">
-        <SummaryTile
-          icon={<ShieldCheck />}
-          label="Permissions"
-          value={textOf(
-            record,
-            ['permissions_count'],
-            selectedPermissionIds(record).length
-              ? String(selectedPermissionIds(record).length)
-              : '0'
-          )}
-        />
+        {kind !== 'teams' ? (
+          <SummaryTile
+            icon={<ShieldCheck />}
+            label="Permissions"
+            value={textOf(
+              record,
+              ['permissions_count'],
+              selectedPermissionIds(record).length
+                ? String(selectedPermissionIds(record).length)
+                : '0'
+            )}
+          />
+        ) : null}
         <SummaryTile
           icon={<Users />}
           label={kind === 'teams' ? 'Members' : 'Assigned Users'}
           value={textOf(record, ['users_count', 'members_count'], '0')}
         />
-        <SummaryTile
-          icon={<KeyRound />}
-          label="Guard"
-          value={textOf(record, ['guard_name'], kind === 'teams' ? 'platform_team' : '-')}
-        />
-        <SummaryTile
-          icon={<CheckCircle2 />}
-          label="System"
-          value={record.is_system ? 'Yes' : 'No'}
-        />
+        {kind !== 'roles' ? (
+          <>
+            <SummaryTile
+              icon={<KeyRound />}
+              label="Guard"
+              value={textOf(record, ['guard_name'], kind === 'teams' ? 'platform_team' : '-')}
+            />
+            <SummaryTile
+              icon={<CheckCircle2 />}
+              label="System"
+              value={record.is_system ? 'Yes' : 'No'}
+            />
+          </>
+        ) : null}
       </div>
 
       <article className="enterprise-view-panel">
@@ -1816,13 +2019,11 @@ function ResourceView({ kind, record }: { kind: ResourceKind; record: PlatformRe
               (record.members as PlatformRecord[] | undefined) ??
               []
             }
+            emptyText="No users are assigned to this role."
           />
         ) : null}
         {activeTab === 'assignments' && kind === 'teams' ? (
           <TeamAssignmentsPanel team={record} />
-        ) : null}
-        {activeTab === 'assignments' && kind !== 'teams' ? (
-          <RecordList rows={(record.assignments as PlatformRecord[] | undefined) ?? []} />
         ) : null}
         {activeTab === 'activity' ? <AuditRail rows={activityRows(record)} compact /> : null}
       </article>
@@ -1853,7 +2054,12 @@ function StandardListControls({
   selectedIds = [],
   selectedCount = 0,
   sort,
+  savedViews = [],
+  activeViewId,
   onHiddenColumnIdsChange,
+  onApplySavedView,
+  onSaveCurrentView,
+  onDeleteSavedView,
   onClose,
   onAction,
   actionLoading = false,
@@ -1869,8 +2075,13 @@ function StandardListControls({
   hiddenColumnIds?: string[];
   selectedIds?: string[];
   selectedCount?: number;
-  sort?: { id: string; direction: 'asc' | 'desc' } | null;
+  sort?: ListSort;
+  savedViews?: AccessSavedView[];
+  activeViewId?: string;
   onHiddenColumnIdsChange?: (ids: string[]) => void;
+  onApplySavedView?: (id: string) => void;
+  onSaveCurrentView?: (name?: string) => void;
+  onDeleteSavedView?: (id: string) => void;
   onClose: () => void;
   onAction?: (action: string, payload: Record<string, unknown>) => void;
   actionLoading?: boolean;
@@ -1992,14 +2203,13 @@ function StandardListControls({
           visible: !hiddenColumnIds.includes(column.id),
           locked: column.enableHiding === false
         }))}
-        onToggle={(id) =>
+        onApply={(visibleIds) =>
           onHiddenColumnIdsChange?.(
-            hiddenColumnIds.includes(id)
-              ? hiddenColumnIds.filter((columnId) => columnId !== id)
-              : [...hiddenColumnIds, id]
+            columns
+              .filter((column) => column.enableHiding !== false && !visibleIds.includes(column.id))
+              .map((column) => column.id)
           )
         }
-        onReset={() => onHiddenColumnIdsChange?.([])}
         onSave={onClose}
       />
       <SavedViewsModal
@@ -2007,14 +2217,11 @@ function StandardListControls({
         onClose={onClose}
         guard="platform"
         permission={`${resourceMeta[kind].permission}.view`}
-        views={[
-          { id: 'active', name: 'Active records', visibility: 'shared', isDefault: true },
-          { id: 'system', name: 'System records', visibility: 'shared' },
-          { id: 'mine', name: 'My saved scope', visibility: 'personal' }
-        ]}
-        activeViewId="active"
-        onSelect={onClose}
-        onSaveCurrent={onClose}
+        views={savedViews}
+        activeViewId={activeViewId}
+        onSelect={(id) => onApplySavedView?.(id)}
+        onSaveCurrent={onSaveCurrentView ?? onClose}
+        onDelete={onDeleteSavedView}
       />
       <ExportModal
         open={modal === 'export'}
@@ -2315,6 +2522,148 @@ function AssignPermissionsDrawer({
       </label>
     </AppDrawer>
   );
+}
+
+function TeamRolePermissionsDrawer({
+  open,
+  selectedValues,
+  onSelectedValuesChange,
+  onClose,
+  permission = 'platform_team.edit'
+}: {
+  open: boolean;
+  selectedValues: string[];
+  onSelectedValuesChange: (values: string[]) => void;
+  onClose: () => void;
+  permission?: string;
+}) {
+  const [localValues, setLocalValues] = useState<string[]>(selectedValues);
+  const [search, setSearch] = useState('');
+  const [moduleFilter, setModuleFilter] = useState('');
+  const groupedQuery = useQuery({
+    queryKey: platformQueryKeys.resource('platform-permissions-grouped'),
+    queryFn: platformAccessApi.permissions.grouped,
+    enabled: open
+  });
+  const groups = groupedQuery.data?.data.permissions ?? {};
+  const modules = Object.keys(groups);
+
+  useEffect(() => {
+    if (open) setLocalValues(selectedValues);
+  }, [open, selectedValues]);
+
+  function toggle(value: string) {
+    setLocalValues((current) =>
+      current.includes(value) ? current.filter((item) => item !== value) : [...current, value]
+    );
+  }
+
+  function selectModule(values: string[]) {
+    setLocalValues((current) => Array.from(new Set([...current, ...values])));
+  }
+
+  function clearModule(values: string[]) {
+    setLocalValues((current) => current.filter((value) => !values.includes(value)));
+  }
+
+  return (
+    <AppDrawer
+      open={open}
+      onClose={onClose}
+      title="Assign team role permissions"
+      guard="platform"
+      permission={permission}
+      size="xl"
+      loading={groupedQuery.isLoading}
+      error={groupedQuery.isError ? errorMessage(groupedQuery.error) : null}
+      footer={
+        <>
+          <Button type="button" variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            onClick={() => {
+              onSelectedValuesChange(localValues);
+              onClose();
+            }}
+          >
+            Apply permissions
+          </Button>
+        </>
+      }
+    >
+      <div className="rbac-toolbar">
+        <input
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Search permissions"
+        />
+        <select value={moduleFilter} onChange={(event) => setModuleFilter(event.target.value)}>
+          <option value="">All modules</option>
+          {modules.map((module) => (
+            <option key={module} value={module}>
+              {titleCaseOption(module)}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="permission-diff permission-diff--sticky">
+        <span>{localValues.length} selected</span>
+      </div>
+      <div className="permission-groups permission-groups--assign">
+        {Object.entries(groups)
+          .filter(([module]) => !moduleFilter || module === moduleFilter)
+          .map(([module, permissions]) => {
+            const filtered = permissions.filter((item) =>
+              [item.name, item.display_name]
+                .join(' ')
+                .toLowerCase()
+                .includes(search.toLowerCase())
+            );
+            if (filtered.length === 0) return null;
+            const values = filtered.map(permissionChoiceValue).filter(Boolean);
+            const selectedInModule = values.filter((value) => localValues.includes(value)).length;
+
+            return (
+              <section key={module}>
+                <header>
+                  <div>
+                    <strong>{titleCaseOption(module)}</strong>
+                    <span>{selectedInModule} of {filtered.length} selected</span>
+                  </div>
+                  <div className="permission-module-actions">
+                    <button type="button" onClick={() => selectModule(values)}>Select all</button>
+                    <button type="button" onClick={() => clearModule(values)}>Clear</button>
+                  </div>
+                </header>
+                <div>
+                  {filtered.map((item) => {
+                    const value = permissionChoiceValue(item);
+                    const checked = localValues.includes(value);
+                    return (
+                      <label key={idOf(item) || value} className={checked ? 'is-selected' : undefined}>
+                        <input
+                          checked={checked}
+                          type="checkbox"
+                          onChange={() => toggle(value)}
+                        />
+                        <span>{textOf(item, ['display_name', 'name'])}</span>
+                        <small>{textOf(item, ['name'])}</small>
+                      </label>
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })}
+      </div>
+    </AppDrawer>
+  );
+}
+
+function permissionChoiceValue(permission: PlatformRecord) {
+  return textOf(permission, ['name', 'code', 'uuid', 'id'], '');
 }
 
 function AssignUsersModal({
@@ -2739,18 +3088,26 @@ function AddMemberModal({
   const queryClient = useQueryClient();
   const [platformUserId, setPlatformUserId] = useState('');
   const [teamRoleId, setTeamRoleId] = useState('');
-  const [allocation, setAllocation] = useState(100);
-  const [isPrimary, setIsPrimary] = useState(true);
   const [effectiveFrom, setEffectiveFrom] = useState('');
+  const platformUsersQuery = useQuery({
+    queryKey: platformQueryKeys.list('platform-users-for-team-member-modal', { per_page: 100 }),
+    queryFn: () => platformStaffApi.list({ per_page: 100, filter: { status: 'active' } }),
+    enabled: open
+  });
+  const teamRolesQuery = useQuery({
+    queryKey: platformQueryKeys.list(resourceMeta.teamRoles.resourceKey, { per_page: 100 }),
+    queryFn: () => platformAccessApi.teamRoles.list({ per_page: 100, filter: { status: 'active' } }),
+    enabled: open
+  });
+  const platformUsers = platformUsersQuery.data?.data ?? [];
+  const teamRoles = teamRolesQuery.data?.data ?? [];
   const mutation = useMutation({
     mutationFn: () =>
       platformAccessApi.teams.addMembers(idOf(team), {
         members: [
           {
             platform_user_id: platformUserId,
-            platform_team_role_id: teamRoleId,
-            allocation_percent: allocation,
-            is_primary: isPrimary,
+            team_role_uuid: teamRoleId || undefined,
             effective_from: effectiveFrom || undefined,
             status: 'active'
           }
@@ -2763,7 +3120,15 @@ function AddMemberModal({
       onClose();
     }
   });
-  const allocationWarning = allocation > 100;
+  const userError = apiFieldError(mutation.error, ['platform_user_id', 'platform_user_uuid', 'members.0.platform_user_id', 'members.0.platform_user_uuid']);
+  const teamRoleError = apiFieldError(mutation.error, ['platform_team_role_id', 'team_role_uuid', 'members.0.platform_team_role_id', 'members.0.team_role_uuid']);
+
+  useEffect(() => {
+    if (!open) return;
+    setPlatformUserId('');
+    setTeamRoleId('');
+    setEffectiveFrom('');
+  }, [open]);
 
   return (
     <AppModal
@@ -2773,7 +3138,7 @@ function AddMemberModal({
       guard="platform"
       permission="platform_team.assign"
       loading={mutation.isPending}
-      error={mutation.error ? errorMessage(mutation.error) : null}
+      error={formErrorMessage(mutation.error)}
       footer={
         <>
           <Button type="button" variant="secondary" onClick={onClose}>
@@ -2786,29 +3151,39 @@ function AddMemberModal({
       }
     >
       <div className="form-grid">
-        {allocationWarning ? (
-          <div className="surface-error">
-            Allocation exceeds 100%. Review workload before saving.
-          </div>
-        ) : null}
-        <label>
-          Platform user ID
-          <input
+        <label className={userError ? 'form-field-invalid' : undefined}>
+          <span>Platform user</span>
+          <select
             value={platformUserId}
             onChange={(event) => setPlatformUserId(event.target.value)}
-          />
+            disabled={platformUsersQuery.isLoading}
+            aria-invalid={Boolean(userError)}
+          >
+            <option value="">{platformUsersQuery.isLoading ? 'Loading users...' : 'Select user'}</option>
+            {platformUsers.map((user) => (
+              <option key={idOf(user)} value={userSelectValue(user)}>
+                {userLabel(user)}
+              </option>
+            ))}
+          </select>
+          {userError ? <strong role="alert">{userError}</strong> : null}
         </label>
-        <label>
-          Team role ID
-          <input value={teamRoleId} onChange={(event) => setTeamRoleId(event.target.value)} />
-        </label>
-        <label>
-          Allocation percent
-          <input
-            type="number"
-            value={allocation}
-            onChange={(event) => setAllocation(Number(event.target.value))}
-          />
+        <label className={teamRoleError ? 'form-field-invalid' : undefined}>
+          <span>Team role</span>
+          <select
+            value={teamRoleId}
+            onChange={(event) => setTeamRoleId(event.target.value)}
+            disabled={teamRolesQuery.isLoading}
+            aria-invalid={Boolean(teamRoleError)}
+          >
+            <option value="">{teamRolesQuery.isLoading ? 'Loading roles...' : 'Select team role'}</option>
+            {teamRoles.map((role) => (
+              <option key={idOf(role)} value={idOf(role)}>
+                {displayText(role, ['name', 'code'])}
+              </option>
+            ))}
+          </select>
+          {teamRoleError ? <strong role="alert">{teamRoleError}</strong> : null}
         </label>
         <label>
           Effective from
@@ -2817,14 +3192,6 @@ function AddMemberModal({
             value={effectiveFrom}
             onChange={(event) => setEffectiveFrom(event.target.value)}
           />
-        </label>
-        <label className="check-row">
-          <input
-            checked={isPrimary}
-            type="checkbox"
-            onChange={(event) => setIsPrimary(event.target.checked)}
-          />{' '}
-          Primary member
         </label>
       </div>
     </AppModal>
@@ -2844,16 +3211,12 @@ function AssignRecordModal({
   const [assignableType, setAssignableType] = useState('tenant');
   const [assignableId, setAssignableId] = useState('');
   const [assignmentRole, setAssignmentRole] = useState('support_owner');
-  const [remarks, setRemarks] = useState('');
   const mutation = useMutation({
     mutationFn: () =>
       platformAccessApi.teams.assignRecord(idOf(team), {
         assignable_type: assignableType,
         assignable_id: assignableId,
-        assignment_role: assignmentRole,
-        assigned_at: new Date().toISOString(),
-        status: 'active',
-        remarks
+        assignment_role: assignmentRole
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
@@ -2862,6 +3225,9 @@ function AssignRecordModal({
       onClose();
     }
   });
+  const assignableTypeError = apiFieldError(mutation.error, ['assignable_type']);
+  const assignableIdError = apiFieldError(mutation.error, ['assignable_id']);
+  const assignmentRoleError = apiFieldError(mutation.error, ['assignment_role']);
 
   return (
     <AppModal
@@ -2871,7 +3237,7 @@ function AssignRecordModal({
       guard="platform"
       permission="platform_team.assign"
       loading={mutation.isPending}
-      error={mutation.error ? errorMessage(mutation.error) : null}
+      error={formErrorMessage(mutation.error)}
       footer={
         <>
           <Button type="button" variant="secondary" onClick={onClose}>
@@ -2884,32 +3250,43 @@ function AssignRecordModal({
       }
     >
       <div className="form-grid">
-        <label>
-          Record type
+        <label className={assignableTypeError ? 'form-field-invalid' : undefined}>
+          <span>Record type</span>
           <select
             value={assignableType}
             onChange={(event) => setAssignableType(event.target.value)}
+            aria-invalid={Boolean(assignableTypeError)}
           >
             <option value="tenant">Tenant</option>
             <option value="platform_ticket">Ticket</option>
             <option value="system_incident">Incident</option>
             <option value="monitoring_alert">Alert</option>
           </select>
+          {assignableTypeError ? <strong role="alert">{assignableTypeError}</strong> : null}
         </label>
-        <label>
-          Record ID
-          <input value={assignableId} onChange={(event) => setAssignableId(event.target.value)} />
-        </label>
-        <label>
-          Assignment role
+        <label className={assignableIdError ? 'form-field-invalid' : undefined}>
+          <span>Record ID</span>
           <input
+            value={assignableId}
+            onChange={(event) => setAssignableId(event.target.value)}
+            aria-invalid={Boolean(assignableIdError)}
+          />
+          {assignableIdError ? <strong role="alert">{assignableIdError}</strong> : null}
+        </label>
+        <label className={assignmentRoleError ? 'form-field-invalid' : undefined}>
+          <span>Assignment role</span>
+          <select
             value={assignmentRole}
             onChange={(event) => setAssignmentRole(event.target.value)}
-          />
-        </label>
-        <label>
-          Remarks
-          <textarea value={remarks} onChange={(event) => setRemarks(event.target.value)} />
+            aria-invalid={Boolean(assignmentRoleError)}
+          >
+            <option value="support_owner">Support Owner</option>
+            <option value="billing_owner">Billing Owner</option>
+            <option value="onboarding_owner">Onboarding Owner</option>
+            <option value="technical_owner">Technical Owner</option>
+            <option value="reviewer">Reviewer</option>
+          </select>
+          {assignmentRoleError ? <strong role="alert">{assignmentRoleError}</strong> : null}
         </label>
       </div>
     </AppModal>
@@ -3020,14 +3397,14 @@ function TeamRoleEditorModal({
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
+  const [permissionsOpen, setPermissionsOpen] = useState(false);
+  const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
   const form = useForm<TeamRoleForm>({
     resolver: zodResolver(teamRoleSchema),
     defaultValues: {
       name: '',
-      code: '',
       description: '',
-      permissions_json: '{}',
-      sort_order: 0,
+      permissions: [],
       is_system: false,
       status: 'active',
       audit_reason: 'Team role update'
@@ -3037,10 +3414,8 @@ function TeamRoleEditorModal({
     mutationFn: (values: TeamRoleForm) => {
       const payload: Partial<TeamRolePayload> = {
         name: values.name,
-        ...(!role || values.code !== textOf(role, ['code'], '') ? { code: values.code } : {}),
         description: values.description,
-        permissions: values.permissions_json ? JSON.parse(values.permissions_json) : {},
-        sort_order: values.sort_order,
+        permissions: selectedPermissions,
         is_system: values.is_system,
         status: values.status,
         audit_reason: values.audit_reason || (role ? 'Team role update' : 'Team role created')
@@ -3061,26 +3436,17 @@ function TeamRoleEditorModal({
 
   useEffect(() => {
     if (!open) return;
+    const permissions = selectedTeamRolePermissions(role);
+    setSelectedPermissions(permissions);
     form.reset({
       name: textOf(role, ['name'], ''),
-      code: textOf(role, ['code'], ''),
       description: textOf(role, ['description'], ''),
-      permissions_json: JSON.stringify(role?.permissions ?? {}, null, 2),
-      sort_order: Number(role?.sort_order ?? 0),
+      permissions,
       is_system: Boolean(role?.is_system),
       status: textOf(role, ['status'], 'active'),
       audit_reason: role ? 'Team role update' : 'Team role created'
     });
   }, [form, open, role]);
-
-  function save(values: TeamRoleForm) {
-    try {
-      JSON.parse(values.permissions_json || '{}');
-      mutation.mutate(values);
-    } catch {
-      form.setError('permissions_json', { message: 'Enter valid JSON.' });
-    }
-  }
 
   return (
     <AppModal
@@ -3097,7 +3463,7 @@ function TeamRoleEditorModal({
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="button" onClick={form.handleSubmit(save)}>
+          <Button type="button" onClick={form.handleSubmit((values) => mutation.mutate(values))}>
             Save team role
           </Button>
         </>
@@ -3105,23 +3471,29 @@ function TeamRoleEditorModal({
     >
       <div className="form-grid form-grid--two">
         <InputField form={form} name="name" label="Name" />
-        <InputField form={form} name="code" label="Code" />
-        <InputField form={form} name="sort_order" label="Sort order" type="number" />
         <SelectField form={form} name="status" label="Status" options={['active', 'inactive']} />
         <CheckboxField form={form} name="is_system" label="System role" />
         {role ? <InputField form={form} name="audit_reason" label="Audit reason" /> : null}
         <div className="modal-form-span">
           <InputField form={form} name="description" label="Description" type="textarea" />
         </div>
-        <div className="modal-form-span">
-          <InputField
-            form={form}
-            name="permissions_json"
-            label="Permissions JSON"
-            type="textarea"
-          />
-        </div>
+        <TeamRolePermissionSelector
+          form={form}
+          selectedCount={selectedPermissions.length}
+          onOpen={() => setPermissionsOpen(true)}
+        />
       </div>
+      <TeamRolePermissionsDrawer
+        open={permissionsOpen}
+        selectedValues={selectedPermissions}
+        onSelectedValuesChange={(values) => {
+          setSelectedPermissions(values);
+          form.setValue('permissions', values, { shouldDirty: true });
+          form.clearErrors('permissions');
+        }}
+        onClose={() => setPermissionsOpen(false)}
+        permission={role ? 'platform_team.edit' : 'platform_team.create'}
+      />
     </AppModal>
   );
 }
@@ -3171,6 +3543,7 @@ function FormShell({
 }) {
   const navigate = useNavigate();
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const visibleError = formErrorMessage(error);
 
   return (
     <section className="enterprise-module-page platform-access-page">
@@ -3183,7 +3556,7 @@ function FormShell({
           </Button>
         }
       />
-      {error ? <div className="surface-error">{errorMessage(error)}</div> : null}
+      {visibleError ? <div className="surface-error">{visibleError}</div> : null}
       <form
         className="rbac-form-shell"
         onSubmit={(event) => {
@@ -3225,6 +3598,68 @@ function FormGrid({ children }: { children: ReactNode }) {
   return <div className="enterprise-form__grid">{children}</div>;
 }
 
+function RolePermissionSelector({
+  form,
+  selectedCount,
+  onOpen
+}: {
+  form: any;
+  selectedCount: number;
+  onOpen: () => void;
+}) {
+  const error = form.formState.errors.permission_ids?.message;
+  const errorId = 'permission_ids-error';
+
+  return (
+    <section
+      className={`role-permission-selector${error ? ' form-field-invalid' : ''}`}
+      aria-invalid={Boolean(error)}
+      aria-describedby={error ? errorId : undefined}
+    >
+      <div>
+        <span>Permissions</span>
+        <strong>{selectedCount} selected</strong>
+        <p>Use the selector to attach permissions. Empty is allowed for a draft or limited role.</p>
+      </div>
+      <Button type="button" variant="secondary" onClick={onOpen}>
+        Manage permissions
+      </Button>
+      {error ? <strong id={errorId} role="alert">{String(error)}</strong> : null}
+    </section>
+  );
+}
+
+function TeamRolePermissionSelector({
+  form,
+  selectedCount,
+  onOpen
+}: {
+  form: any;
+  selectedCount: number;
+  onOpen: () => void;
+}) {
+  const error = form.formState.errors.permissions?.message;
+  const errorId = 'team-role-permissions-error';
+
+  return (
+    <section
+      className={`role-permission-selector modal-form-span${error ? ' form-field-invalid' : ''}`}
+      aria-invalid={Boolean(error)}
+      aria-describedby={error ? errorId : undefined}
+    >
+      <div>
+        <span>Permissions</span>
+        <strong>{selectedCount} selected</strong>
+        <p>Use the selector to attach platform permissions to this team role.</p>
+      </div>
+      <Button type="button" variant="secondary" onClick={onOpen}>
+        Assign permissions
+      </Button>
+      {error ? <strong id={errorId} role="alert">{String(error)}</strong> : null}
+    </section>
+  );
+}
+
 function InputField({
   form,
   name,
@@ -3234,7 +3669,7 @@ function InputField({
 }: {
   form: any;
   name: string;
-  label: string;
+  label: ReactNode;
   placeholder?: string;
   type?: string;
 }) {
@@ -3267,7 +3702,7 @@ function SelectField({
 }: {
   form: any;
   name: string;
-  label: string;
+  label: ReactNode;
   options: string[];
   formatOption?: (option: string) => string;
 }) {
@@ -3292,8 +3727,20 @@ function titleCaseOption(option: string) {
   return option.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function RequiredLabel({ children }: { children: ReactNode }) {
+  return (
+    <>
+      {children} <span className="required-mark" aria-label="required">*</span>
+    </>
+  );
+}
+
 function userLabel(user: Record<string, unknown>) {
   return textOf(user, ['display_name'], [textOf(user, ['first_name'], ''), textOf(user, ['last_name'], '')].join(' ').trim() || textOf(user, ['email'], 'Unnamed user'));
+}
+
+function userSelectValue(user: Record<string, unknown>) {
+  return String(user.id ?? user.uuid ?? '');
 }
 
 function UserSelectField({
@@ -3322,7 +3769,7 @@ function UserSelectField({
       >
         <option value="">{loading ? 'Loading users...' : 'Select user'}</option>
         {users.map((user) => (
-          <option key={idOf(user)} value={idOf(user)}>
+          <option key={idOf(user)} value={userSelectValue(user)}>
             {userLabel(user)}
           </option>
         ))}
@@ -3337,7 +3784,7 @@ function generateTeamCode(name: string) {
   return code || 'TEAM';
 }
 
-function CheckboxField({ form, name, label }: { form: any; name: string; label: string }) {
+function CheckboxField({ form, name, label }: { form: any; name: string; label: ReactNode }) {
   const error = form.formState.errors[name]?.message;
   const errorId = `${name}-error`;
   return (
@@ -3360,19 +3807,21 @@ function RecordDetails({ record }: { record: Record<string, unknown> }) {
       {Object.entries(record).map(([key, value]) => (
         <div key={key}>
           <dt>{toTitleCase(key)}</dt>
-          <dd>{formatDetailValue(value)}</dd>
+          <dd>{formatDetailValue(key, value)}</dd>
         </div>
       ))}
     </dl>
   );
 }
 
-function formatDetailValue(value: unknown) {
+function formatDetailValue(key: string, value: unknown) {
   if (value === null || value === undefined || value === '') return '-';
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
   if (typeof value === 'number') return String(value);
   if (Array.isArray(value)) return value.length ? String(value.length) : '-';
   if (typeof value === 'object') return '-';
+  if (isDateField(key)) return formatDateTime(value);
+  if (key.endsWith('_count') || key === 'count') return String(value);
   return toTitleCase(value);
 }
 
@@ -3400,18 +3849,24 @@ function PermissionGroups({ groups }: { groups?: GroupedPermissions }) {
   );
 }
 
-function RecordList({ rows }: { rows: PlatformRecord[] }) {
-  if (rows.length === 0) return <div className="empty-state">No related records returned.</div>;
+function RecordList({ rows, emptyText = 'No related records returned.' }: { rows: PlatformRecord[]; emptyText?: string }) {
+  if (rows.length === 0) return <div className="empty-state">{emptyText}</div>;
   return (
     <div className="record-list">
       {rows.map((row) => (
         <article key={idOf(row)}>
           <strong>{displayText(row, ['display_name', 'name', 'email', 'assignable_type'])}</strong>
-          <p>{displayText(row, ['email', 'status', 'assignment_role'])}</p>
+          <p>{recordListMeta(row)}</p>
         </article>
       ))}
     </div>
   );
+}
+
+function recordListMeta(row: PlatformRecord) {
+  const email = textOf(row, ['email'], '');
+  const status = displayText(row, ['status', 'assignment_role'], '');
+  return [email, status].filter(Boolean).join(' / ') || '-';
 }
 
 function TeamMembersPanel({ team }: { team: PlatformRecord }) {
@@ -3470,8 +3925,8 @@ function TeamMembersPanel({ team }: { team: PlatformRecord }) {
               </span>
             </header>
             <p>
-              {textOf(member, ['role_name', 'platform_team_role_id', 'status'])} /{' '}
-              {textOf(member, ['allocation_percent'], '100')}%
+              {displayText(member, ['team_role_name', 'role_name', 'status'])} /{' '}
+              Joined {formatDate(member.joined_at ?? member.effective_from)}
             </p>
           </article>
         ))}
@@ -3528,7 +3983,7 @@ function TeamAssignmentsPanel({ team }: { team: PlatformRecord }) {
           <article key={idOf(assignment)}>
             <header>
               <strong>
-                {textOf(assignment, ['assignable_type', 'type'])}:{' '}
+                {displayText(assignment, ['assignable_type', 'type'])}:{' '}
                 {textOf(assignment, ['assignable_id', 'record_id'])}
               </strong>
               <PermissionButton
@@ -3543,7 +3998,7 @@ function TeamAssignmentsPanel({ team }: { team: PlatformRecord }) {
               </PermissionButton>
             </header>
             <p>
-              {textOf(assignment, ['assignment_role'])} / {textOf(assignment, ['status'])}
+              {displayText(assignment, ['assignment_role'])} / {displayText(assignment, ['status'])}
             </p>
           </article>
         ))}
@@ -3574,19 +4029,21 @@ function TeamMemberEditorModal({
 }) {
   const queryClient = useQueryClient();
   const [teamRoleId, setTeamRoleId] = useState('');
-  const [allocation, setAllocation] = useState(100);
-  const [isPrimary, setIsPrimary] = useState(false);
   const [effectiveFrom, setEffectiveFrom] = useState('');
   const [effectiveTo, setEffectiveTo] = useState('');
   const [status, setStatus] = useState('active');
+  const teamRolesQuery = useQuery({
+    queryKey: platformQueryKeys.list(resourceMeta.teamRoles.resourceKey, { per_page: 100 }),
+    queryFn: () => platformAccessApi.teamRoles.list({ per_page: 100, filter: { status: 'active' } }),
+    enabled: open
+  });
+  const teamRoles = teamRolesQuery.data?.data ?? [];
 
   useEffect(() => {
     if (!open || !member) return;
-    setTeamRoleId(textOf(member, ['platform_team_role_id'], ''));
-    setAllocation(Number(member.allocation_percent ?? 100));
-    setIsPrimary(Boolean(member.is_primary));
-    setEffectiveFrom(textOf(member, ['effective_from'], ''));
-    setEffectiveTo(textOf(member, ['effective_to'], ''));
+    setTeamRoleId(textOf(member, ['team_role_uuid'], ''));
+    setEffectiveFrom(textOf(member, ['effective_from', 'joined_at'], ''));
+    setEffectiveTo(textOf(member, ['effective_to', 'left_at'], ''));
     setStatus(textOf(member, ['status'], 'active'));
   }, [member, open]);
 
@@ -3594,9 +4051,7 @@ function TeamMemberEditorModal({
     mutationFn: () => {
       if (!member) return Promise.resolve({ data: null });
       return platformAccessApi.teams.updateMember(idOf(team), idOf(member), {
-        platform_team_role_id: teamRoleId || undefined,
-        allocation_percent: allocation,
-        is_primary: isPrimary,
+        team_role_uuid: teamRoleId || null,
         effective_from: effectiveFrom || undefined,
         effective_to: effectiveTo || null,
         status
@@ -3609,6 +4064,7 @@ function TeamMemberEditorModal({
       onClose();
     }
   });
+  const teamRoleError = apiFieldError(mutation.error, ['team_role_uuid', 'platform_team_role_id']);
 
   return (
     <AppModal
@@ -3618,7 +4074,7 @@ function TeamMemberEditorModal({
       guard="platform"
       permission="platform_team.assign"
       loading={mutation.isPending}
-      error={mutation.error ? errorMessage(mutation.error) : null}
+      error={formErrorMessage(mutation.error)}
       footer={
         <>
           <Button type="button" variant="secondary" onClick={onClose}>
@@ -3631,17 +4087,21 @@ function TeamMemberEditorModal({
       }
     >
       <div className="form-grid">
-        <label>
-          Team role ID
-          <input value={teamRoleId} onChange={(event) => setTeamRoleId(event.target.value)} />
-        </label>
-        <label>
-          Allocation percent
-          <input
-            type="number"
-            value={allocation}
-            onChange={(event) => setAllocation(Number(event.target.value))}
-          />
+        <label className={teamRoleError ? 'form-field-invalid' : undefined}>
+          <span>Team role</span>
+          <select
+            value={teamRoleId}
+            onChange={(event) => setTeamRoleId(event.target.value)}
+            disabled={teamRolesQuery.isLoading}
+          >
+            <option value="">{teamRolesQuery.isLoading ? 'Loading roles...' : 'No team role'}</option>
+            {teamRoles.map((role) => (
+              <option key={idOf(role)} value={idOf(role)}>
+                {displayText(role, ['name', 'code'])}
+              </option>
+            ))}
+          </select>
+          {teamRoleError ? <strong role="alert">{teamRoleError}</strong> : null}
         </label>
         <label>
           Effective from
@@ -3666,14 +4126,6 @@ function TeamMemberEditorModal({
             <option value="inactive">Inactive</option>
             <option value="left">Left</option>
           </select>
-        </label>
-        <label className="check-row">
-          <input
-            checked={isPrimary}
-            type="checkbox"
-            onChange={(event) => setIsPrimary(event.target.checked)}
-          />{' '}
-          Primary member
         </label>
       </div>
     </AppModal>
@@ -3823,6 +4275,17 @@ function formatDateTime(value: unknown) {
   });
 }
 
+function formatDate(value: unknown) {
+  if (!value) return '-';
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function isDateField(key: string) {
+  return key.endsWith('_at') || key.endsWith('_date') || key === 'date';
+}
+
 function RoleSummary({
   record,
   values,
@@ -3833,9 +4296,7 @@ function RoleSummary({
   selectedCount: number;
 }) {
   const displayName = String(values?.display_name || values?.name || textOf(record, ['display_name', 'name'], 'New role'));
-  const guardName = String(values?.guard_name || textOf(record, ['guard_name'], 'platform'));
   const status = String(values?.status || textOf(record, ['status'], 'active'));
-  const isSystem = Boolean(values?.is_system ?? record?.is_system);
 
   return (
     <>
@@ -3844,12 +4305,10 @@ function RoleSummary({
         record={{
           role: displayName,
           status,
-          guard_name: titleCaseOption(guardName),
-          selected_permissions: selectedCount,
-          system_role: isSystem
+          selected_permissions: selectedCount
         }}
       />
-      <div className="surface-state">Select at least one permission for a production role.</div>
+      <div className="surface-state">Permissions can stay empty for a draft or limited platform role.</div>
     </>
   );
 }
@@ -3880,8 +4339,8 @@ function TeamSummary({
 }) {
   const name = String(values?.name || textOf(record, ['name'], 'New team'));
   const code = String(values?.code || textOf(record, ['code'], generateTeamCode(name)));
-  const lead = users?.find((user) => idOf(user) === values?.lead_platform_user_id);
-  const assistantLead = users?.find((user) => idOf(user) === values?.assistant_lead_platform_user_id);
+  const lead = users?.find((user) => userSelectValue(user) === values?.lead_platform_user_id);
+  const assistantLead = users?.find((user) => userSelectValue(user) === values?.assistant_lead_platform_user_id);
 
   return (
     <>
@@ -3893,7 +4352,7 @@ function TeamSummary({
           lead: lead ? userLabel(lead) : textOf(record, ['lead_name', 'lead_platform_user_id'], '-'),
           assistant_lead: assistantLead ? userLabel(assistantLead) : textOf(record, ['assistant_lead_name', 'assistant_lead_platform_user_id'], '-'),
           members: textOf(record, ['members_count'], '0'),
-          tenants: textOf(record, ['assigned_tenants_count'], '0'),
+          assignments: textOf(record, ['assignments_count'], '0'),
           visibility: values?.visibility || textOf(record, ['visibility'], 'internal'),
           status: values?.status || textOf(record, ['status'], 'active')
         }}

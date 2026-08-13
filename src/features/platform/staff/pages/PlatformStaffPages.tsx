@@ -80,8 +80,8 @@ const staffSchema = z.object({
   locale: z.string().min(1, 'Select a locale.'),
   two_factor_enabled: z.boolean(),
   status: z.string().min(1, 'Select a status.'),
-  role_ids: z.string().optional(),
-  team_ids: z.string().optional()
+  role_ids: z.array(z.string()).optional(),
+  team_ids: z.array(z.string()).optional()
 });
 
 type StaffForm = z.infer<typeof staffSchema>;
@@ -96,6 +96,14 @@ function textOf(row: PlatformStaffRecord | null | undefined, keys: string[], fal
     if (value !== undefined && value !== null && value !== '') return String(value);
   }
   return fallback;
+}
+
+function toTitleCase(value: unknown) {
+  return String(value ?? '-')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\w\S*/g, (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
 }
 
 function errorMessage(error: unknown) {
@@ -118,10 +126,11 @@ function applyStaffValidationErrors(form: ReturnType<typeof useForm<StaffForm>>,
     'team_uuids.0': 'team_ids'
   }).forEach(([apiField, formField]) => {
     const messages = error.validationErrors[apiField];
-    if (messages?.length) {
+    const message = Array.isArray(messages) ? messages.join(' ') : messages;
+    if (message) {
       form.setError(formField as keyof StaffForm, {
         type: 'server',
-        message: messages.join(' ')
+        message
       });
     }
   });
@@ -136,15 +145,7 @@ function relationIds(value: unknown) {
             : textOf(item as PlatformStaffRecord, ['uuid', 'id'], '')
         )
         .filter(Boolean)
-        .join(',')
-    : '';
-}
-
-function splitIds(value?: string) {
-  return value
-    ?.split(',')
-    .map((item) => item.trim())
-    .filter(Boolean);
+    : [];
 }
 
 function formatDate(value: unknown) {
@@ -158,6 +159,12 @@ function formatDate(value: unknown) {
     hour: '2-digit',
     minute: '2-digit'
   });
+}
+
+function directPermissionCount(staff: PlatformStaffRecord | null | undefined) {
+  const count = Number(staff?.direct_permissions_count ?? staff?.permissions_count);
+  if (Number.isFinite(count)) return count;
+  return permissionRows(staff?.permissions).length;
 }
 
 function cleanPayload(values: StaffForm, includePassword: boolean): PlatformStaffPayload {
@@ -176,8 +183,8 @@ function cleanPayload(values: StaffForm, includePassword: boolean): PlatformStaf
     locale: values.locale,
     two_factor_enabled: values.two_factor_enabled,
     status: values.status,
-    role_ids: splitIds(values.role_ids),
-    team_ids: splitIds(values.team_ids)
+    role_ids: values.role_ids ?? [],
+    team_ids: values.team_ids ?? []
   };
 }
 
@@ -225,7 +232,11 @@ export function PlatformStaffListPage() {
       return Promise.resolve({ data: null });
     },
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource('platform-staff') })
+      queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource('platform-staff') }).then(() => {
+        setModal(null);
+        setDrawer(null);
+        setSelectedStaff(null);
+      })
   });
 
   const columns = useMemo<DataTableColumn<PlatformStaffRecord>[]>(
@@ -259,6 +270,12 @@ export function PlatformStaffListPage() {
         id: 'roles',
         header: 'Roles',
         cell: (row) => <ChipSummary value={row.roles} fallback="No roles" />
+      },
+      {
+        id: 'direct_permissions_count',
+        header: 'Direct Permissions',
+        accessor: (row) => directPermissionCount(row),
+        cell: (row) => <span className="muted-cell">{directPermissionCount(row)}</span>
       },
       {
         id: 'teams',
@@ -499,11 +516,9 @@ function PlatformStaffFormPage({ staff }: { staff?: PlatformStaffRecord }) {
           </Button>
         }
       />
-      {mutation.error ? (
+      {mutation.error && !hasApiValidationError(mutation.error) ? (
         <div className="surface-error">
-          {hasApiValidationError(mutation.error)
-            ? 'Please fix the highlighted fields and save again.'
-            : errorMessage(mutation.error)}
+          {errorMessage(mutation.error)}
         </div>
       ) : null}
       <form
@@ -641,7 +656,6 @@ function StaffView({ staff }: { staff: PlatformStaffRecord }) {
     { id: 'profile', label: 'Profile' },
     { id: 'access', label: 'Access' },
     { id: 'security', label: 'Security' },
-    { id: 'assignments', label: 'Assignments' },
     { id: 'activity', label: 'Activity' }
   ];
 
@@ -729,6 +743,11 @@ function StaffView({ staff }: { staff: PlatformStaffRecord }) {
         />
         <SummaryTile
           icon={<ShieldCheck />}
+          label="Direct Permissions"
+          value={String(directPermissionCount(staff))}
+        />
+        <SummaryTile
+          icon={<ShieldCheck />}
           label="2FA"
           value={staff.two_factor_enabled ? 'Enabled' : 'Off'}
         />
@@ -739,7 +758,16 @@ function StaffView({ staff }: { staff: PlatformStaffRecord }) {
         />
       </div>
       <article className="enterprise-view-panel">
-        {activeTab === 'profile' ? <SafeRecordDetails record={staff} /> : null}
+        {activeTab === 'profile' ? (
+          <div className="staff-profile-preview">
+            <StaffAvatar staff={staff} />
+            <div>
+              <strong>{textOf(staff, ['display_name', 'email'])}</strong>
+              <span>{textOf(staff, ['email'])}</span>
+            </div>
+            <SafeRecordDetails record={staff} />
+          </div>
+        ) : null}
         {activeTab === 'access' ? <AccessTab staff={staff} /> : null}
         {activeTab === 'security' ? (
           <SafeRecordDetails
@@ -751,7 +779,6 @@ function StaffView({ staff }: { staff: PlatformStaffRecord }) {
             }}
           />
         ) : null}
-        {activeTab === 'assignments' ? <RecordList rows={staff.assignments ?? []} /> : null}
         {activeTab === 'activity' ? <RecordList rows={staff.activity ?? []} /> : null}
       </article>
       <StaffControls
@@ -865,14 +892,13 @@ function StaffControls({
           visible: !hiddenColumnIds.includes(column.id),
           locked: column.enableHiding === false
         }))}
-        onToggle={(id) =>
+        onApply={(visibleIds) =>
           onHiddenColumnIdsChange?.(
-            hiddenColumnIds.includes(id)
-              ? hiddenColumnIds.filter((columnId) => columnId !== id)
-              : [...hiddenColumnIds, id]
+            columns
+              .filter((column) => column.enableHiding !== false && !visibleIds.includes(column.id))
+              .map((column) => column.id)
           )
         }
-        onReset={() => onHiddenColumnIdsChange?.([])}
         onSave={onClose}
       />
       <SavedViewsModal
@@ -909,6 +935,8 @@ function StaffControls({
         staff={staff}
         onClose={onClose}
         onAction={onAction}
+        loading={actionLoading}
+        error={actionError}
       />
       <DeleteStaffDialog
         open={modal === 'delete'}
@@ -1157,22 +1185,26 @@ function InviteStaffModal({ open, onClose }: { open: boolean; onClose: () => voi
     last_name: '',
     designation: '',
     department: '',
-    role_ids: '',
-    team_ids: '',
+    role_ids: [] as string[],
+    team_ids: [] as string[],
     send_invite: true
+  });
+  const rolesQuery = useQuery({
+    queryKey: platformQueryKeys.list('platform-role-options-invite', { per_page: 100 }),
+    queryFn: () => platformAccessApi.roles.list({ per_page: 100 }),
+    enabled: open
+  });
+  const teamsQuery = useQuery({
+    queryKey: platformQueryKeys.list('platform-team-options-invite', { per_page: 100 }),
+    queryFn: () => platformAccessApi.teams.list({ per_page: 100 }),
+    enabled: open
   });
   const mutation = useMutation({
     mutationFn: () =>
       platformStaffApi.invite({
         ...payload,
-        role_ids: payload.role_ids
-          .split(',')
-          .map((item) => item.trim())
-          .filter(Boolean),
+        role_ids: payload.role_ids,
         team_ids: payload.team_ids
-          .split(',')
-          .map((item) => item.trim())
-          .filter(Boolean)
       }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
@@ -1217,14 +1249,18 @@ function InviteStaffModal({ open, onClose }: { open: boolean; onClose: () => voi
         value={payload.department}
         onChange={(department) => setPayload({ ...payload, department })}
       />
-      <SimpleInput
-        label="Role IDs"
+      <SimpleMultiSelect
+        label="Roles"
         value={payload.role_ids}
+        options={rolesQuery.data?.data ?? []}
+        loading={rolesQuery.isLoading}
         onChange={(role_ids) => setPayload({ ...payload, role_ids })}
       />
-      <SimpleInput
-        label="Team IDs"
+      <SimpleMultiSelect
+        label="Teams"
         value={payload.team_ids}
+        options={teamsQuery.data?.data ?? []}
+        loading={teamsQuery.isLoading}
         onChange={(team_ids) => setPayload({ ...payload, team_ids })}
       />
       <label className="check-row">
@@ -1249,15 +1285,17 @@ function AssignRolesModal({
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
-  const [roleIds, setRoleIds] = useState('');
+  const [roleIds, setRoleIds] = useState<string[]>([]);
   const [reason, setReason] = useState('Access review update');
+  const rolesQuery = useQuery({
+    queryKey: platformQueryKeys.list('platform-role-options-assign', { per_page: 100 }),
+    queryFn: () => platformAccessApi.roles.list({ per_page: 100 }),
+    enabled: open
+  });
   const mutation = useMutation({
     mutationFn: () =>
       platformStaffApi.replaceRoles(idOf(staff), {
-        role_ids: roleIds
-          .split(',')
-          .map((item) => item.trim())
-          .filter(Boolean),
+        role_ids: roleIds,
         audit_reason: reason
       }),
     onSuccess: async () => {
@@ -1267,6 +1305,10 @@ function AssignRolesModal({
       onClose();
     }
   });
+  useEffect(() => {
+    if (open) setRoleIds(relationIds(staff?.roles));
+  }, [open, staff]);
+
   return (
     <StaffModalShell
       open={open}
@@ -1278,11 +1320,12 @@ function AssignRolesModal({
       onSubmit={() => mutation.mutate()}
       submitLabel="Assign roles"
     >
-      <SimpleInput
-        label="Role IDs"
+      <SimpleMultiSelect
+        label="Roles"
         value={roleIds}
+        options={rolesQuery.data?.data ?? []}
+        loading={rolesQuery.isLoading}
         onChange={setRoleIds}
-        placeholder="role_uuid_1, role_uuid_2"
       />
       <SimpleTextarea label="Audit reason" value={reason} onChange={setReason} />
     </StaffModalShell>
@@ -1299,15 +1342,22 @@ function DirectPermissionsDrawer({
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
-  const [permissionIds, setPermissionIds] = useState('');
+  const [permissionIds, setPermissionIds] = useState<string[]>([]);
   const [reason, setReason] = useState('Direct permission review');
+  const groupedQuery = useQuery({
+    queryKey: platformQueryKeys.resource('platform-permissions-grouped-staff'),
+    queryFn: platformAccessApi.permissions.grouped,
+    enabled: open
+  });
+  const currentPermissionsQuery = useQuery({
+    queryKey: platformQueryKeys.detail('platform-staff-direct-permissions', idOf(staff)),
+    queryFn: () => platformStaffApi.permissions(idOf(staff)),
+    enabled: open && Boolean(idOf(staff))
+  });
   const mutation = useMutation({
     mutationFn: () =>
       platformStaffApi.replacePermissions(idOf(staff), {
-        permission_ids: permissionIds
-          .split(',')
-          .map((item) => item.trim())
-          .filter(Boolean),
+        permission_ids: permissionIds,
         audit_reason: reason
       }),
     onSuccess: async () => {
@@ -1317,6 +1367,20 @@ function DirectPermissionsDrawer({
       onClose();
     }
   });
+  useEffect(() => {
+    if (!open) return;
+    const currentPermissions = currentPermissionsQuery.data?.data.permissions;
+    setPermissionIds(
+      currentPermissions ? permissionRows(currentPermissions).map((permission) => idOf(permission)).filter(Boolean) : []
+    );
+  }, [open, currentPermissionsQuery.data]);
+
+  function togglePermission(id: string) {
+    setPermissionIds((current) =>
+      current.includes(id) ? current.filter((item) => item !== id) : [...current, id]
+    );
+  }
+
   return (
     <AppDrawer
       open={open}
@@ -1324,7 +1388,7 @@ function DirectPermissionsDrawer({
       title="Direct permissions"
       guard="platform"
       permission="platform_user.edit"
-      loading={mutation.isPending}
+      loading={mutation.isPending || groupedQuery.isLoading || currentPermissionsQuery.isLoading}
       error={mutation.error ? errorMessage(mutation.error) : null}
       footer={
         <>
@@ -1338,11 +1402,10 @@ function DirectPermissionsDrawer({
       }
     >
       <div className="form-grid">
-        <SimpleInput
-          label="Permission IDs"
-          value={permissionIds}
-          onChange={setPermissionIds}
-          placeholder="permission_uuid_1, permission_uuid_2"
+        <PermissionChecklist
+          groups={groupedQuery.data?.data.permissions ?? {}}
+          selectedIds={permissionIds}
+          onToggle={togglePermission}
         />
         <SimpleTextarea label="Audit reason" value={reason} onChange={setReason} />
       </div>
@@ -1359,45 +1422,50 @@ function AssignTeamsModal({
   staff: PlatformStaffRecord | null;
   onClose: () => void;
 }) {
-  const [teamIds, setTeamIds] = useState('');
-  const [role, setRole] = useState('');
-  const [allocation, setAllocation] = useState('100');
-  const [effectiveFrom, setEffectiveFrom] = useState('');
+  const queryClient = useQueryClient();
+  const [teamIds, setTeamIds] = useState<string[]>([]);
+  const [reason, setReason] = useState('Team access review');
+  const teamsQuery = useQuery({
+    queryKey: platformQueryKeys.list('platform-team-options-assign', { per_page: 100 }),
+    queryFn: () => platformAccessApi.teams.list({ per_page: 100 }),
+    enabled: open
+  });
+  const mutation = useMutation({
+    mutationFn: () =>
+      platformStaffApi.replaceTeams(idOf(staff), {
+        team_ids: teamIds,
+        audit_reason: reason
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: platformQueryKeys.resource('platform-staff')
+      });
+      onClose();
+    }
+  });
+  useEffect(() => {
+    if (open) setTeamIds(relationIds(staff?.teams));
+  }, [open, staff]);
+
   return (
     <StaffModalShell
       open={open}
       onClose={onClose}
       title="Assign teams"
       permission="platform_user.edit"
-      onSubmit={onClose}
+      loading={mutation.isPending}
+      error={mutation.error}
+      onSubmit={() => mutation.mutate()}
       submitLabel="Assign teams"
     >
-      <SimpleInput
-        label="Team IDs"
+      <SimpleMultiSelect
+        label="Teams"
         value={teamIds}
+        options={teamsQuery.data?.data ?? []}
+        loading={teamsQuery.isLoading}
         onChange={setTeamIds}
-        placeholder="team_uuid_1, team_uuid_2"
       />
-      <SimpleInput label="Team role" value={role} onChange={setRole} />
-      <SimpleInput
-        label="Allocation percent"
-        value={allocation}
-        onChange={setAllocation}
-        type="number"
-      />
-      <SimpleInput
-        label="Effective from"
-        value={effectiveFrom}
-        onChange={setEffectiveFrom}
-        type="date"
-      />
-      <label className="check-row">
-        <input type="checkbox" defaultChecked /> Primary team
-      </label>
-      <div className="surface-state">
-        Team assignment endpoint is documented under Platform Teams; this popup preserves the staff
-        workflow surface.
-      </div>
+      <SimpleTextarea label="Audit reason" value={reason} onChange={setReason} />
     </StaffModalShell>
   );
 }
@@ -1406,12 +1474,16 @@ function SuspendReactivateModal({
   open,
   staff,
   onClose,
-  onAction
+  onAction,
+  loading,
+  error
 }: {
   open: boolean;
   staff: PlatformStaffRecord | null;
   onClose: () => void;
   onAction?: (action: string, payload: Record<string, unknown>) => void;
+  loading?: boolean;
+  error?: unknown;
 }) {
   const [reason, setReason] = useState('Policy review');
   const [effectiveUntil, setEffectiveUntil] = useState('');
@@ -1423,6 +1495,8 @@ function SuspendReactivateModal({
       onClose={onClose}
       title="Suspend staff"
       permission="platform_user.suspend"
+      loading={loading}
+      error={error}
       onSubmit={() => {
         onAction?.('suspend', {
           reason,
@@ -1430,7 +1504,6 @@ function SuspendReactivateModal({
           revoke_sessions: revokeSessions,
           notify_user: notifyUser
         });
-        onClose();
       }}
       submitLabel="Suspend"
     >
@@ -1470,17 +1543,15 @@ function ResetPasswordModal({
   staff: PlatformStaffRecord | null;
   onClose: () => void;
 }) {
-  const [mode, setMode] = useState('send_link');
-  const [temporaryPassword, setTemporaryPassword] = useState('');
-  const [forceChange, setForceChange] = useState(true);
+  const queryClient = useQueryClient();
+  const [reason, setReason] = useState('Password reset requested from staff list');
   const mutation = useMutation({
     mutationFn: () =>
       platformStaffApi.resetPassword(idOf(staff), {
-        mode,
-        temporary_password: temporaryPassword || undefined,
-        force_change: forceChange
+        audit_reason: reason
       }),
-    onSuccess: onClose
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource('platform-staff') }).then(onClose)
   });
   return (
     <StaffModalShell
@@ -1493,29 +1564,10 @@ function ResetPasswordModal({
       onSubmit={() => mutation.mutate()}
       submitLabel="Reset password"
     >
-      <label>
-        Mode
-        <select value={mode} onChange={(event) => setMode(event.target.value)}>
-          <option value="send_link">Send reset link</option>
-          <option value="temporary_password">Set temporary password</option>
-        </select>
-      </label>
-      {mode === 'temporary_password' ? (
-        <SimpleInput
-          label="Temporary password"
-          value={temporaryPassword}
-          onChange={setTemporaryPassword}
-          type="password"
-        />
-      ) : null}
-      <label className="check-row">
-        <input
-          checked={forceChange}
-          type="checkbox"
-          onChange={(event) => setForceChange(event.target.checked)}
-        />{' '}
-        Force change on login
-      </label>
+      <div className="surface-state">
+        A password reset email will be sent to {textOf(staff, ['email'], 'this staff user')}.
+      </div>
+      <SimpleTextarea label="Audit reason" value={reason} onChange={setReason} />
     </StaffModalShell>
   );
 }
@@ -1571,10 +1623,12 @@ function ForceLogoutDialog({
   staff: PlatformStaffRecord | null;
   onClose: () => void;
 }) {
+  const queryClient = useQueryClient();
   const [reason, setReason] = useState('Security session reset');
   const mutation = useMutation({
     mutationFn: () => platformStaffApi.forceLogout(idOf(staff), { reason }),
-    onSuccess: onClose
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource('platform-staff') }).then(onClose)
   });
   return (
     <AppModal
@@ -1616,6 +1670,7 @@ function RequireTwoFactorModal({
   staff: PlatformStaffRecord | null;
   onClose: () => void;
 }) {
+  const queryClient = useQueryClient();
   const [enforcementDate, setEnforcementDate] = useState('');
   const [notifyUser, setNotifyUser] = useState(true);
   const mutation = useMutation({
@@ -1624,7 +1679,8 @@ function RequireTwoFactorModal({
         enforcement_date: enforcementDate || undefined,
         notify_user: notifyUser
       }),
-    onSuccess: onClose
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource('platform-staff') }).then(onClose)
   });
   return (
     <StaffModalShell
@@ -1664,23 +1720,62 @@ function ProfilePhotoModal({
   staff: PlatformStaffRecord | null;
   onClose: () => void;
 }) {
+  const queryClient = useQueryClient();
+  const [profilePhotoFile, setProfilePhotoFile] = useState<File | null>(null);
+  const [fieldError, setFieldError] = useState<string | null>(null);
+  const mutation = useMutation({
+    mutationFn: async () => {
+      if (!profilePhotoFile) throw new Error('Choose an image before saving.');
+
+      const body = new FormData();
+      body.append('file', profilePhotoFile);
+      body.append('visibility', 'private');
+      body.append('purpose', 'platform-staff-profile-photo');
+
+      const upload = await platformStaffApi.files.upload(body);
+      const profilePhotoFileId = String(upload.data.file.uuid ?? upload.data.file.id ?? '');
+      return platformStaffApi.update(idOf(staff), {
+        profile_photo_file_id: profilePhotoFileId
+      });
+    },
+    onMutate: () => setFieldError(null),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource('platform-staff') }).then(onClose),
+    onError: (error) => {
+      if (error instanceof Error && error.message === 'Choose an image before saving.') {
+        setFieldError(error.message);
+      }
+    }
+  });
+
+  useEffect(() => {
+    if (!open) return;
+    setProfilePhotoFile(null);
+    setFieldError(null);
+    mutation.reset();
+  }, [open, staff]);
+
   return (
     <StaffModalShell
       open={open}
       onClose={onClose}
       title="Profile photo"
       permission="platform_user.edit"
-      onSubmit={onClose}
+      loading={mutation.isPending}
+      error={fieldError ? null : mutation.error}
+      onSubmit={() => mutation.mutate()}
       submitLabel="Save photo"
     >
       <StaffAvatar staff={staff} />
-      <label>
-        Upload image
-        <input type="file" accept="image/*" />
-      </label>
-      <div className="surface-state">
-        Crop controls can bind to the project file service once upload APIs are available.
-      </div>
+      <ProfilePhotoUploadField
+        currentFileId={textOf(staff, ['profile_photo_file_id'], '')}
+        selectedFile={profilePhotoFile}
+        error={fieldError}
+        onFileSelected={(file) => {
+          setFieldError(null);
+          setProfilePhotoFile(file);
+        }}
+      />
     </StaffModalShell>
   );
 }
@@ -1765,7 +1860,7 @@ function StaffAvatar({
       />
     );
   return (
-    <span className={compact ? 'role-avatar staff-avatar--compact' : 'role-avatar'}>
+    <span className={compact ? 'role-avatar staff-avatar--compact' : 'role-avatar staff-avatar'}>
       {initials || 'S'}
     </span>
   );
@@ -1901,10 +1996,10 @@ function RelationMultiSelectField({
   error?: unknown;
   emptyLabel: string;
 }) {
-  const selected = splitIds(form.watch(name)) ?? [];
+  const selected = (form.watch(name) as string[] | undefined) ?? [];
   const fieldError = form.formState.errors[name]?.message;
   return (
-    <label>
+    <label className={fieldError ? 'form-field-invalid' : undefined}>
       <span>{label}</span>
       <select
         multiple
@@ -1913,7 +2008,7 @@ function RelationMultiSelectField({
         disabled={loading || Boolean(error)}
         onChange={(event) => {
           const values = Array.from(event.currentTarget.selectedOptions).map((option) => option.value);
-          form.setValue(name, values.join(','), { shouldDirty: true, shouldValidate: true });
+          form.setValue(name, values, { shouldDirty: true, shouldValidate: true });
         }}
       >
         {loading ? <option value="">Loading {label.toLowerCase()}...</option> : null}
@@ -2019,6 +2114,91 @@ function SimpleInput({
   );
 }
 
+function SimpleMultiSelect({
+  label,
+  value,
+  options,
+  loading,
+  onChange
+}: {
+  label: string;
+  value: string[];
+  options: PlatformRecord[];
+  loading?: boolean;
+  onChange: (value: string[]) => void;
+}) {
+  return (
+    <label>
+      {label}
+      <select
+        multiple
+        size={Math.min(Math.max(options.length, 3), 6)}
+        value={value}
+        disabled={loading}
+        onChange={(event) =>
+          onChange(Array.from(event.currentTarget.selectedOptions).map((option) => option.value))
+        }
+      >
+        {loading ? <option value="">Loading {label.toLowerCase()}...</option> : null}
+        {!loading && options.length === 0 ? <option value="">No {label.toLowerCase()} available</option> : null}
+        {!loading
+          ? options.map((option) => {
+              const value = idOf(option as PlatformStaffRecord);
+              return value ? (
+                <option key={value} value={value}>
+                  {optionLabel(option)}
+                </option>
+              ) : null;
+            })
+          : null}
+      </select>
+      <small>Select one or more {label.toLowerCase()} by name.</small>
+    </label>
+  );
+}
+
+function PermissionChecklist({
+  groups,
+  selectedIds,
+  onToggle
+}: {
+  groups: Record<string, PlatformRecord[]>;
+  selectedIds: string[];
+  onToggle: (id: string) => void;
+}) {
+  if (Object.keys(groups).length === 0) return <div className="empty-state">No permissions available.</div>;
+
+  return (
+    <div className="permission-groups permission-groups--assign modal-form-span">
+      {Object.entries(groups).map(([module, permissions]) => (
+        <section key={module}>
+          <header>
+            <strong>{toTitleCase(module)}</strong>
+            <span>{permissions.filter((permission) => selectedIds.includes(idOf(permission as PlatformStaffRecord))).length} selected</span>
+          </header>
+          <div>
+            {permissions.map((permission) => {
+              const id = idOf(permission as PlatformStaffRecord);
+              const checked = selectedIds.includes(id);
+              return (
+                <label key={id} className={checked ? 'is-selected' : undefined}>
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => onToggle(id)}
+                  />
+                  <span>{optionLabel(permission)}</span>
+                  <small>{String(permission.name ?? '')}</small>
+                </label>
+              );
+            })}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
 function SimpleTextarea({
   label,
   value,
@@ -2047,7 +2227,20 @@ function AdminBreadcrumbs({ items }: { items: string[] }) {
 }
 
 function SafeRecordDetails({ record }: { record: PlatformStaffRecord | Record<string, unknown> }) {
-  const hidden = new Set(['password', 'token', 'access_token', 'refresh_token', 'remember_token']);
+  const hidden = new Set([
+    'id',
+    'uuid',
+    'password',
+    'token',
+    'access_token',
+    'refresh_token',
+    'remember_token',
+    'roles',
+    'teams',
+    'permissions',
+    'assignments',
+    'activity'
+  ]);
   return (
     <dl className="enterprise-summary-list">
       {Object.entries(record)
@@ -2059,15 +2252,15 @@ function SafeRecordDetails({ record }: { record: PlatformStaffRecord | Record<st
         )
         .map(([key, value]) => (
           <div key={key}>
-            <dt>{key}</dt>
-            <dd>{humanValue(value)}</dd>
+            <dt>{toTitleCase(key)}</dt>
+            <dd>{humanValue(key, value)}</dd>
           </div>
         ))}
     </dl>
   );
 }
 
-function humanValue(value: unknown): string {
+function humanValue(key: string, value: unknown): string {
   if (value === null || value === undefined || value === '') return '-';
   if (Array.isArray(value)) return `${value.length} item${value.length === 1 ? '' : 's'}`;
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
@@ -2075,27 +2268,62 @@ function humanValue(value: unknown): string {
     const payload = value as PlatformStaffRecord;
     return textOf(payload, ['display_name', 'name', 'title', 'email', 'uuid'], 'Details available');
   }
+  if (key.endsWith('_at') || key.endsWith('_date')) return formatDate(value);
+  if (['status', 'department', 'designation', 'locale', 'timezone'].includes(key)) return toTitleCase(value);
   return String(value);
 }
 
 function AccessTab({ staff }: { staff: PlatformStaffRecord }) {
   return (
     <div className="settings-grid">
-      <RecordList rows={(staff.roles as PlatformStaffRecord[]) ?? []} />
-      <RecordList rows={(staff.teams as PlatformStaffRecord[]) ?? []} />
+      <section className="settings-panel">
+        <h2>Roles</h2>
+        <RecordList rows={recordRows(staff.roles)} emptyLabel="No roles assigned." />
+      </section>
+      <section className="settings-panel">
+        <h2>Permissions ({directPermissionCount(staff)})</h2>
+        <RecordList rows={permissionRows(staff.permissions)} emptyLabel="No permissions assigned." />
+      </section>
+      <section className="settings-panel">
+        <h2>Teams</h2>
+        <RecordList rows={recordRows(staff.teams)} emptyLabel="No teams assigned." />
+      </section>
     </div>
   );
 }
 
-function RecordList({ rows }: { rows: PlatformStaffRecord[] }) {
+function recordRows(value: unknown): PlatformStaffRecord[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => (typeof item === 'string' ? { name: item } : item as PlatformStaffRecord));
+}
+
+function permissionRows(value: unknown): PlatformStaffRecord[] {
+  if (Array.isArray(value)) return recordRows(value);
+  if (!value || typeof value !== 'object') return [];
+
+  return Object.entries(value as Record<string, unknown>).flatMap(([module, rows]) =>
+    recordRows(rows).map((row) => ({
+      ...row,
+      module: row.module ?? module
+    }))
+  );
+}
+
+function RecordList({
+  rows,
+  emptyLabel = 'No records returned.'
+}: {
+  rows: PlatformStaffRecord[];
+  emptyLabel?: string;
+}) {
   if (!Array.isArray(rows) || rows.length === 0)
-    return <div className="empty-state">No records returned.</div>;
+    return <div className="empty-state">{emptyLabel}</div>;
   return (
     <div className="record-list">
       {rows.map((row) => (
         <article key={idOf(row) || textOf(row, ['name', 'display_name'])}>
-          <strong>{textOf(row, ['display_name', 'name', 'email'])}</strong>
-          <p>{textOf(row, ['status', 'code', 'created_at'])}</p>
+          <strong>{toTitleCase(textOf(row, ['display_name', 'name', 'email']))}</strong>
+          <p>{row.created_at ? formatDate(row.created_at) : toTitleCase(textOf(row, ['status', 'code', 'module', 'membership_status', 'event']))}</p>
         </article>
       ))}
     </div>

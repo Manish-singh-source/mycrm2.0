@@ -26,7 +26,6 @@ type SavedViewsModalProps = {
 };
 
 export function SavedViewsModal(props: SavedViewsModalProps) {
-  const [localViews, setLocalViews] = useState<SavedView[]>(props.views);
   const [activeId, setActiveId] = useState<string | undefined>(
     props.activeViewId ?? props.views[0]?.id
   );
@@ -34,15 +33,6 @@ export function SavedViewsModal(props: SavedViewsModalProps) {
     props.activeViewId ?? props.views[0]?.id
   );
   const [viewName, setViewName] = useState('');
-
-  useEffect(() => {
-    setLocalViews((current) => {
-      const customViews = current.filter(
-        (view) => !props.views.some((item) => item.id === view.id)
-      );
-      return [...props.views, ...customViews];
-    });
-  }, [props.views]);
 
   useEffect(() => {
     if (props.open) {
@@ -61,19 +51,15 @@ export function SavedViewsModal(props: SavedViewsModalProps) {
   function saveCurrentView() {
     const name =
       viewName.trim() ||
-      `Custom view ${localViews.filter((view) => view.visibility === 'personal').length + 1}`;
-    const id = `custom-${Date.now()}`;
-    setLocalViews((current) => [...current, { id, name, visibility: 'personal' }]);
-    setDraftId(id);
+      `Custom view ${props.views.filter((view) => view.visibility === 'personal').length + 1}`;
     setViewName('');
     props.onSaveCurrent(name);
   }
 
   function deleteView(id: string) {
-    const view = localViews.find((item) => item.id === id);
+    const view = props.views.find((item) => item.id === id);
     if (!view || view.isDefault) return;
-    const nextViews = localViews.filter((item) => item.id !== id);
-    setLocalViews(nextViews);
+    const nextViews = props.views.filter((item) => item.id !== id);
     props.onDelete?.(id);
     if (draftId === id) setDraftId(activeId && activeId !== id ? activeId : nextViews[0]?.id);
     if (activeId === id) setActiveId(nextViews[0]?.id);
@@ -114,9 +100,9 @@ export function SavedViewsModal(props: SavedViewsModalProps) {
           placeholder="Name this table view"
         />
       </label>
-      {localViews.length > 0 ? (
+      {props.views.length > 0 ? (
         <div className="option-list saved-view-list">
-          {localViews.map((view) => {
+          {props.views.map((view) => {
             const active = view.id === activeId;
             const selected = view.id === draftId;
             return (

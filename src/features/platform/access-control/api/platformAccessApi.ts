@@ -88,9 +88,9 @@ export type TeamPayload = {
 
 export type TeamRolePayload = {
   name: string;
-  code: string;
+  code?: string;
   description?: string;
-  permissions?: Record<string, unknown>;
+  permissions?: string[] | Record<string, unknown>;
   sort_order?: number;
   is_system?: boolean;
   status: string;

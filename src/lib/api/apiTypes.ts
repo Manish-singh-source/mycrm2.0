@@ -44,7 +44,7 @@ export type ApiErrorResponse = {
   request_id?: string;
 };
 
-export type ValidationErrors = Record<string, string[]>;
+export type ValidationErrors = Record<string, string | string[]>;
 
 export type QueryPrimitive = string | number | boolean | null | undefined;
 

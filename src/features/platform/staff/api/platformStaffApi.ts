@@ -22,6 +22,8 @@ export type PlatformStaffRecord = {
   roles?: Array<{ uuid?: string; name?: string; display_name?: string } | string>;
   teams?: Array<{ uuid?: string; name?: string; code?: string } | string>;
   permissions?: Record<string, PlatformStaffRecord[]> | string[];
+  direct_permissions_count?: number;
+  permissions_count?: number;
   last_login_at?: string | null;
   last_login_ip?: string | null;
   created_at?: string;
@@ -138,7 +140,10 @@ export const platformStaffApi = {
   permissions: (id: string) =>
     platformClient.get<{ permissions: Record<string, PlatformStaffRecord[]> }>(`/platform-users/${encodeURIComponent(id)}/permissions`),
   replacePermissions: (id: string, body: { permission_ids: string[]; audit_reason: string }) =>
-    platformClient.put(`/platform-users/${encodeURIComponent(id)}/permissions`, body),
+    platformClient.put(`/platform-users/${encodeURIComponent(id)}/permissions`, {
+      permission_uuids: body.permission_ids,
+      audit_reason: body.audit_reason
+    }),
   activity: (id: string) =>
     platformClient.get<{ activity: PlatformStaffRecord[] }>(`/platform-users/${encodeURIComponent(id)}/activity`),
   files: {

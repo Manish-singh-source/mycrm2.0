@@ -169,7 +169,9 @@ export function TenantRegistrationPage() {
     } catch (error) {
       if (error instanceof ApiError && error.validationErrors) {
         Object.entries(error.validationErrors).forEach(([field, messages]) => {
-          setError(field as Parameters<typeof setError>[0], { message: messages[0] });
+          setError(field as Parameters<typeof setError>[0], {
+            message: Array.isArray(messages) ? messages[0] : messages
+          });
         });
       }
       setServerError(errorMessage(error));

@@ -15,8 +15,9 @@ type ColumnManagerModalProps = {
   open: boolean;
   onClose: () => void;
   columns: ManagedColumn[];
-  onToggle: (id: string) => void;
-  onReset: () => void;
+  onToggle?: (id: string) => void;
+  onApply?: (visibleIds: string[]) => void;
+  onReset?: () => void;
   onSave: () => void;
   guard?: AuthGuard;
   permission?: Permission;
@@ -45,15 +46,26 @@ export function ColumnManagerModal(props: ColumnManagerModalProps) {
   }
 
   function resetDraft() {
-    props.onReset();
     setDraftVisibleIds(props.columns.map((column) => column.id));
+    props.onReset?.();
   }
 
   function saveDraft() {
-    props.columns.forEach((column) => {
-      const nextVisible = draftVisibleIds.includes(column.id) || column.locked;
-      if (column.visible !== nextVisible) props.onToggle(column.id);
-    });
+    const nextVisibleIds = Array.from(
+      new Set([
+        ...draftVisibleIds,
+        ...props.columns.filter((column) => column.locked).map((column) => column.id)
+      ])
+    );
+
+    if (props.onApply) {
+      props.onApply(nextVisibleIds);
+    } else {
+      props.columns.forEach((column) => {
+        const nextVisible = nextVisibleIds.includes(column.id);
+        if (column.visible !== nextVisible) props.onToggle?.(column.id);
+      });
+    }
     props.onSave();
   }
 
