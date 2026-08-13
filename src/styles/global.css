@@ -198,7 +198,7 @@ textarea:disabled {
   display: grid;
   grid-template-rows: auto 1fr auto;
   overflow: hidden;
-  padding: 56px 48px 0;
+  padding: 56px 48px 32px;
   position: relative;
 }
 
@@ -240,10 +240,10 @@ textarea:disabled {
   color: #17202a;
   display: grid;
   gap: 8px;
-  margin-top: 48px;
-  min-height: 220px;
+  margin-top: 20px;
+  min-height: 170px;
   padding: 26px;
-  transform: rotate(-8deg) translateY(55px);
+  transform: rotate(-8deg);
   transform-origin: left bottom;
 }
 
@@ -351,6 +351,7 @@ textarea:disabled {
 .auth-input input {
   background: transparent;
   border: 0;
+  box-shadow: none;
   min-height: 48px;
   min-width: 0;
   padding-left: 0;
@@ -984,6 +985,10 @@ textarea:disabled {
   max-width: none;
 }
 
+.enterprise-module-page > * {
+  min-width: 0;
+}
+
 .enterprise-form,
 .enterprise-view-panel,
 .enterprise-view-actions {
@@ -1024,12 +1029,17 @@ textarea:disabled {
 
 .enterprise-form__footer {
   align-items: center;
+  background: #ffffff;
   border-top: 1px solid #edf1f5;
+  bottom: 16px;
+  box-shadow: 0 14px 36px rgb(16 24 40 / 8%);
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
   padding-top: 14px;
+  position: sticky;
+  z-index: 3;
 }
 
 .enterprise-view-actions {
@@ -1303,6 +1313,10 @@ textarea:disabled {
 .layout-page-chrome {
   display: grid;
   gap: 12px;
+}
+
+.layout-page-chrome > * {
+  min-width: 0;
 }
 
 .layout-page-title {
@@ -2130,14 +2144,27 @@ textarea:disabled {
 }
 
 .rbac-sticky-footer {
-  background: #ffffff;
   border: 1px solid #e6ebf2;
   border-radius: 8px;
-  bottom: 16px;
-  box-shadow: 0 14px 36px rgb(16 24 40 / 8%);
   grid-column: 1 / -1;
-  position: sticky;
-  z-index: 3;
+}
+
+.app-main .enterprise-form {
+  padding-bottom: 104px;
+}
+
+.app-main .enterprise-form__footer {
+  border: 1px solid var(--crm-line, #dfe4ea);
+  border-radius: 10px;
+  bottom: 16px;
+  left: 272px;
+  padding: 14px 16px;
+  position: fixed;
+  right: 24px;
+}
+
+.app-shell--sidebar-collapsed .app-main .enterprise-form__footer {
+  left: 96px;
 }
 
 .rbac-toolbar {
@@ -3552,6 +3579,12 @@ textarea:focus-visible {
   gap: 6px;
 }
 
+.required-marker {
+  color: #b42318;
+  font-weight: 800;
+  line-height: 1;
+}
+
 .enterprise-form small,
 .form-field small {
   color: var(--crm-muted);
@@ -3958,18 +3991,68 @@ textarea:focus-visible {
     grid-template-columns: 1fr;
   }
 
+  .data-table-shell > * {
+    min-width: 0;
+  }
+
+  .data-table-toolbar,
+  .table-pagination {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .table-toolbar-primary {
+    flex: 1 1 auto;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .table-actions,
+  .table-pagination-controls {
+    justify-content: flex-start;
+    max-width: 100%;
+  }
+
+  .table-actions .button {
+    flex: 1 1 120px;
+  }
+
+  .table-pagination-controls {
+    flex-wrap: wrap;
+  }
+
+  .tabs {
+    align-items: stretch;
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
+
+  .tabs__item {
+    flex: 1 1 120px;
+    min-width: 0;
+  }
+
   .auth-experience {
+    align-content: start;
     grid-template-columns: 1fr;
   }
 
   .auth-hero {
+    display: block;
     min-height: auto;
-    padding: 28px 22px;
+    padding: 22px;
   }
 
   .auth-hero h2 {
-    font-size: 34px;
-    margin: 28px 0 12px;
+    font-size: 28px;
+    line-height: 1.18;
+    margin: 24px 0 10px;
+  }
+
+  .auth-hero p {
+    font-size: 16px;
+    line-height: 1.5;
+    margin: 0;
   }
 
   .auth-hero__preview {
@@ -3978,7 +4061,7 @@ textarea:focus-visible {
 
   .auth-stage {
     min-height: auto;
-    padding: 22px;
+    padding: 20px 22px 24px;
   }
 
   .auth-stage__top {
@@ -3987,11 +4070,20 @@ textarea:focus-visible {
 
   .auth-card {
     border-radius: 16px;
+    gap: 20px;
     padding: 24px;
   }
 
   .auth-card h1 {
     font-size: 30px;
+  }
+
+  .auth-input--large {
+    min-height: 58px;
+  }
+
+  .auth-card__footer {
+    gap: 10px 14px;
   }
 
   .shell-dashboard__hero,
@@ -4026,12 +4118,32 @@ textarea:focus-visible {
     top: 0;
     transform: translateX(-100%);
     transition: transform 180ms ease;
+    visibility: hidden;
     width: min(280px, 86vw);
     z-index: 30;
   }
 
+  .app-shell__backdrop {
+    left: min(280px, 86vw);
+  }
+
   .app-shell__sidebar.is-open {
     transform: translateX(0);
+    visibility: visible;
+  }
+
+  .app-main .enterprise-form {
+    padding-bottom: 104px;
+  }
+
+  .app-main .enterprise-form__footer {
+    bottom: 12px;
+    left: 20px;
+    right: 20px;
+  }
+
+  .app-shell--sidebar-collapsed .app-main .enterprise-form__footer {
+    left: 20px;
   }
 
   .topbar {
@@ -4056,6 +4168,10 @@ textarea:focus-visible {
   .app-main,
   .auth-layout {
     padding: 20px;
+  }
+
+  .auth-layout {
+    padding: 0;
   }
 }
 /* Modal and drawer polish */

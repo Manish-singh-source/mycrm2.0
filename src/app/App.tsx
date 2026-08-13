@@ -6,7 +6,7 @@ import { appRouter } from '@/app/router/appRouter';
 export function App() {
   return (
     <AppProviders>
-      <RouterProvider router={appRouter} />
+      <RouterProvider router={appRouter} future={{ v7_startTransition: true }} />
     </AppProviders>
   );
 }

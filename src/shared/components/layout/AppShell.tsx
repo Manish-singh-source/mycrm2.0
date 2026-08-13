@@ -11,6 +11,7 @@ export function AppShell({ sidebar, topbar, children }: AppShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isDesktop, setIsDesktop] = useState(true);
   const toggleSidebar = () => setSidebarOpen((current) => !current);
+  const sidebarHidden = !isDesktop && !sidebarOpen;
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -28,7 +29,10 @@ export function AppShell({ sidebar, topbar, children }: AppShellProps) {
 
   return (
     <div className={`app-shell ${sidebarOpen ? 'app-shell--sidebar-open' : 'app-shell--sidebar-collapsed'}`}>
-      <div className={`app-shell__sidebar ${sidebarOpen ? 'is-open' : 'is-collapsed'}`}>
+      <div
+        className={`app-shell__sidebar ${sidebarOpen ? 'is-open' : 'is-collapsed'}`}
+        aria-hidden={sidebarHidden}
+      >
         {typeof sidebar === 'function' ? sidebar({ sidebarOpen, toggleSidebar }) : sidebar}
       </div>
       {!isDesktop && sidebarOpen ? (

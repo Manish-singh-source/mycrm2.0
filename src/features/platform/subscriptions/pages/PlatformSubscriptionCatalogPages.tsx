@@ -517,29 +517,34 @@ function CatalogForm({ kind, mode }: { kind: CatalogKind; mode: 'create' | 'edit
       {mutation.error ? <div className="surface-error">{errorMessage(mutation.error)}</div> : null}
       <form className="enterprise-form" onSubmit={(event) => { event.preventDefault(); mutation.mutate(); }}>
         <div className="enterprise-form__grid">
-          {fieldsFor(kind).map((field) => (
+          {fieldsFor(kind).map((field) => {
+            const required = isCatalogFieldRequired(kind, field.name);
+            const label = <FieldLabel required={required}>{field.label}</FieldLabel>;
+
+            return (
             <label key={field.name} className={field.type === 'checkbox' ? 'check-row' : undefined}>
               {field.type === 'checkbox' ? (
                 <>
-                  <input type="checkbox" checked={Boolean(form[field.name])} onChange={(event) => setForm((current) => ({ ...current, [field.name]: event.target.checked }))} />
-                  <span>{field.label}</span>
+                  <input type="checkbox" required={required} checked={Boolean(form[field.name])} onChange={(event) => setForm((current) => ({ ...current, [field.name]: event.target.checked }))} />
+                  {label}
                 </>
               ) : (
                 <>
-                  <span>{field.label}</span>
+                  {label}
                   {field.type === 'select' ? (
-                    <select value={String(form[field.name] ?? '')} onChange={(event) => setForm((current) => ({ ...current, [field.name]: event.target.value }))}>
+                    <select required={required} value={String(form[field.name] ?? '')} onChange={(event) => setForm((current) => ({ ...current, [field.name]: event.target.value }))}>
                       {field.options?.map((option) => <option key={option} value={option}>{option}</option>)}
                     </select>
                   ) : field.type === 'textarea' ? (
-                    <textarea value={String(form[field.name] ?? '')} onChange={(event) => setForm((current) => ({ ...current, [field.name]: event.target.value }))} />
+                    <textarea required={required} value={String(form[field.name] ?? '')} onChange={(event) => setForm((current) => ({ ...current, [field.name]: event.target.value }))} />
                   ) : (
-                    <input type={field.type ?? 'text'} value={String(form[field.name] ?? '')} onChange={(event) => setForm((current) => ({ ...current, [field.name]: field.type === 'number' ? Number(event.target.value) : event.target.value }))} />
+                    <input required={required} type={field.type ?? 'text'} value={String(form[field.name] ?? '')} onChange={(event) => setForm((current) => ({ ...current, [field.name]: field.type === 'number' ? Number(event.target.value) : event.target.value }))} />
                   )}
                 </>
               )}
             </label>
-          ))}
+            );
+          })}
         </div>
         <footer className="enterprise-form__footer">
           <Button type="button" variant="secondary" onClick={() => navigate(meta.route)}>Cancel</Button>
@@ -842,27 +847,32 @@ function SubscriptionLifecycleModal({ modal, record, loading, error, onClose, on
       {modal === 'addon' ? <div className="surface-state">Preview total: {money(Number(payload.quantity ?? 0) * Number(payload.unit_price ?? 0), record.currency)}</div> : null}
       {modal === 'coupon' ? <div className="surface-state">Coupon will be validated by the API and the discount preview will be returned with subscription totals.</div> : null}
       <div className="form-grid form-grid--two">
-        {fieldsForSubscriptionModal(modal).map((field) => (
+        {fieldsForSubscriptionModal(modal).map((field) => {
+          const required = isSubscriptionModalFieldRequired(modal, field.name);
+          const label = <FieldLabel required={required}>{field.label}</FieldLabel>;
+
+          return (
           <label key={field.name} className={field.type === 'checkbox' ? 'check-row' : undefined}>
             {field.type === 'checkbox' ? (
               <>
-                <input type="checkbox" checked={Boolean(payload[field.name])} onChange={(event) => setPayload((current) => ({ ...current, [field.name]: event.target.checked }))} />
-                <span>{field.label}</span>
+                <input type="checkbox" required={required} checked={Boolean(payload[field.name])} onChange={(event) => setPayload((current) => ({ ...current, [field.name]: event.target.checked }))} />
+                {label}
               </>
             ) : (
               <>
-                <span>{field.label}</span>
+                {label}
                 {field.type === 'select' ? (
-                  <select value={String(payload[field.name] ?? '')} onChange={(event) => setPayload((current) => ({ ...current, [field.name]: event.target.value }))}>
+                  <select required={required} value={String(payload[field.name] ?? '')} onChange={(event) => setPayload((current) => ({ ...current, [field.name]: event.target.value }))}>
                     {field.options?.map((option) => <option key={option} value={option}>{option}</option>)}
                   </select>
                 ) : (
-                  <input type={field.type ?? 'text'} value={String(payload[field.name] ?? '')} onChange={(event) => setPayload((current) => ({ ...current, [field.name]: field.type === 'number' ? Number(event.target.value) : event.target.value }))} />
+                  <input required={required} type={field.type ?? 'text'} value={String(payload[field.name] ?? '')} onChange={(event) => setPayload((current) => ({ ...current, [field.name]: field.type === 'number' ? Number(event.target.value) : event.target.value }))} />
                 )}
               </>
             )}
           </label>
-        ))}
+          );
+        })}
       </div>
     </AppModal>
   );
@@ -1090,6 +1100,33 @@ function fieldsFor(kind: CatalogKind) {
     { name: 'status', label: 'Status', type: 'select', options: ['active', 'inactive', 'archived'] },
     { name: 'description', label: 'Description', type: 'textarea' }
   ];
+}
+
+function FieldLabel({ children, required }: { children: ReactNode; required?: boolean }) {
+  return (
+    <span>
+      {children}
+      {required ? <span className="required-marker" aria-hidden="true">*</span> : null}
+    </span>
+  );
+}
+
+const catalogRequiredFields: Record<CatalogKind, Set<string>> = {
+  plans: new Set(['name', 'code', 'billing_cycle', 'base_price']),
+  features: new Set(['module', 'name', 'code', 'data_type']),
+  addons: new Set(['name', 'code', 'pricing_type', 'price'])
+};
+
+const subscriptionModalRequiredFields: Partial<Record<Exclude<SubscriptionModal, null>, Set<string>>> = {
+  addon: new Set(['addon_plan_id'])
+};
+
+function isCatalogFieldRequired(kind: CatalogKind, name: string) {
+  return catalogRequiredFields[kind].has(name);
+}
+
+function isSubscriptionModalFieldRequired(modal: SubscriptionModal, name: string) {
+  return modal ? Boolean(subscriptionModalRequiredFields[modal]?.has(name)) : false;
 }
 
 function fieldsForSubscriptionModal(modal: SubscriptionModal) {

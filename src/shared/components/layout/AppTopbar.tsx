@@ -1,4 +1,4 @@
-import { Bell, ChevronDown, CircleHelp, LogOut, Moon, Search, UserCircle2 } from 'lucide-react';
+import { Bell, ChevronDown, CircleHelp, LogOut, Menu, Moon, UserCircle2 } from 'lucide-react';
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 
@@ -32,9 +32,16 @@ export function AppTopbar({
   return (
     <div className="topbar">
       <div className="topbar__left">
-        {/* <Button type="button" variant="ghost" size="sm" className="sidebar-toggle" onClick={onToggleSidebar}>
-          Menu
-        </Button> */}
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="sidebar-toggle"
+          onClick={onToggleSidebar}
+          aria-label="Open navigation"
+        >
+          <Menu size={18} aria-hidden />
+        </Button>
         {/* <label className="topbar-search">
           <Search size={16} aria-hidden />
           <span className="sr-only">Search</span>
