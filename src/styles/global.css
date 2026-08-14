@@ -3913,6 +3913,59 @@ textarea:focus-visible {
   padding: 12px;
 }
 
+.support-ticket-page-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.support-ticket-attachments {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.support-ticket-attachments article {
+  background: #f8fafc;
+  border: 1px solid #dfe4ea;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.support-ticket-attachments article header {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.support-ticket-attachments article p,
+.support-ticket-attachments article small,
+.record-list article small {
+  color: #5f6b7a;
+  margin: 4px 0 0;
+}
+
+.attachment-preview {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #dfe4ea;
+  border-radius: 8px;
+  display: grid;
+  min-height: 180px;
+  overflow: hidden;
+}
+
+.attachment-preview img,
+.attachment-preview iframe {
+  border: 0;
+  display: block;
+  height: 260px;
+  object-fit: contain;
+  width: 100%;
+}
+
 .detail-grid dt {
   color: var(--crm-muted);
   font-size: 12px;

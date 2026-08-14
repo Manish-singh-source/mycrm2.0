@@ -213,10 +213,10 @@ export function TenantRegistrationPage() {
             <fieldset>
               <legend><Building2 size={18} aria-hidden="true" /> Organization</legend>
               <div className="form-grid form-grid--two">
-                <FormField error={errors.organization_name?.message} label="Organization name">
+                <FormField error={errors.organization_name?.message} label="Organization name" required>
                   <input {...register('organization_name')} onChange={(event) => autofillSlug(event.target.value)} placeholder="Acme Pvt Ltd" />
                 </FormField>
-                <FormField error={errors.slug?.message} label="Workspace slug">
+                <FormField error={errors.slug?.message} label="Workspace slug" required>
                   <input {...register('slug')} placeholder="acme" />
                 </FormField>
                 <FormField error={errors.legal_name?.message} label="Legal name">
@@ -228,7 +228,7 @@ export function TenantRegistrationPage() {
                 <FormField error={errors.organization_code?.message} label="Organization code">
                   <input {...register('organization_code')} placeholder="ACME" />
                 </FormField>
-                <FormField error={errors.company_size?.message} label="Company size">
+                <FormField error={errors.company_size?.message} label="Company size" required>
                   <select {...register('company_size')}>
                     <option value="small">Small</option>
                     <option value="medium">Medium</option>
@@ -252,16 +252,16 @@ export function TenantRegistrationPage() {
             <fieldset>
               <legend><UserRound size={18} aria-hidden="true" /> Owner</legend>
               <div className="form-grid form-grid--two">
-                <FormField error={errors.owner?.first_name?.message} label="First name">
+                <FormField error={errors.owner?.first_name?.message} label="First name" required>
                   <input {...register('owner.first_name')} onBlur={autofillOwnerDisplayName} placeholder="Sahil" />
                 </FormField>
-                <FormField error={errors.owner?.last_name?.message} label="Last name">
+                <FormField error={errors.owner?.last_name?.message} label="Last name" required>
                   <input {...register('owner.last_name')} onBlur={autofillOwnerDisplayName} placeholder="Owner" />
                 </FormField>
-                <FormField error={errors.owner?.display_name?.message} label="Display name">
+                <FormField error={errors.owner?.display_name?.message} label="Display name" required>
                   <input {...register('owner.display_name')} placeholder="Sahil Owner" />
                 </FormField>
-                <FormField error={errors.owner?.email?.message} label="Email">
+                <FormField error={errors.owner?.email?.message} label="Email" required>
                   <span className="auth-input">
                     <Mail size={18} aria-hidden="true" />
                     <input {...register('owner.email')} autoComplete="email" placeholder="owner@example.com" type="email" />
@@ -270,10 +270,10 @@ export function TenantRegistrationPage() {
                 <FormField error={errors.owner?.mobile?.message} label="Mobile">
                   <input {...register('owner.mobile')} placeholder="+919999999999" />
                 </FormField>
-                <FormField error={errors.owner?.password?.message} label="Password">
+                <FormField error={errors.owner?.password?.message} label="Password" required>
                   <input {...register('owner.password')} autoComplete="new-password" type="password" />
                 </FormField>
-                <FormField error={errors.owner?.password_confirmation?.message} label="Confirm password">
+                <FormField error={errors.owner?.password_confirmation?.message} label="Confirm password" required>
                   <input {...register('owner.password_confirmation')} autoComplete="new-password" type="password" />
                 </FormField>
               </div>
@@ -282,7 +282,7 @@ export function TenantRegistrationPage() {
             <fieldset>
               <legend><MapPin size={18} aria-hidden="true" /> Head Office</legend>
               <div className="form-grid form-grid--two">
-                <FormField error={errors.office?.office_name?.message} label="Office name">
+                <FormField error={errors.office?.office_name?.message} label="Office name" required>
                   <input {...register('office.office_name')} placeholder="Head Office" />
                 </FormField>
                 <FormField error={errors.office?.address_line_1?.message} label="Address line 1">
@@ -305,14 +305,14 @@ export function TenantRegistrationPage() {
             </fieldset>
 
             <div className="registration-preferences">
-              <FormField error={errors.default_currency?.message} label="Currency">
+              <FormField error={errors.default_currency?.message} label="Currency" required>
                 <select {...register('default_currency')}>
                   <option value="INR">INR</option>
                   <option value="USD">USD</option>
                   <option value="EUR">EUR</option>
                 </select>
               </FormField>
-              <FormField error={errors.default_timezone?.message} label="Timezone">
+              <FormField error={errors.default_timezone?.message} label="Timezone" required>
                 <select {...register('default_timezone')}>
                   <option value="Asia/Kolkata">Asia/Kolkata</option>
                   <option value="UTC">UTC</option>
@@ -324,7 +324,7 @@ export function TenantRegistrationPage() {
 
             <label className="check-row registration-terms">
               <input type="checkbox" {...register('accept_terms')} />
-              <span>I accept the terms and privacy policy.</span>
+              <span>I accept the terms and privacy policy. <span className="required-mark" aria-hidden="true">*</span></span>
             </label>
             {errors.accept_terms?.message ? <strong className="field-error">{errors.accept_terms.message}</strong> : null}
 
@@ -347,15 +347,20 @@ export function TenantRegistrationPage() {
 function FormField({
   children,
   error,
-  label
+  label,
+  required = false
 }: {
   children: ReactNode;
   error?: string;
   label: string;
+  required?: boolean;
 }) {
   return (
     <label>
-      <span>{label}</span>
+      <span>
+        {label}
+        {required ? <span className="required-mark" aria-hidden="true">*</span> : null}
+      </span>
       {children}
       {error ? <strong className="field-error">{error}</strong> : null}
     </label>

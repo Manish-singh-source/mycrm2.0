@@ -1,10 +1,12 @@
 import { FormEvent, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { LifeBuoy, RefreshCw, Send } from 'lucide-react';
+import { Link, useParams } from 'react-router-dom';
 
 import { tenantQueryKeys } from '@/features/tenant/api/tenantQueryKeys';
 import { tenantWorkspaceApi, type TenantRecord } from '@/features/tenant/api/tenantWorkspaceApi';
 import { TenantNotificationsDrawer } from '@/features/tenant/pages/TenantDashboardPages';
+import { TENANT_ROUTES } from '@/features/tenant/routes/tenantRoutes';
 import { ApiError } from '@/lib/api/apiError';
 import { DataTable, type DataTableColumn } from '@/shared/components/data-table';
 import { AppDrawer } from '@/shared/components/drawer';
@@ -74,7 +76,7 @@ export function TenantHelpCenterPage() {
         ariaLabel="Help sections"
         onChange={setActiveTab}
       />
-      {activeTab === 'articles' ? <RecordList rows={articles.data?.data ?? []} loading={articles.isLoading} /> : null}
+      {activeTab === 'articles' ? <RecordList rows={articles.data?.data ?? []} loading={articles.isLoading} articleLinks /> : null}
       {activeTab === 'faqs' ? <RecordList rows={extract(faqs.data?.data, 'faqs')} loading={faqs.isLoading} /> : null}
       {activeTab === 'release-notes' ? <RecordList rows={extract(releaseNotes.data?.data, 'release_notes')} loading={releaseNotes.isLoading} /> : null}
       {activeTab === 'status' ? <div className="settings-panel"><StatusBadge tone={String(status.data?.data.status) === 'operational' ? 'success' : 'warning'}>{String(status.data?.data.status ?? 'unknown')}</StatusBadge><p>Open alerts: {String(status.data?.data.open_alerts ?? 0)}</p></div> : null}
@@ -92,6 +94,38 @@ export function TenantHelpCenterPage() {
   );
 }
 
+export function TenantHelpArticlePage() {
+  const { slug = '', tenantSlug } = useParams();
+  const query = useQuery({
+    queryKey: tenantQueryKeys.detail(tenantKey, 'help-article', slug),
+    queryFn: () => tenantWorkspaceApi.help.article(slug),
+    enabled: Boolean(slug)
+  });
+  const article = query.data?.data.article;
+
+  if (query.isLoading) return <div className="surface-state">Loading article...</div>;
+  if (query.isError) return <div className="surface-error">{errorMessage(query.error)}</div>;
+  if (!article) return <div className="empty-state">Published article not found.</div>;
+
+  return (
+    <section className="enterprise-module-page">
+      <PageHeader
+        title={String(article.title ?? 'Help Article')}
+        description={`${String(article.audience ?? 'all')} / ${String(article.status ?? 'published')}`}
+        actions={<Link className="button button--secondary button--md" to={TENANT_ROUTES.helpCenter(tenantSlug)}>Back</Link>}
+      />
+      <article className="settings-panel">
+        <StatusBadge tone="success">{String(article.status ?? 'published')}</StatusBadge>
+        <div className="surface-body">
+          {String(article.body ?? article.content ?? '').split(/\n{2,}/).map((paragraph, index) => (
+            <p key={`${article.slug ?? 'article'}-${index}`}>{paragraph}</p>
+          ))}
+        </div>
+      </article>
+    </section>
+  );
+}
+
 export function TenantPlaceholderModulePage({ title }: { title: string }) {
   return (
     <section className="enterprise-module-page">
@@ -101,10 +135,23 @@ export function TenantPlaceholderModulePage({ title }: { title: string }) {
   );
 }
 
-function RecordList({ rows, loading }: { rows: TenantRecord[]; loading?: boolean }) {
+function RecordList({ articleLinks, rows, loading }: { articleLinks?: boolean; rows: TenantRecord[]; loading?: boolean }) {
   if (loading) return <div className="surface-state">Loading...</div>;
   if (rows.length === 0) return <div className="empty-state">No records returned.</div>;
-  return <div className="record-list">{rows.map((row) => <article key={idOf(row)}><strong>{String(row.title ?? row.question ?? row.name ?? row.slug ?? 'Record')}</strong><p>{String(row.answer ?? row.content ?? row.description ?? row.status ?? '-').slice(0, 220)}</p></article>)}</div>;
+  return (
+    <div className="record-list">
+      {rows.map((row) => {
+        const title = String(row.title ?? row.question ?? row.name ?? row.slug ?? 'Record');
+        const summary = String(row.answer ?? row.body ?? row.content ?? row.description ?? row.status ?? '-').slice(0, 220);
+        return (
+          <article key={idOf(row)}>
+            {articleLinks && row.slug ? <Link className="link-button" to={`articles/${row.slug}`}>{title}</Link> : <strong>{title}</strong>}
+            <p>{summary}</p>
+          </article>
+        );
+      })}
+    </div>
+  );
 }
 
 function RecordDetails({ record }: { record: TenantRecord }) {

@@ -41,8 +41,31 @@ import { ConfirmDialog } from '@/shared/components/workflows';
 
 type CatalogKind = 'plans' | 'features' | 'addons';
 type Mode = 'list' | 'create' | 'edit' | 'view';
-type SubscriptionModal = 'upgrade' | 'downgrade' | 'pause' | 'resume' | 'cancel' | 'renew' | 'addon' | 'coupon' | 'invoice' | null;
+type SubscriptionModal =
+  | 'create'
+  | 'edit'
+  | 'upgrade'
+  | 'downgrade'
+  | 'pause'
+  | 'resume'
+  | 'cancel'
+  | 'renew'
+  | 'addon'
+  | 'editAddon'
+  | 'cancelAddon'
+  | 'coupon'
+  | 'removeCoupon'
+  | 'invoice'
+  | null;
 type PlanModal = 'clone' | 'delete' | 'attachFeature' | null;
+
+type SubscriptionField = {
+  name: string;
+  label: string;
+  type?: string;
+  options?: string[];
+  reference?: 'plans' | 'addons' | 'coupons' | 'tenants' | 'existingAddons' | 'existingCoupons';
+};
 
 const catalogMeta = {
   plans: {
@@ -195,8 +218,11 @@ function SubscriptionsList() {
   const rows = listQuery.data?.data ?? [];
 
   const lifecycleMutation = useMutation({
-    mutationFn: ({ action, record, payload }: { action: Exclude<SubscriptionModal, null | 'invoice'>; record: SubscriptionRecord; payload: Record<string, unknown> }) => {
+    mutationFn: ({ action, record, payload }: { action: Exclude<SubscriptionModal, null | 'invoice'>; record?: SubscriptionRecord | null; payload: Record<string, unknown> }) => {
+      if (action === 'create') return platformSubscriptionsApi.subscriptions.create(payload);
+      if (!record) throw new Error('Select a subscription first.');
       const id = idOf(record);
+      if (action === 'edit') return platformSubscriptionsApi.subscriptions.update(id, payload);
       if (action === 'upgrade') return platformSubscriptionsApi.subscriptions.upgrade(id, payload);
       if (action === 'downgrade') return platformSubscriptionsApi.subscriptions.downgrade(id, payload);
       if (action === 'pause') return platformSubscriptionsApi.subscriptions.pause(id, payload);
@@ -204,6 +230,12 @@ function SubscriptionsList() {
       if (action === 'cancel') return platformSubscriptionsApi.subscriptions.cancel(id, payload);
       if (action === 'renew') return platformSubscriptionsApi.subscriptions.renew(id, payload);
       if (action === 'addon') return platformSubscriptionsApi.subscriptions.addAddon(id, payload);
+      if (action === 'editAddon') {
+        const { addon_id, ...body } = payload;
+        return platformSubscriptionsApi.subscriptions.updateAddon(id, String(addon_id), body);
+      }
+      if (action === 'cancelAddon') return platformSubscriptionsApi.subscriptions.removeAddon(id, String(payload.addon_id));
+      if (action === 'removeCoupon') return platformSubscriptionsApi.subscriptions.removeCoupon(id, String(payload.coupon_uuid));
       return platformSubscriptionsApi.subscriptions.applyCoupon(id, payload);
     },
     onSuccess: async () => {
@@ -256,7 +288,12 @@ function SubscriptionsList() {
       <PageHeader
         title="Subscriptions"
         description="Manage subscription lifecycle, financial totals, coupons, add-ons, renewals, pauses and cancellations."
-        actions={<Button type="button" variant="secondary" onClick={() => platformSubscriptionsApi.subscriptions.export()}><FileSpreadsheet size={16} aria-hidden />Export</Button>}
+        actions={
+          <>
+            <PermissionButton guard="platform" permission="subscription.create" type="button" onClick={() => { setSelectedRecord(null); setModal('create'); }}><Plus size={16} aria-hidden />Create</PermissionButton>
+            <Button type="button" variant="secondary" onClick={() => platformSubscriptionsApi.subscriptions.export()}><FileSpreadsheet size={16} aria-hidden />Export</Button>
+          </>
+        }
       />
       <SubscriptionStats rows={rows} />
       <DataTable
@@ -282,8 +319,8 @@ function SubscriptionsList() {
         error={lifecycleMutation.error}
         onClose={() => setModal(null)}
         onConfirm={(action, payload) => {
-          if (!selectedRecord) return;
           if (action === 'invoice') {
+            if (!selectedRecord) return;
             invoiceMutation.mutate(selectedRecord);
             setModal(null);
             return;
@@ -314,6 +351,8 @@ function SubscriptionView({ id }: { id: string }) {
   });
   const mutation = useMutation({
     mutationFn: ({ action, payload }: { action: Exclude<SubscriptionModal, null | 'invoice'>; payload: Record<string, unknown> }) => {
+      if (action === 'create') return platformSubscriptionsApi.subscriptions.create(payload);
+      if (action === 'edit') return platformSubscriptionsApi.subscriptions.update(id, payload);
       if (action === 'upgrade') return platformSubscriptionsApi.subscriptions.upgrade(id, payload);
       if (action === 'downgrade') return platformSubscriptionsApi.subscriptions.downgrade(id, payload);
       if (action === 'pause') return platformSubscriptionsApi.subscriptions.pause(id, payload);
@@ -321,10 +360,19 @@ function SubscriptionView({ id }: { id: string }) {
       if (action === 'cancel') return platformSubscriptionsApi.subscriptions.cancel(id, payload);
       if (action === 'renew') return platformSubscriptionsApi.subscriptions.renew(id, payload);
       if (action === 'addon') return platformSubscriptionsApi.subscriptions.addAddon(id, payload);
+      if (action === 'editAddon') {
+        const { addon_id, ...body } = payload;
+        return platformSubscriptionsApi.subscriptions.updateAddon(id, String(addon_id), body);
+      }
+      if (action === 'cancelAddon') return platformSubscriptionsApi.subscriptions.removeAddon(id, String(payload.addon_id));
+      if (action === 'removeCoupon') return platformSubscriptionsApi.subscriptions.removeCoupon(id, String(payload.coupon_uuid));
       return platformSubscriptionsApi.subscriptions.applyCoupon(id, payload);
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource('subscriptions') });
+      await queryClient.invalidateQueries({ queryKey: platformQueryKeys.detail('subscriptions', id) });
+      await queryClient.invalidateQueries({ queryKey: platformQueryKeys.related('subscriptions', id, 'usage') });
+      await queryClient.invalidateQueries({ queryKey: platformQueryKeys.related('subscriptions', id, 'history') });
       setModal(null);
     }
   });
@@ -339,7 +387,7 @@ function SubscriptionView({ id }: { id: string }) {
       <PageHeader
         title={textOf(record, ['subscription_number'], 'Subscription')}
         description={`${textOf(record, ['tenant_name', 'organization_name'])} / ${textOf(record, ['plan_name'])}`}
-        actions={<SubscriptionActions onOpen={setModal} />}
+        actions={<SubscriptionActions record={record} onOpen={setModal} />}
       />
       <SubscriptionStats rows={[record]} />
       <DetailTabs
@@ -349,7 +397,7 @@ function SubscriptionView({ id }: { id: string }) {
           { id: 'addons', label: 'Add-ons', content: <RecordList rows={record.addons ?? []} /> },
           { id: 'invoices', label: 'Invoices', content: <RecordList rows={record.invoices ?? []} /> },
           { id: 'payments', label: 'Payments', content: <RecordList rows={record.payments ?? []} /> },
-          { id: 'discounts', label: 'Discounts', content: <RecordList rows={record.coupons ?? []} /> },
+          { id: 'discounts', label: 'Discounts', content: <RecordList rows={record.coupons ?? record.redemptions ?? []} /> },
           { id: 'history', label: 'History', content: <RecordList rows={[...(historyQuery.data?.data.versions ?? []), ...(historyQuery.data?.data.renewals ?? [])]} /> }
         ]}
       />
@@ -707,6 +755,7 @@ function SubscriptionRowActions({
       <PortalActionMenu open={open} anchorRef={triggerRef} onClose={() => setOpen(false)}>
         <div className="action-menu" role="menu">
           <button type="button" role="menuitem" onMouseDown={(event) => event.preventDefault()} onClick={() => run(onView)}><Eye size={15} aria-hidden /> View</button>
+          <PermissionButton guard="platform" permission="subscription.edit" type="button" role="menuitem" variant="ghost" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => onOpen('edit', row))}><Pencil size={15} aria-hidden /> Edit</PermissionButton>
           <PermissionButton guard="platform" permission="subscription.upgrade" type="button" role="menuitem" variant="ghost" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => onOpen('upgrade', row))}><GitCompareArrows size={15} aria-hidden /> Upgrade</PermissionButton>
           <PermissionButton guard="platform" permission="subscription.downgrade" type="button" role="menuitem" variant="ghost" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => onOpen('downgrade', row))}><GitCompareArrows size={15} aria-hidden /> Downgrade</PermissionButton>
           <PermissionButton guard="platform" permission="subscription.renew" type="button" role="menuitem" variant="ghost" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => onOpen('renew', row))}><RotateCw size={15} aria-hidden /> Renew</PermissionButton>
@@ -812,12 +861,18 @@ function PortalActionMenu({
   );
 }
 
-function SubscriptionActions({ onOpen }: { onOpen: (modal: SubscriptionModal) => void }) {
+function SubscriptionActions({ onOpen, record }: { record: SubscriptionRecord; onOpen: (modal: SubscriptionModal) => void }) {
+  const hasAddons = (record.addons ?? []).length > 0;
+  const hasDiscounts = (record.coupons ?? record.redemptions ?? []).length > 0;
   return (
     <>
+      <Button type="button" variant="secondary" onClick={() => onOpen('edit')}><Pencil size={16} aria-hidden />Edit</Button>
       <Button type="button" variant="secondary" onClick={() => onOpen('upgrade')}><GitCompareArrows size={16} aria-hidden />Change Plan</Button>
       <Button type="button" variant="secondary" onClick={() => onOpen('addon')}><Plus size={16} aria-hidden />Add Add-on</Button>
+      {hasAddons ? <Button type="button" variant="secondary" onClick={() => onOpen('editAddon')}><Pencil size={16} aria-hidden />Edit Add-on</Button> : null}
+      {hasAddons ? <Button type="button" variant="secondary" onClick={() => onOpen('cancelAddon')}><Trash2 size={16} aria-hidden />Cancel Add-on</Button> : null}
       <Button type="button" variant="secondary" onClick={() => onOpen('coupon')}><Tags size={16} aria-hidden />Apply Coupon</Button>
+      {hasDiscounts ? <Button type="button" variant="secondary" onClick={() => onOpen('removeCoupon')}><Trash2 size={16} aria-hidden />Remove Coupon</Button> : null}
       <Button type="button" variant="secondary" onClick={() => onOpen('renew')}><RotateCw size={16} aria-hidden />Renew</Button>
       <Button type="button" variant="danger" onClick={() => onOpen('cancel')}><Trash2 size={16} aria-hidden />Cancel</Button>
     </>
@@ -833,12 +888,68 @@ function SubscriptionLifecycleModal({ modal, record, loading, error, onClose, on
   onConfirm: (action: Exclude<SubscriptionModal, null>, payload: Record<string, unknown>) => void;
 }) {
   const [payload, setPayload] = useState<Record<string, string | boolean | number>>({});
+  const needsPlans = modal === 'create' || modal === 'upgrade' || modal === 'downgrade';
+  const needsAddons = modal === 'addon';
+  const needsCoupons = modal === 'coupon' || modal === 'removeCoupon';
+  const needsTenants = modal === 'create';
+  const plansQuery = useQuery({
+    queryKey: platformQueryKeys.list('plans', { status: 'active', per_page: 100 }),
+    queryFn: () => platformSubscriptionsApi.plans.list({ status: 'active', per_page: 100 }),
+    enabled: needsPlans
+  });
+  const addonsQuery = useQuery({
+    queryKey: platformQueryKeys.list('addons', { status: 'active', per_page: 100 }),
+    queryFn: () => platformSubscriptionsApi.addons.list({ status: 'active', per_page: 100 }),
+    enabled: needsAddons
+  });
+  const couponsQuery = useQuery({
+    queryKey: platformQueryKeys.list('coupons', { per_page: 100 }),
+    queryFn: () => platformSubscriptionsApi.references.coupons({ per_page: 100 }),
+    enabled: needsCoupons
+  });
+  const tenantsQuery = useQuery({
+    queryKey: platformQueryKeys.list('tenants', { status: 'active', per_page: 100 }),
+    queryFn: () => platformSubscriptionsApi.references.tenants({ status: 'active', per_page: 100 }),
+    enabled: needsTenants
+  });
+
   useEffect(() => {
     setPayload(defaultLifecyclePayload(modal, record));
   }, [modal, record]);
-  if (!modal || !record) return null;
+  if (!modal || (!record && modal !== 'create')) return null;
   const title = titleForSubscriptionModal(modal);
   const isPlanChange = modal === 'upgrade' || modal === 'downgrade';
+  const plans = plansQuery.data?.data ?? [];
+  const addons = addonsQuery.data?.data ?? [];
+  const coupons = couponsQuery.data?.data ?? [];
+  const tenants = tenantsQuery.data?.data ?? [];
+  const existingAddons = record?.addons ?? [];
+  const existingCoupons = record?.coupons ?? coupons;
+  const hasMissingRequired = fieldsForSubscriptionModal(modal).some(
+    (field) => isSubscriptionModalFieldRequired(modal, field.name) && !payload[field.name]
+  );
+
+  function updateField(field: SubscriptionField, value: string | boolean | number) {
+    setPayload((current) => {
+      const next = { ...current, [field.name]: value };
+      if (field.reference === 'addons') {
+        const addon = addons.find((item) => idOf(item) === value);
+        next.unit_price = String(addon?.price ?? next.unit_price ?? '0.00');
+      }
+      if (field.reference === 'plans') {
+        const plan = plans.find((item) => idOf(item) === value);
+        next.billing_cycle = textOf(plan, ['billing_cycle'], String(next.billing_cycle ?? 'monthly'));
+      }
+      if (field.reference === 'existingAddons') {
+        const addon = existingAddons.find((item) => idOf(item) === String(value) || String(item.id ?? '') === String(value));
+        next.quantity = Number(addon?.quantity ?? next.quantity ?? 1);
+        next.unit_price = String(addon?.unit_price ?? addon?.price ?? next.unit_price ?? '0.00');
+        next.ends_at = toInputDate(addon?.ends_at) || String(next.ends_at ?? '');
+        next.status = textOf(addon, ['status'], String(next.status ?? 'active'));
+      }
+      return next;
+    });
+  }
 
   return (
     <AppModal
@@ -853,18 +964,21 @@ function SubscriptionLifecycleModal({ modal, record, loading, error, onClose, on
       footer={
         <>
           <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button type="button" onClick={() => onConfirm(modal, payload)} disabled={loading}>Confirm {title}</Button>
+          <Button type="button" onClick={() => onConfirm(modal, cleanLifecyclePayload(payload))} disabled={loading || hasMissingRequired}>Confirm {title}</Button>
         </>
       }
     >
-      {isPlanChange ? <PlanComparison record={record} payload={payload} /> : null}
+      {isPlanChange && record ? <PlanComparison record={record} payload={payload} plans={plans} /> : null}
       {modal === 'cancel' ? <div className="surface-error"><Trash2 size={16} aria-hidden />Cancellation can restrict tenant access. Confirm data retention and export requirements before proceeding.</div> : null}
-      {modal === 'addon' ? <div className="surface-state">Preview total: {money(Number(payload.quantity ?? 0) * Number(payload.unit_price ?? 0), record.currency)}</div> : null}
+      {modal === 'addon' ? <div className="surface-state">Preview total: {money(Number(payload.quantity ?? 0) * Number(payload.unit_price ?? 0), record?.currency)}</div> : null}
       {modal === 'coupon' ? <div className="surface-state">Coupon will be validated by the API and the discount preview will be returned with subscription totals.</div> : null}
+      {modal === 'removeCoupon' ? <div className="surface-error"><Trash2 size={16} aria-hidden />Removing a coupon deletes its redemption from this subscription.</div> : null}
+      {modal === 'cancelAddon' ? <div className="surface-error"><Trash2 size={16} aria-hidden />The selected add-on will be cancelled and ended immediately.</div> : null}
       <div className="form-grid form-grid--two">
         {fieldsForSubscriptionModal(modal).map((field) => {
           const required = isSubscriptionModalFieldRequired(modal, field.name);
           const label = <FieldLabel required={required}>{field.label}</FieldLabel>;
+          const referenceOptions = optionsForSubscriptionField(field, { plans, addons, coupons, tenants, existingAddons, existingCoupons });
 
           return (
           <label key={field.name} className={field.type === 'checkbox' ? 'check-row' : undefined}>
@@ -876,12 +990,17 @@ function SubscriptionLifecycleModal({ modal, record, loading, error, onClose, on
             ) : (
               <>
                 {label}
-                {field.type === 'select' ? (
-                  <select required={required} value={String(payload[field.name] ?? '')} onChange={(event) => setPayload((current) => ({ ...current, [field.name]: event.target.value }))}>
+                {field.reference ? (
+                  <select required={required} value={String(payload[field.name] ?? '')} onChange={(event) => updateField(field, event.target.value)}>
+                    <option value="">Select {field.label}</option>
+                    {referenceOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                ) : field.type === 'select' ? (
+                  <select required={required} value={String(payload[field.name] ?? '')} onChange={(event) => updateField(field, event.target.value)}>
                     {field.options?.map((option) => <option key={option} value={option}>{option}</option>)}
                   </select>
                 ) : (
-                  <input required={required} type={field.type ?? 'text'} value={String(payload[field.name] ?? '')} onChange={(event) => setPayload((current) => ({ ...current, [field.name]: field.type === 'number' ? Number(event.target.value) : event.target.value }))} />
+                  <input required={required} type={field.type ?? 'text'} value={String(payload[field.name] ?? '')} onChange={(event) => updateField(field, field.type === 'number' ? Number(event.target.value) : event.target.value)} />
                 )}
               </>
             )}
@@ -893,7 +1012,8 @@ function SubscriptionLifecycleModal({ modal, record, loading, error, onClose, on
   );
 }
 
-function PlanComparison({ record, payload }: { record: SubscriptionRecord; payload: Record<string, string | boolean | number> }) {
+function PlanComparison({ plans, record, payload }: { plans: CatalogRecord[]; record: SubscriptionRecord; payload: Record<string, string | boolean | number> }) {
+  const plan = plans.find((item) => idOf(item) === String(payload.new_plan_id));
   return (
     <div className="subscription-comparison">
       <article className="summary-card">
@@ -905,8 +1025,8 @@ function PlanComparison({ record, payload }: { record: SubscriptionRecord; paylo
       <article className="summary-card">
         <span><GitCompareArrows size={18} aria-hidden /></span>
         <p>Requested Plan</p>
-        <strong>{String(payload.new_plan_id || 'Enter plan id')}</strong>
-        <small>{String(payload.proration || 'immediate')} proration, coupon {String(payload.coupon_code || 'none')}</small>
+        <strong>{plan ? textOf(plan, ['name', 'code']) : 'Select plan'}</strong>
+        <small>{String(payload.proration || 'immediate')} proration / {String(payload.billing_cycle || 'monthly')}</small>
       </article>
     </div>
   );
@@ -1217,7 +1337,16 @@ const catalogRequiredFields: Record<CatalogKind, Set<string>> = {
 };
 
 const subscriptionModalRequiredFields: Partial<Record<Exclude<SubscriptionModal, null>, Set<string>>> = {
-  addon: new Set(['addon_plan_id'])
+  create: new Set(['tenant_id', 'plan_id']),
+  upgrade: new Set(['new_plan_id']),
+  downgrade: new Set(['new_plan_id']),
+  cancel: new Set(['reason']),
+  renew: new Set(['renewal_expires_at']),
+  addon: new Set(['addon_plan_id']),
+  editAddon: new Set(['addon_id']),
+  cancelAddon: new Set(['addon_id']),
+  coupon: new Set(['coupon_uuid']),
+  removeCoupon: new Set(['coupon_uuid'])
 };
 
 function isCatalogFieldRequired(kind: CatalogKind, name: string) {
@@ -1228,14 +1357,41 @@ function isSubscriptionModalFieldRequired(modal: SubscriptionModal, name: string
   return modal ? Boolean(subscriptionModalRequiredFields[modal]?.has(name)) : false;
 }
 
-function fieldsForSubscriptionModal(modal: SubscriptionModal) {
+function fieldsForSubscriptionModal(modal: SubscriptionModal): SubscriptionField[] {
+  if (modal === 'create') {
+    return [
+      { name: 'tenant_id', label: 'Tenant', reference: 'tenants' },
+      { name: 'plan_id', label: 'Plan', reference: 'plans' },
+      { name: 'type', label: 'Type', type: 'select', options: ['paid', 'trial', 'free', 'internal'] },
+      { name: 'billing_cycle', label: 'Billing Cycle', type: 'select', options: ['monthly', 'quarterly', 'yearly'] },
+      { name: 'status', label: 'Status', type: 'select', options: ['trial', 'active', 'paused', 'expired', 'cancelled', 'suspended', 'pending_payment', 'grace_period'] },
+      { name: 'renewal_type', label: 'Renewal Type', type: 'select', options: ['manual', 'auto'] },
+      { name: 'starts_at', label: 'Starts At', type: 'datetime-local' },
+      { name: 'expires_at', label: 'Expires At', type: 'datetime-local' },
+      { name: 'next_billing_at', label: 'Next Billing At', type: 'datetime-local' },
+      { name: 'currency', label: 'Currency' },
+      { name: 'auto_renew', label: 'Auto renew', type: 'checkbox' },
+      { name: 'notes', label: 'Notes' }
+    ];
+  }
+  if (modal === 'edit') {
+    return [
+      { name: 'billing_cycle', label: 'Billing Cycle', type: 'select', options: ['monthly', 'quarterly', 'yearly'] },
+      { name: 'status', label: 'Status', type: 'select', options: ['trial', 'active', 'paused', 'expired', 'cancelled', 'suspended', 'pending_payment', 'grace_period'] },
+      { name: 'renewal_type', label: 'Renewal Type', type: 'select', options: ['manual', 'auto'] },
+      { name: 'starts_at', label: 'Starts At', type: 'datetime-local' },
+      { name: 'expires_at', label: 'Expires At', type: 'datetime-local' },
+      { name: 'next_billing_at', label: 'Next Billing At', type: 'datetime-local' },
+      { name: 'auto_renew', label: 'Auto renew', type: 'checkbox' },
+      { name: 'notes', label: 'Notes' }
+    ];
+  }
   if (modal === 'upgrade' || modal === 'downgrade') {
     return [
-      { name: 'new_plan_id', label: 'New Plan ID' },
+      { name: 'new_plan_id', label: 'New Plan', reference: 'plans' },
       { name: 'effective_at', label: 'Effective Date', type: 'datetime-local' },
       { name: 'proration', label: 'Proration', type: 'select', options: ['immediate', 'next_cycle', 'none'] },
       { name: 'billing_cycle', label: 'Billing Cycle', type: 'select', options: ['monthly', 'quarterly', 'yearly'] },
-      { name: 'coupon_code', label: 'Coupon Code' },
       { name: 'reason', label: 'Reason' }
     ];
   }
@@ -1266,7 +1422,7 @@ function fieldsForSubscriptionModal(modal: SubscriptionModal) {
   }
   if (modal === 'addon') {
     return [
-      { name: 'addon_plan_id', label: 'Add-on Plan ID' },
+      { name: 'addon_plan_id', label: 'Add-on', reference: 'addons' },
       { name: 'quantity', label: 'Quantity', type: 'number' },
       { name: 'unit_price', label: 'Unit Price', type: 'number' },
       { name: 'starts_at', label: 'Starts At', type: 'datetime-local' },
@@ -1274,19 +1430,96 @@ function fieldsForSubscriptionModal(modal: SubscriptionModal) {
       { name: 'status', label: 'Status', type: 'select', options: ['active', 'inactive'] }
     ];
   }
-  if (modal === 'coupon') return [{ name: 'coupon_code', label: 'Coupon Code' }];
+  if (modal === 'editAddon') {
+    return [
+      { name: 'addon_id', label: 'Subscription Add-on', reference: 'existingAddons' },
+      { name: 'quantity', label: 'Quantity', type: 'number' },
+      { name: 'unit_price', label: 'Unit Price', type: 'number' },
+      { name: 'ends_at', label: 'Ends At', type: 'datetime-local' },
+      { name: 'status', label: 'Status', type: 'select', options: ['active', 'inactive', 'cancelled'] }
+    ];
+  }
+  if (modal === 'cancelAddon') return [{ name: 'addon_id', label: 'Subscription Add-on', reference: 'existingAddons' }];
+  if (modal === 'coupon') return [{ name: 'coupon_uuid', label: 'Coupon', reference: 'coupons' }];
+  if (modal === 'removeCoupon') return [{ name: 'coupon_uuid', label: 'Coupon', reference: 'existingCoupons' }];
   return [];
 }
 
 function defaultLifecyclePayload(modal: SubscriptionModal, record?: SubscriptionRecord | null): Record<string, string | boolean | number> {
   const now = new Date().toISOString().slice(0, 16);
+  if (modal === 'create') return { tenant_id: '', plan_id: '', type: 'paid', billing_cycle: 'monthly', status: 'active', renewal_type: 'manual', starts_at: now, expires_at: '', next_billing_at: '', currency: 'INR', auto_renew: false, notes: '' };
+  if (modal === 'edit') return { billing_cycle: textOf(record, ['billing_cycle'], 'monthly'), status: textOf(record, ['status'], 'active'), renewal_type: textOf(record, ['renewal_type'], 'manual'), starts_at: toInputDate(record?.starts_at), expires_at: toInputDate(record?.expires_at), next_billing_at: toInputDate(record?.next_billing_at), auto_renew: Boolean(record?.auto_renew), notes: textOf(record, ['notes'], '') };
   if (modal === 'renew') return { renewal_starts_at: now, renewal_expires_at: '', amount: String(totalFor(record ?? {})), currency: record?.currency ?? 'INR', create_invoice: true, notes: 'Manual renewal' };
   if (modal === 'addon') return { addon_plan_id: '', quantity: 1, unit_price: '0.00', starts_at: now, ends_at: '', status: 'active' };
-  if (modal === 'coupon') return { coupon_code: '' };
+  if (modal === 'editAddon') return { addon_id: '', quantity: 1, unit_price: '0.00', ends_at: '', status: 'active' };
+  if (modal === 'cancelAddon') return { addon_id: '' };
+  if (modal === 'coupon') return { coupon_uuid: '' };
+  if (modal === 'removeCoupon') return { coupon_uuid: '' };
   if (modal === 'cancel') return { reason: '', effective_at: record?.expires_at ?? now, cancel_at_period_end: true, data_retention_acknowledged: false };
   if (modal === 'pause' || modal === 'resume') return { reason: '', effective_at: now, resume_at: '' };
-  if (modal === 'upgrade' || modal === 'downgrade') return { new_plan_id: '', effective_at: now, proration: 'immediate', billing_cycle: record?.billing_cycle ?? 'monthly', coupon_code: '', reason: '' };
+  if (modal === 'upgrade' || modal === 'downgrade') return { new_plan_id: '', effective_at: now, proration: 'immediate', billing_cycle: record?.billing_cycle ?? 'monthly', reason: '' };
   return {};
+}
+
+function toInputDate(value: unknown) {
+  if (!value) return '';
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return String(value).slice(0, 16);
+  return date.toISOString().slice(0, 16);
+}
+
+function cleanLifecyclePayload(payload: Record<string, string | boolean | number>) {
+  return Object.fromEntries(Object.entries(payload).filter(([, value]) => value !== ''));
+}
+
+function optionsForSubscriptionField(
+  field: SubscriptionField,
+  refs: {
+    plans: CatalogRecord[];
+    addons: CatalogRecord[];
+    coupons: CatalogRecord[];
+    tenants: CatalogRecord[];
+    existingAddons: CatalogRecord[];
+    existingCoupons: CatalogRecord[];
+  }
+) {
+  if (field.reference === 'plans') {
+    return refs.plans.map((record) => ({
+      value: idOf(record),
+      label: `${textOf(record, ['name', 'code'])} / ${textOf(record, ['billing_cycle'])} / ${money(record.base_price, record.currency)}`
+    }));
+  }
+  if (field.reference === 'addons') {
+    return refs.addons.map((record) => ({
+      value: idOf(record),
+      label: `${textOf(record, ['name', 'code'])} / ${textOf(record, ['pricing_type'])} / ${money(record.price, record.currency)}`
+    }));
+  }
+  if (field.reference === 'coupons') {
+    return refs.coupons.map((record) => ({
+      value: idOf(record),
+      label: `${textOf(record, ['code', 'name'])} / ${textOf(record, ['discount_type'])} ${textOf(record, ['discount_value'], '')} / ${textOf(record, ['status'])}`
+    }));
+  }
+  if (field.reference === 'tenants') {
+    return refs.tenants.map((record) => ({
+      value: idOf(record),
+      label: textOf(record, ['organization_name', 'name', 'company_name', 'tenant_name', 'uuid'])
+    }));
+  }
+  if (field.reference === 'existingAddons') {
+    return refs.existingAddons.map((record) => ({
+      value: String(record.id ?? idOf(record)),
+      label: `${textOf(record, ['name', 'code', 'addon_plan_id'], `Add-on #${record.id ?? ''}`)} / ${textOf(record, ['status'])} / qty ${textOf(record, ['quantity'], '1')}`
+    }));
+  }
+  if (field.reference === 'existingCoupons') {
+    return refs.existingCoupons.map((record) => ({
+      value: idOf(record),
+      label: `${textOf(record, ['code', 'name', 'coupon_uuid'], `Coupon #${record.id ?? ''}`)} / ${textOf(record, ['status', 'redeemed_at', 'created_at'])}`
+    }));
+  }
+  return [];
 }
 
 function defaultCatalogForm(kind: CatalogKind, record?: CatalogRecord): Record<string, string | boolean | number> {
@@ -1351,6 +1584,8 @@ function catalogDetail(kind: CatalogKind, id: string) {
 }
 
 function titleForSubscriptionModal(modal: SubscriptionModal) {
+  if (modal === 'create') return 'Create Subscription';
+  if (modal === 'edit') return 'Edit Subscription';
   if (modal === 'upgrade') return 'Upgrade Subscription';
   if (modal === 'downgrade') return 'Downgrade Subscription';
   if (modal === 'pause') return 'Pause Subscription';
@@ -1358,11 +1593,15 @@ function titleForSubscriptionModal(modal: SubscriptionModal) {
   if (modal === 'cancel') return 'Cancel Subscription';
   if (modal === 'renew') return 'Renew Subscription';
   if (modal === 'addon') return 'Add Add-on';
+  if (modal === 'editAddon') return 'Edit Add-on';
+  if (modal === 'cancelAddon') return 'Cancel Add-on';
   if (modal === 'coupon') return 'Apply Coupon';
+  if (modal === 'removeCoupon') return 'Remove Coupon';
   return 'Create Invoice';
 }
 
 function permissionForSubscriptionModal(modal: SubscriptionModal) {
+  if (modal === 'create') return 'subscription.create';
   if (modal === 'upgrade') return 'subscription.upgrade';
   if (modal === 'downgrade') return 'subscription.downgrade';
   if (modal === 'renew') return 'subscription.renew';

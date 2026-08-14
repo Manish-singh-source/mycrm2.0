@@ -50,5 +50,6 @@ export const TENANT_ROUTES = {
   integrations: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/integrations`,
   audit: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/audit`,
   profile: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/profile`,
-  helpCenter: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/help-center`
+  helpCenter: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/help-center`,
+  helpArticle: (tenantSlug: string | undefined, slug: string) => `${tenantBase(tenantSlug)}/help-center/articles/${slug}`
 } as const;

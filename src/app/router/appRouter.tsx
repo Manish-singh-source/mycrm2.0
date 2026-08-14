@@ -83,6 +83,7 @@ import {
   PlatformRemoteLoginPage,
   PlatformReportsPage,
   PlatformSettingsPage,
+  PlatformSupportTicketViewPage,
   PlatformSupportTicketsPage,
   PlatformTrialsPage,
   PlatformWebhooksPage
@@ -96,6 +97,7 @@ import { TenantDashboardPage, TenantMyDashboardPage } from '@/features/tenant/pa
 import { TenantProfilePage } from '@/features/tenant/pages/TenantProfilePages';
 import {
   TenantActivityPage,
+  TenantHelpArticlePage,
   TenantHelpCenterPage
 } from '@/features/tenant/pages/TenantWorkspacePages';
 import {
@@ -659,6 +661,14 @@ export const appRouter = createBrowserRouter([
         )
       },
       {
+        path: 'support/tickets/:id',
+        element: (
+          <RequirePermission guard="platform" anyOf={['support.ticket.view']}>
+            <PlatformSupportTicketViewPage />
+          </RequirePermission>
+        )
+      },
+      {
         path: 'support/tickets',
         element: (
           <RequirePermission guard="platform" anyOf={['support.ticket.view']}>
@@ -820,6 +830,7 @@ export const appRouter = createBrowserRouter([
       },
       { path: 'profile/api-tokens', element: <ApiTokensPage guard="tenant" /> },
       { path: 'help-center', element: <TenantHelpCenterPage /> },
+      { path: 'help-center/articles/:slug', element: <TenantHelpArticlePage /> },
       {
         path: 'crm/leads/dashboard',
         element: (

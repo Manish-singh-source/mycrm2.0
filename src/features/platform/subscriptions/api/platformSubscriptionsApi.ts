@@ -55,6 +55,7 @@ export type SubscriptionRecord = CatalogRecord & {
   invoices?: CatalogRecord[];
   payments?: CatalogRecord[];
   coupons?: CatalogRecord[];
+  redemptions?: CatalogRecord[];
   versions?: CatalogRecord[];
   renewals?: CatalogRecord[];
 };
@@ -115,6 +116,30 @@ function unwrap<TRecord extends CatalogRecord>(
   return data as TRecord;
 }
 
+function unwrapSubscription(
+  response: NormalizedApiResponse<SubscriptionRecord | Record<string, SubscriptionRecord | CatalogRecord[] | unknown>>
+) {
+  const data = response.data;
+  if (data && typeof data === 'object' && !Array.isArray(data)) {
+    const record = data as Record<string, SubscriptionRecord | CatalogRecord[] | unknown>;
+    const subscription = (record.subscription && !Array.isArray(record.subscription)
+      ? record.subscription
+      : record) as SubscriptionRecord;
+    return {
+      ...subscription,
+      addons: (record.addons as CatalogRecord[] | undefined) ?? subscription.addons,
+      invoices: (record.invoices as CatalogRecord[] | undefined) ?? subscription.invoices,
+      payments: (record.payments as CatalogRecord[] | undefined) ?? subscription.payments,
+      coupons: (record.coupons as CatalogRecord[] | undefined) ?? subscription.coupons,
+      redemptions: (record.redemptions as CatalogRecord[] | undefined) ?? subscription.redemptions,
+      usage: (record.usage as CatalogRecord[] | undefined) ?? subscription.usage,
+      versions: (record.versions as CatalogRecord[] | undefined) ?? subscription.versions,
+      renewals: (record.renewals as CatalogRecord[] | undefined) ?? subscription.renewals
+    };
+  }
+  return data as SubscriptionRecord;
+}
+
 async function list<TRecord extends CatalogRecord>(path: string, query?: ApiQuery): Promise<ListResult<TRecord>> {
   const response = await platformClient.get<TRecord[]>(path, { query });
   return {
@@ -131,7 +156,7 @@ export const platformSubscriptionsApi = {
   subscriptions: {
     list: (query?: ApiQuery) => list<SubscriptionRecord>('/subscriptions', query),
     detail: async (id: string) =>
-      unwrap<SubscriptionRecord>(await platformClient.get(`/subscriptions/${encodeURIComponent(id)}`), ['subscription']),
+      unwrapSubscription(await platformClient.get(`/subscriptions/${encodeURIComponent(id)}`)),
     create: async (body: Record<string, unknown>) =>
       unwrap<SubscriptionRecord>(
         await platformClient.post('/subscriptions', body, { idempotencyKey: idempotencyKey('sub-create') }),
@@ -172,9 +197,21 @@ export const platformSubscriptionsApi = {
       platformClient.post(`/subscriptions/${encodeURIComponent(id)}/addons`, body, {
         idempotencyKey: idempotencyKey('sub-addon', id)
       }),
+    updateAddon: (id: string, addonId: string, body: Record<string, unknown>) =>
+      platformClient.patch(`/subscriptions/${encodeURIComponent(id)}/addons/${encodeURIComponent(addonId)}`, body, {
+        idempotencyKey: idempotencyKey('sub-addon-update', id)
+      }),
+    removeAddon: (id: string, addonId: string) =>
+      platformClient.delete(`/subscriptions/${encodeURIComponent(id)}/addons/${encodeURIComponent(addonId)}`, {
+        idempotencyKey: idempotencyKey('sub-addon-remove', id)
+      }),
     applyCoupon: (id: string, body: Record<string, unknown>) =>
       platformClient.post(`/subscriptions/${encodeURIComponent(id)}/apply-coupon`, body, {
         idempotencyKey: idempotencyKey('sub-coupon', id)
+      }),
+    removeCoupon: (id: string, couponId: string) =>
+      platformClient.delete(`/subscriptions/${encodeURIComponent(id)}/coupons/${encodeURIComponent(couponId)}`, {
+        idempotencyKey: idempotencyKey('sub-coupon-remove', id)
       }),
     invoice: (id: string) =>
       platformClient.post(`/subscriptions/${encodeURIComponent(id)}/invoice`, undefined, {
@@ -220,5 +257,9 @@ export const platformSubscriptionsApi = {
     update: async (id: string, body: Partial<AddonPayload>) =>
       unwrap<CatalogRecord>(await platformClient.patch(`/addons/${encodeURIComponent(id)}`, body), ['addon']),
     delete: (id: string) => platformClient.delete(`/addons/${encodeURIComponent(id)}`)
+  },
+  references: {
+    tenants: (query?: ApiQuery) => list<CatalogRecord>('/tenants', query),
+    coupons: (query?: ApiQuery) => list<CatalogRecord>('/coupons', query)
   }
 };

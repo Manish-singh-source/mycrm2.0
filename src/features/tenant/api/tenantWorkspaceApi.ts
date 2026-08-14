@@ -73,6 +73,7 @@ export const tenantWorkspaceApi = {
   },
   help: {
     articles: (query?: ApiQuery) => list('/help/articles', query, ['articles']),
+    article: (slug: string) => tenantClient().get<{ article: TenantRecord }>(`/help/articles/${encodeURIComponent(slug)}`),
     faqs: () => tenantClient().get<Record<string, unknown>>('/help/faqs'),
     releaseNotes: () => tenantClient().get<Record<string, unknown>>('/help/release-notes'),
     systemStatus: () => tenantClient().get<Record<string, unknown>>('/help/system-status'),

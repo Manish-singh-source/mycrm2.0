@@ -27,6 +27,10 @@ import { z } from 'zod';
 import { platformQueryKeys } from '@/features/platform/api/platformQueryKeys';
 import { PLATFORM_ROUTES } from '@/features/platform/routes/platformRoutes';
 import {
+  platformSubscriptionsApi,
+  type CatalogRecord
+} from '@/features/platform/subscriptions/api/platformSubscriptionsApi';
+import {
   platformTenantsApi,
   type PlatformTenantRecord,
   type TenantCreatePayload
@@ -129,6 +133,21 @@ function textOf(row: PlatformTenantRecord | null | undefined, keys: string[], fa
     if (value !== undefined && value !== null && value !== '') return String(value);
   }
   return fallback;
+}
+
+function catalogId(row?: CatalogRecord | null, preferred: 'uuid' | 'id' = 'uuid') {
+  if (!row) return '';
+  const primary = preferred === 'id' ? row.id : row.uuid;
+  const secondary = preferred === 'id' ? row.uuid : row.id;
+  return String(primary ?? secondary ?? row.code ?? '');
+}
+
+function catalogLabel(row: CatalogRecord, keys: string[], fallback = 'Untitled') {
+  const parts = keys
+    .map((key) => row[key])
+    .filter((value) => value !== undefined && value !== null && value !== '')
+    .map(String);
+  return parts.length ? parts.join(' - ') : fallback;
 }
 
 function errorMessage(error: unknown) {
@@ -541,6 +560,10 @@ function TenantFormPage({ tenant }: { tenant?: PlatformTenantRecord }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [step, setStep] = useState(0);
+  const planOptionsQuery = useQuery({
+    queryKey: platformQueryKeys.list('tenant-plan-options', { per_page: 100 }),
+    queryFn: () => platformSubscriptionsApi.plans.list({ per_page: 100 })
+  });
   const form = useForm<TenantForm>({
     resolver: zodResolver(tenantSchema),
     defaultValues: tenantDefaults(tenant)
@@ -605,7 +628,9 @@ function TenantFormPage({ tenant }: { tenant?: PlatformTenantRecord }) {
           {isEdit || step === 0 ? <OrganizationStep form={form} /> : null}
           {!isEdit && step === 1 ? <OwnerStep form={form} /> : null}
           {!isEdit && step === 2 ? <OfficeStep form={form} /> : null}
-          {!isEdit && step === 3 ? <SubscriptionStep form={form} /> : null}
+          {!isEdit && step === 3 ? (
+            <SubscriptionStep form={form} plans={planOptionsQuery.data?.data ?? []} />
+          ) : null}
           {!isEdit && step === 4 ? <ReviewStep values={form.watch()} /> : null}
         </article>
         <aside className="rbac-side-panel">
@@ -1065,6 +1090,12 @@ function TenantFiltersDrawer({
   onClose: () => void;
 }) {
   const [draft, setDraft] = useState(filters);
+  const plansQuery = useQuery({
+    queryKey: platformQueryKeys.list('tenant-filter-plans', { per_page: 100 }),
+    queryFn: () => platformSubscriptionsApi.plans.list({ per_page: 100 }),
+    enabled: open
+  });
+  const planOptions = plansQuery.data?.data ?? [];
   useEffect(() => setDraft(filters), [filters, open]);
   const field = (name: string, label: string, input: ReactNode) => ({ name, label, input });
   return (
@@ -1091,11 +1122,18 @@ function TenantFiltersDrawer({
         ),
         field(
           'plan_id',
-          'Plan UUID',
-          <input
+          'Plan',
+          <select
             value={draft.plan_id ?? ''}
             onChange={(event) => setDraft({ ...draft, plan_id: event.target.value })}
-          />
+          >
+            <option value="">Any plan</option>
+            {planOptions.map((plan) => (
+              <option key={catalogId(plan)} value={catalogId(plan, 'id')}>
+                {catalogLabel(plan, ['name', 'code', 'billing_cycle'])}
+              </option>
+            ))}
+          </select>
         ),
         field(
           'subscription_status',
@@ -1726,12 +1764,6 @@ function TenantActionsMenu(props: {
   };
   return (
     <div className="row-action-menu">
-      <Button type="button" size="sm" variant="ghost" onClick={props.onView}>
-        <Eye size={15} aria-hidden /> View
-      </Button>
-      <Button type="button" size="sm" variant="ghost" onClick={props.onEdit}>
-        <Pencil size={15} aria-hidden /> Edit
-      </Button>
       <button
         ref={ref}
         type="button"
@@ -1743,6 +1775,25 @@ function TenantActionsMenu(props: {
       </button>
       <PortalActionMenu anchorRef={ref} open={open} onClose={() => setOpen(false)}>
         <div className="action-menu tenant-action-menu">
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => run(props.onView)}
+          >
+            <Eye size={15} aria-hidden /> View
+          </Button>
+          <PermissionButton
+            guard="platform"
+            permission="tenant.edit"
+            type="button"
+            variant="ghost"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => run(props.onEdit)}
+          >
+            <Pencil size={15} aria-hidden /> Edit
+          </PermissionButton>
           <PermissionButton
             guard="platform"
             permission="tenant.activate"
@@ -1906,11 +1957,11 @@ function PortalActionMenu({
 function OrganizationStep({ form }: { form: any }) {
   return (
     <FormSection title="Organization">
-      <InputField form={form} name="organization_name" label="Organization name" />
+      <InputField form={form} name="organization_name" label="Organization name" required />
       <InputField form={form} name="legal_name" label="Legal name" />
       <InputField form={form} name="display_name" label="Display name" />
-      <InputField form={form} name="organization_code" label="Organization code" />
-      <InputField form={form} name="slug" label="Slug" />
+      <InputField form={form} name="organization_code" label="Organization code" required />
+      <InputField form={form} name="slug" label="Slug" required />
       <InputField form={form} name="business_type_id" label="Business type ID" />
       <InputField form={form} name="industry_id" label="Industry ID" />
       <SelectField
@@ -1925,12 +1976,25 @@ function OrganizationStep({ form }: { form: any }) {
       <InputField form={form} name="registration_number" label="Registration number" />
       <InputField form={form} name="logo_file_id" label="Logo file ID" />
       <InputField form={form} name="favicon_file_id" label="Favicon file ID" />
-      <InputField form={form} name="default_currency" label="Default currency" />
-      <InputField form={form} name="default_timezone" label="Default timezone" />
+      <SelectField
+        form={form}
+        name="default_currency"
+        label="Default currency"
+        required
+        options={['INR', 'USD', 'EUR']}
+      />
+      <SelectField
+        form={form}
+        name="default_timezone"
+        label="Default timezone"
+        required
+        options={['Asia/Kolkata', 'UTC', 'America/New_York', 'Europe/London']}
+      />
       <SelectField
         form={form}
         name="status"
         label="Status"
+        required
         options={['trial', 'active', 'inactive', 'suspended']}
       />
       <div className="modal-form-span">
@@ -1943,16 +2007,17 @@ function OrganizationStep({ form }: { form: any }) {
 function OwnerStep({ form }: { form: any }) {
   return (
     <FormSection title="Primary Owner">
-      <InputField form={form} name="owner_first_name" label="First name" />
+      <InputField form={form} name="owner_first_name" label="First name" required />
       <InputField form={form} name="owner_last_name" label="Last name" />
       <InputField form={form} name="owner_display_name" label="Display name" />
-      <InputField form={form} name="owner_email" label="Email" type="email" />
+      <InputField form={form} name="owner_email" label="Email" type="email" required />
       <InputField form={form} name="owner_mobile" label="Mobile" />
-      <InputField form={form} name="owner_password" label="Password" type="password" />
+      <InputField form={form} name="owner_password" label="Password" type="password" required />
       <SelectField
         form={form}
         name="owner_status"
         label="Status"
+        required
         options={['active', 'inactive', 'invited']}
       />
       <CheckboxField form={form} name="owner_send_invite" label="Send invite email" />
@@ -1963,12 +2028,13 @@ function OwnerStep({ form }: { form: any }) {
 function OfficeStep({ form }: { form: any }) {
   return (
     <FormSection title="Head Office">
-      <InputField form={form} name="office_name" label="Office name" />
+      <InputField form={form} name="office_name" label="Office name" required />
       <InputField form={form} name="office_code" label="Office code" />
       <SelectField
         form={form}
         name="office_type"
         label="Office type"
+        required
         options={['head_office', 'branch', 'warehouse']}
       />
       <InputField form={form} name="address_line_1" label="Address line 1" />
@@ -1986,6 +2052,7 @@ function OfficeStep({ form }: { form: any }) {
         form={form}
         name="office_status"
         label="Status"
+        required
         options={['active', 'inactive']}
       />
       <div className="modal-form-span">
@@ -2000,21 +2067,29 @@ function OfficeStep({ form }: { form: any }) {
   );
 }
 
-function SubscriptionStep({ form }: { form: any }) {
+function SubscriptionStep({ form, plans }: { form: any; plans: CatalogRecord[] }) {
   return (
     <FormSection title="Subscription">
-      <InputField form={form} name="plan_uuid" label="Plan UUID" />
+      <CatalogSelectField
+        form={form}
+        name="plan_uuid"
+        label="Plan"
+        options={plans}
+        placeholder="Select plan"
+      />
       <InputField form={form} name="trial_days" label="Trial days" type="number" />
       <SelectField
         form={form}
         name="subscription_type"
         label="Type"
+        required
         options={['trial', 'paid', 'free']}
       />
       <SelectField
         form={form}
         name="billing_cycle"
         label="Billing cycle"
+        required
         options={['monthly', 'yearly']}
       />
       <InputField form={form} name="starts_at" label="Starts at" type="datetime-local" />
@@ -2030,6 +2105,7 @@ function SubscriptionStep({ form }: { form: any }) {
         form={form}
         name="renewal_type"
         label="Renewal type"
+        required
         options={['manual', 'auto']}
       />
       <CheckboxField form={form} name="auto_renew" label="Auto renew" />
@@ -2085,18 +2161,20 @@ function InputField({
   name,
   label,
   placeholder,
+  required = false,
   type = 'text'
 }: {
   form: any;
   name: string;
   label: string;
   placeholder?: string;
+  required?: boolean;
   type?: string;
 }) {
   const error = form.formState.errors[name]?.message;
   return (
     <label>
-      <span>{label}</span>
+      <FieldLabel label={label} required={required} />
       {type === 'textarea' ? (
         <textarea placeholder={placeholder} {...form.register(name)} />
       ) : (
@@ -2111,16 +2189,18 @@ function SelectField({
   form,
   name,
   label,
-  options
+  options,
+  required = false
 }: {
   form: any;
   name: string;
   label: string;
   options: string[];
+  required?: boolean;
 }) {
   return (
     <label>
-      <span>{label}</span>
+      <FieldLabel label={label} required={required} />
       <select {...form.register(name)}>
         {options.map((option) => (
           <option key={option} value={option}>
@@ -2129,6 +2209,47 @@ function SelectField({
         ))}
       </select>
     </label>
+  );
+}
+
+function CatalogSelectField({
+  form,
+  name,
+  label,
+  options,
+  placeholder = 'Select option',
+  required = false
+}: {
+  form: any;
+  name: string;
+  label: string;
+  options: CatalogRecord[];
+  placeholder?: string;
+  required?: boolean;
+}) {
+  const error = form.formState.errors[name]?.message;
+  return (
+    <label>
+      <FieldLabel label={label} required={required} />
+      <select {...form.register(name)}>
+        <option value="">{placeholder}</option>
+        {options.map((option) => (
+          <option key={catalogId(option)} value={catalogId(option)}>
+            {catalogLabel(option, ['name', 'code', 'billing_cycle'])}
+          </option>
+        ))}
+      </select>
+      {error ? <strong role="alert">{String(error)}</strong> : null}
+    </label>
+  );
+}
+
+function FieldLabel({ label, required }: { label: string; required?: boolean }) {
+  return (
+    <span>
+      {label}
+      {required ? <span className="required-mark" aria-hidden="true">*</span> : null}
+    </span>
   );
 }
 

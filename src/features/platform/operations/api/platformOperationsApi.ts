@@ -76,21 +76,44 @@ export const platformOperationsApi = {
     disable: (id: string, body?: Record<string, unknown>) => platformClient.post(`/modules/${encodeURIComponent(id)}/disable`, body),
     features: (id: string) => platformClient.get(`/modules/${encodeURIComponent(id)}/features`),
     replaceFeatures: (id: string, feature_uuids: string[]) => platformClient.put(`/modules/${encodeURIComponent(id)}/features`, { feature_uuids }),
-    tenants: (id: string) => platformClient.get(`/modules/${encodeURIComponent(id)}/tenants`)
+    tenants: (id: string) => platformClient.get<{ tenants: PlatformRecord[] }>(`/modules/${encodeURIComponent(id)}/tenants`)
+  },
+  references: {
+    features: (query?: ApiQuery) => list('/features', query),
+    tenants: (query?: ApiQuery) => list('/tenants', query),
+    platformUsers: (query?: ApiQuery) => list('/platform-users', query),
+    files: (query?: ApiQuery) => list('/files', query),
+    uploadFile: async (body: FormData) => recordFromPayload((await platformClient.post<Record<string, unknown>, FormData>('/files', body)).data, ['file'])
   },
   support: {
     tickets: {
       list: (query?: ApiQuery) => list('/support/tickets', query),
-      detail: (id: string) => detail(`/support/tickets/${encodeURIComponent(id)}`, ['ticket']),
+      detail: async (id: string) => {
+        const response = await platformClient.get<Record<string, unknown>>(`/support/tickets/${encodeURIComponent(id)}`);
+        const payload = response.data ?? {};
+        const ticket = recordFromPayload(payload, ['ticket']);
+        return {
+          ...ticket,
+          comments: arrayFromPayload(payload, ['comments']),
+          attachments: arrayFromPayload(payload, ['attachments']),
+          audit: arrayFromPayload(payload, ['audit'])
+        };
+      },
       create: (body: Record<string, unknown>) => platformClient.post('/support/tickets', body, { idempotencyKey: key('ticket-create') }),
       update: (id: string, body: Record<string, unknown>) => platformClient.patch(`/support/tickets/${encodeURIComponent(id)}`, body),
       assign: (id: string, body: Record<string, unknown>) => platformClient.post(`/support/tickets/${encodeURIComponent(id)}/assign`, body),
       comment: (id: string, body: Record<string, unknown>) => platformClient.post(`/support/tickets/${encodeURIComponent(id)}/comments`, body),
+      attach: (id: string, body: Record<string, unknown> | FormData) => platformClient.post(`/support/tickets/${encodeURIComponent(id)}/attachments`, body),
       close: (id: string, body: Record<string, unknown>) => platformClient.post(`/support/tickets/${encodeURIComponent(id)}/close`, body),
       reopen: (id: string, body: Record<string, unknown>) => platformClient.post(`/support/tickets/${encodeURIComponent(id)}/reopen`, body),
       export: (body?: Record<string, unknown>) => platformClient.post('/support/tickets/export', body)
     },
-    kbCategories: (query?: ApiQuery) => list('/support/knowledge-base/categories', query),
+    kbCategories: {
+      list: (query?: ApiQuery) => list('/support/knowledge-base/categories', query),
+      create: (body: Record<string, unknown>) => platformClient.post('/support/knowledge-base/categories', body),
+      update: (id: string, body: Record<string, unknown>) =>
+        platformClient.patch(`/support/knowledge-base/categories/${encodeURIComponent(id)}`, body)
+    },
     articles: {
       list: (query?: ApiQuery) => list('/support/knowledge-base/articles', query),
       detail: (id: string) => detail(`/support/knowledge-base/articles/${encodeURIComponent(id)}`, ['article']),
@@ -135,9 +158,11 @@ export const platformOperationsApi = {
   integrations: {
     providers: (query?: ApiQuery) => list('/integrations/providers', query),
     createProvider: (body: Record<string, unknown>) => platformClient.post('/integrations/providers', body),
+    updateProvider: (code: string, body: Record<string, unknown>) => platformClient.patch(`/integrations/providers/${encodeURIComponent(code)}`, body),
     tenantIntegrations: (query?: ApiQuery) => list('/integrations/tenant-integrations', query),
     createTenantIntegration: (body: Record<string, unknown>) => platformClient.post('/integrations/tenant-integrations', body, { idempotencyKey: key('integration-connect') }),
     detail: (id: string) => detail(`/integrations/tenant-integrations/${encodeURIComponent(id)}`, ['integration']),
+    updateTenantIntegration: (id: string, body: Record<string, unknown>) => platformClient.patch(`/integrations/tenant-integrations/${encodeURIComponent(id)}`, body),
     rotateCredentials: (id: string, body: Record<string, unknown>) => platformClient.post(`/integrations/tenant-integrations/${encodeURIComponent(id)}/credentials`, body),
     test: (id: string) => platformClient.post(`/integrations/tenant-integrations/${encodeURIComponent(id)}/test`),
     disconnect: (id: string, body?: Record<string, unknown>) => platformClient.post(`/integrations/tenant-integrations/${encodeURIComponent(id)}/disconnect`, body),
@@ -145,6 +170,11 @@ export const platformOperationsApi = {
     replaceMappings: (id: string, mappings: Record<string, unknown>[]) => platformClient.put(`/integrations/tenant-integrations/${encodeURIComponent(id)}/mappings`, { mappings }),
     rateLimits: (id: string) => platformClient.get(`/integrations/tenant-integrations/${encodeURIComponent(id)}/rate-limits`),
     webhooks: (query?: ApiQuery) => list('/integrations/webhooks', query),
+    webhook: (id: string | number) => detail(`/integrations/webhooks/${encodeURIComponent(String(id))}`, ['webhook']),
+    createWebhook: (body: Record<string, unknown>) => platformClient.post('/integrations/webhooks', body),
+    updateWebhook: (id: string | number, body: Record<string, unknown>) => platformClient.patch(`/integrations/webhooks/${encodeURIComponent(String(id))}`, body),
+    disableWebhook: (id: string | number) => platformClient.delete(`/integrations/webhooks/${encodeURIComponent(String(id))}`),
+    webhookLogs: (id: string | number) => platformClient.get(`/integrations/webhooks/${encodeURIComponent(String(id))}/logs`),
     syncJobs: (query?: ApiQuery) => list('/integrations/sync-jobs', query),
     retryWebhookLog: (id: string | number, body?: Record<string, unknown>) => platformClient.post(`/integrations/webhook-logs/${id}/retry`, body),
     retrySyncJob: (id: string | number, body?: Record<string, unknown>) => platformClient.post(`/integrations/sync-jobs/${id}/retry`, body)
