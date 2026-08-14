@@ -42,7 +42,7 @@ import { ConfirmDialog } from '@/shared/components/workflows';
 type CatalogKind = 'plans' | 'features' | 'addons';
 type Mode = 'list' | 'create' | 'edit' | 'view';
 type SubscriptionModal = 'upgrade' | 'downgrade' | 'pause' | 'resume' | 'cancel' | 'renew' | 'addon' | 'coupon' | 'invoice' | null;
-type PlanModal = 'clone' | 'archive' | 'attachFeature' | null;
+type PlanModal = 'clone' | 'delete' | 'attachFeature' | null;
 
 const catalogMeta = {
   plans: {
@@ -392,9 +392,8 @@ function CatalogList({ kind }: { kind: CatalogKind }) {
     }
   });
   const rows = query.data?.data ?? [];
-  const archiveMutation = useMutation({
-    mutationFn: (record: CatalogRecord) =>
-      kind === 'addons' ? platformSubscriptionsApi.addons.archive(idOf(record)) : platformSubscriptionsApi.plans.archive(idOf(record)),
+  const lifecycleMutation = useMutation({
+    mutationFn: (record: CatalogRecord) => deleteCatalog(kind, idOf(record)),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource(meta.resourceKey) });
       setPlanModal(null);
@@ -409,8 +408,26 @@ function CatalogList({ kind }: { kind: CatalogKind }) {
     }
   });
   const attachMutation = useMutation({
-    mutationFn: ({ record, payload }: { record: CatalogRecord; payload: Record<string, unknown> }) =>
-      platformSubscriptionsApi.plans.replaceFeatures(idOf(record), [payload]),
+    mutationFn: async ({ record, payload }: { record: CatalogRecord; payload: Record<string, unknown> }) => {
+      const planId = idOf(record);
+      const currentResponse = await platformSubscriptionsApi.plans.features(planId);
+      const selectedFeatureUuid = String(payload.feature_uuid ?? '');
+      const currentFeatures = (currentResponse.data.features ?? []).map((feature) => ({
+        feature_uuid: idOf(feature),
+        value: feature.value ?? '',
+        metadata: parseMetadata(feature.metadata)
+      }));
+      const nextFeatures = [
+        ...currentFeatures.filter((feature) => feature.feature_uuid !== selectedFeatureUuid),
+        {
+          feature_uuid: selectedFeatureUuid,
+          value: payload.value ?? '',
+          metadata: payload.metadata ?? {}
+        }
+      ];
+
+      return platformSubscriptionsApi.plans.replaceFeatures(planId, nextFeatures);
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource(meta.resourceKey) });
       setPlanModal(null);
@@ -426,7 +443,7 @@ function CatalogList({ kind }: { kind: CatalogKind }) {
     },
     onArchive: (record) => {
       setSelectedRecord(record);
-      setPlanModal('archive');
+      setPlanModal('delete');
     },
     onAttachFeature: (record) => {
       setSelectedRecord(record);
@@ -467,11 +484,12 @@ function CatalogList({ kind }: { kind: CatalogKind }) {
       <FeatureMatrixDrawer open={matrixOpen} plans={rows} onClose={() => setMatrixOpen(false)} />
       <PlanActionModals
         modal={planModal}
+        kind={kind}
         record={selectedRecord}
-        loading={archiveMutation.isPending || cloneMutation.isPending || attachMutation.isPending}
-        error={archiveMutation.error ?? cloneMutation.error ?? attachMutation.error}
+        loading={lifecycleMutation.isPending || cloneMutation.isPending || attachMutation.isPending}
+        error={lifecycleMutation.error ?? cloneMutation.error ?? attachMutation.error}
         onClose={() => setPlanModal(null)}
-        onArchive={() => selectedRecord && archiveMutation.mutate(selectedRecord)}
+        onArchive={() => selectedRecord && lifecycleMutation.mutate(selectedRecord)}
         onClone={(payload) => selectedRecord && cloneMutation.mutate({ record: selectedRecord, payload })}
         onAttach={(payload) => selectedRecord && attachMutation.mutate({ record: selectedRecord, payload })}
       />
@@ -584,6 +602,7 @@ function CatalogView({ kind }: { kind: CatalogKind }) {
         description={textOf(record, ['description'], `${meta.singular} detail`)}
         actions={
           <>
+            <Button type="button" variant="secondary" onClick={() => navigate(meta.route)}>Back</Button>
             {kind === 'plans' ? <Button type="button" variant="secondary" onClick={() => setMatrixOpen(true)}><FileSpreadsheet size={16} aria-hidden />Feature Matrix</Button> : null}
             <Button type="button" variant="secondary" onClick={() => navigate(`${meta.route}/${id}/edit`)}><Pencil size={16} aria-hidden />Edit</Button>
           </>
@@ -750,12 +769,8 @@ function CatalogRowActions({
               <PermissionButton guard="platform" permission="plan.create" type="button" role="menuitem" variant="ghost" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => handlers.onClone(row))}><Copy size={15} aria-hidden /> Clone Plan</PermissionButton>
             </>
           ) : null}
-          {kind !== 'features' ? (
-            <>
-              <hr />
-              <PermissionButton guard="platform" permission="plan.delete" type="button" role="menuitem" variant="ghost" className="is-danger" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => handlers.onArchive(row))}><Archive size={15} aria-hidden /> Archive</PermissionButton>
-            </>
-          ) : null}
+          <hr />
+          <PermissionButton guard="platform" permission={kind === 'features' ? 'feature.delete' : 'plan.delete'} type="button" role="menuitem" variant="ghost" className="is-danger" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => handlers.onArchive(row))}><Trash2 size={15} aria-hidden /> Delete</PermissionButton>
         </div>
       </PortalActionMenu>
     </div>
@@ -897,8 +912,9 @@ function PlanComparison({ record, payload }: { record: SubscriptionRecord; paylo
   );
 }
 
-function PlanActionModals({ modal, record, loading, error, onClose, onArchive, onClone, onAttach }: {
+function PlanActionModals({ modal, kind, record, loading, error, onClose, onArchive, onClone, onAttach }: {
   modal: PlanModal;
+  kind: CatalogKind;
   record?: CatalogRecord | null;
   loading: boolean;
   error: unknown;
@@ -908,62 +924,145 @@ function PlanActionModals({ modal, record, loading, error, onClose, onArchive, o
   onAttach: (payload: Record<string, unknown>) => void;
 }) {
   const [payload, setPayload] = useState<Record<string, string | boolean>>({});
+  const featureOptionsQuery = useQuery({
+    queryKey: platformQueryKeys.list('features', { status: 'active', per_page: 100 }),
+    queryFn: () => platformSubscriptionsApi.features.list({ status: 'active', per_page: 100 }),
+    enabled: modal === 'attachFeature'
+  });
+  const featureOptions = featureOptionsQuery.data?.data ?? [];
+
   useEffect(() => {
     setPayload({
       name: `${textOf(record, ['name'], 'Plan')} Copy`,
       code: `${textOf(record, ['code'], 'plan')}_copy`,
+      description: textOf(record, ['description'], ''),
+      billing_cycle: textOf(record, ['billing_cycle'], 'monthly'),
+      base_price: String(record?.base_price ?? '0.00'),
+      currency: textOf(record, ['currency'], 'INR'),
+      trial_days: String(record?.trial_days ?? 0),
       status: 'inactive',
       copy_features: true,
-      is_public: false,
-      is_custom: true,
+      is_public: record?.is_public === undefined ? true : Boolean(record.is_public),
+      is_custom: Boolean(record?.is_custom),
       feature_uuid: '',
       value: '',
-      metadata: '{"source":"platform-ui"}',
-      limit_type: 'hard'
+      metadata_source: 'platform-ui',
+      metadata_scope: 'plan',
+      metadata_enforcement: 'hard',
+      metadata_notes: ''
     });
   }, [record]);
   if (!modal || !record) return null;
-  if (modal === 'archive') {
+  if (modal === 'delete') {
     return (
       <ConfirmDialog
         open
         onClose={onClose}
-        title="Archive plan?"
-        description={`This plan has ${textOf(record, ['active_subscription_count', 'subscription_count'], '0')} active subscriptions. Archiving should happen only after customer migration is confirmed.`}
-        confirmLabel="Archive"
+        title={`Delete ${catalogMeta[kind].singular.toLowerCase()}?`}
+        description={`This permanently deletes the ${catalogMeta[kind].singular.toLowerCase()} when it is not assigned to any related records.`}
+        confirmLabel="Delete"
         confirmTone="danger"
-        typedConfirmation="ARCHIVE"
+        typedConfirmation="DELETE"
         guard="platform"
-        permission="plan.delete"
+        permission={kind === 'features' ? 'feature.delete' : 'plan.delete'}
         loading={loading}
         onConfirm={onArchive}
       />
     );
   }
+  const cloneFields = [
+    { name: 'name', label: 'Name', required: true },
+    { name: 'code', label: 'Code', required: true },
+    { name: 'description', label: 'Description', type: 'textarea' },
+    { name: 'billing_cycle', label: 'Billing Cycle', type: 'select', options: ['monthly', 'quarterly', 'yearly'], required: true },
+    { name: 'base_price', label: 'Base Price', type: 'number', required: true },
+    { name: 'currency', label: 'Currency' },
+    { name: 'trial_days', label: 'Trial Days', type: 'number' },
+    { name: 'status', label: 'Status', type: 'select', options: ['active', 'inactive', 'archived'] },
+    { name: 'copy_features', label: 'Copy Features', type: 'checkbox' },
+    { name: 'is_public', label: 'Public', type: 'checkbox' },
+    { name: 'is_custom', label: 'Custom Plan', type: 'checkbox' }
+  ];
+  const attachFeatureDisabled = modal === 'attachFeature' && (!payload.feature_uuid || featureOptionsQuery.isLoading);
+  const cloneDisabled = modal === 'clone' && (!payload.name || !payload.code || !payload.billing_cycle || !payload.base_price);
+
   return (
     <AppModal
       open
       onClose={onClose}
       title={modal === 'clone' ? 'Clone Plan' : 'Attach Feature'}
       guard="platform"
-      permission="plan.edit"
+      permission={modal === 'clone' ? 'plan.create' : 'plan.edit'}
       loading={loading}
       error={error ? errorMessage(error) : null}
-      footer={<><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="button" onClick={() => modal === 'clone' ? onClone(payload) : onAttach({ feature_uuid: payload.feature_uuid, value: payload.value, metadata: parseMetadata(payload.metadata), limit_type: payload.limit_type })}>Confirm</Button></>}
+      footer={<><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="button" disabled={attachFeatureDisabled || cloneDisabled} onClick={() => modal === 'clone' ? onClone(payload) : onAttach({ feature_uuid: payload.feature_uuid, value: payload.value, metadata: buildFeatureMetadata(payload) })}>Confirm</Button></>}
     >
       <div className="form-grid">
-        {(modal === 'clone'
-          ? ['name', 'code', 'status', 'copy_features', 'is_public', 'is_custom']
-          : ['feature_uuid', 'value', 'metadata', 'limit_type']
-        ).map((name) => (
-          <label key={name} className={typeof payload[name] === 'boolean' ? 'check-row' : undefined}>
-            {typeof payload[name] === 'boolean' ? (
-              <><input type="checkbox" checked={Boolean(payload[name])} onChange={(event) => setPayload((current) => ({ ...current, [name]: event.target.checked }))} /><span>{labelize(name)}</span></>
+        {modal === 'clone' ? cloneFields.map((field) => (
+          <label key={field.name} className={field.type === 'checkbox' ? 'check-row' : undefined}>
+            {field.type === 'checkbox' ? (
+              <><input type="checkbox" checked={Boolean(payload[field.name])} onChange={(event) => setPayload((current) => ({ ...current, [field.name]: event.target.checked }))} /><FieldLabel>{field.label}</FieldLabel></>
             ) : (
-              <><span>{labelize(name)}</span><input value={String(payload[name] ?? '')} onChange={(event) => setPayload((current) => ({ ...current, [name]: event.target.value }))} /></>
+              <>
+                <FieldLabel required={field.required}>{field.label}</FieldLabel>
+                {field.type === 'select' ? (
+                  <select required={field.required} value={String(payload[field.name] ?? '')} onChange={(event) => setPayload((current) => ({ ...current, [field.name]: event.target.value }))}>
+                    {field.options?.map((option) => <option key={option} value={option}>{option}</option>)}
+                  </select>
+                ) : field.type === 'textarea' ? (
+                  <textarea value={String(payload[field.name] ?? '')} onChange={(event) => setPayload((current) => ({ ...current, [field.name]: event.target.value }))} />
+                ) : (
+                  <input required={field.required} type={field.type ?? 'text'} min={field.type === 'number' ? 0 : undefined} step={field.name === 'base_price' ? '0.01' : undefined} value={String(payload[field.name] ?? '')} onChange={(event) => setPayload((current) => ({ ...current, [field.name]: event.target.value }))} />
+                )}
+              </>
             )}
           </label>
-        ))}
+        )) : (
+          <>
+            <label>
+              <FieldLabel required>Feature</FieldLabel>
+              <select required value={String(payload.feature_uuid ?? '')} onChange={(event) => setPayload((current) => ({ ...current, feature_uuid: event.target.value }))}>
+                <option value="">{featureOptionsQuery.isLoading ? 'Loading features...' : 'Select feature'}</option>
+                {featureOptions.map((feature) => <option key={idOf(feature)} value={idOf(feature)}>{textOf(feature, ['name'])} ({textOf(feature, ['code'])})</option>)}
+              </select>
+            </label>
+            <label>
+              <FieldLabel>Value</FieldLabel>
+              <input value={String(payload.value ?? '')} onChange={(event) => setPayload((current) => ({ ...current, value: event.target.value }))} />
+            </label>
+            <label>
+              <FieldLabel>Source</FieldLabel>
+              <select value={String(payload.metadata_source ?? 'platform-ui')} onChange={(event) => setPayload((current) => ({ ...current, metadata_source: event.target.value }))}>
+                <option value="platform-ui">Platform UI</option>
+                <option value="contract">Contract</option>
+                <option value="migration">Migration</option>
+                <option value="support">Support override</option>
+              </select>
+            </label>
+            <label>
+              <FieldLabel>Scope</FieldLabel>
+              <select value={String(payload.metadata_scope ?? 'plan')} onChange={(event) => setPayload((current) => ({ ...current, metadata_scope: event.target.value }))}>
+                <option value="plan">Plan default</option>
+                <option value="tenant">Tenant override</option>
+                <option value="billing">Billing rule</option>
+                <option value="usage">Usage limit</option>
+              </select>
+            </label>
+            <label>
+              <FieldLabel>Enforcement</FieldLabel>
+              <select value={String(payload.metadata_enforcement ?? 'hard')} onChange={(event) => setPayload((current) => ({ ...current, metadata_enforcement: event.target.value }))}>
+                <option value="hard">Hard limit</option>
+                <option value="soft">Soft warning</option>
+                <option value="informational">Informational only</option>
+              </select>
+            </label>
+            <label>
+              <FieldLabel>Notes</FieldLabel>
+              <textarea value={String(payload.metadata_notes ?? '')} onChange={(event) => setPayload((current) => ({ ...current, metadata_notes: event.target.value }))} />
+            </label>
+          </>
+        )}
+        {featureOptionsQuery.isError ? <div className="surface-error">{errorMessage(featureOptionsQuery.error)}</div> : null}
       </div>
     </AppModal>
   );
@@ -1239,6 +1338,12 @@ function saveCatalog(kind: CatalogKind, id: string, form: Record<string, string 
   return mode === 'create' ? platformSubscriptionsApi.plans.create(payload) : platformSubscriptionsApi.plans.update(id, payload);
 }
 
+function deleteCatalog(kind: CatalogKind, id: string) {
+  if (kind === 'features') return platformSubscriptionsApi.features.delete(id);
+  if (kind === 'addons') return platformSubscriptionsApi.addons.delete(id);
+  return platformSubscriptionsApi.plans.delete(id);
+}
+
 function catalogDetail(kind: CatalogKind, id: string) {
   if (kind === 'features') return platformSubscriptionsApi.features.detail(id);
   if (kind === 'addons') return platformSubscriptionsApi.addons.detail(id);
@@ -1271,10 +1376,20 @@ function labelize(value: string) {
 }
 
 function parseMetadata(value: unknown) {
+  if (value && typeof value === 'object' && !Array.isArray(value)) return value as Record<string, unknown>;
   if (typeof value !== 'string' || !value.trim()) return {};
   try {
     return JSON.parse(value) as Record<string, unknown>;
   } catch {
     return { raw: value };
   }
+}
+
+function buildFeatureMetadata(payload: Record<string, string | boolean>) {
+  return {
+    source: String(payload.metadata_source || 'platform-ui'),
+    scope: String(payload.metadata_scope || 'plan'),
+    enforcement: String(payload.metadata_enforcement || 'hard'),
+    notes: String(payload.metadata_notes || '')
+  };
 }

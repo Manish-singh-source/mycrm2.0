@@ -43,6 +43,8 @@ export type BillingRecord = {
   payments?: BillingRecord[];
   refunds?: BillingRecord[];
   redemptions?: BillingRecord[];
+  plans?: BillingRecord[];
+  tenants?: BillingRecord[];
   [key: string]: unknown;
 };
 
@@ -62,6 +64,22 @@ function unwrap(response: NormalizedApiResponse<BillingRecord | Record<string, u
     const wrapped = data as Record<string, BillingRecord | unknown>;
     for (const key of keys) {
       if (wrapped[key] && typeof wrapped[key] === 'object') return wrapped[key] as BillingRecord;
+    }
+  }
+  return data as BillingRecord;
+}
+
+function unwrapCoupon(response: NormalizedApiResponse<BillingRecord | Record<string, unknown>>) {
+  const data = response.data;
+  if (data && typeof data === 'object' && !Array.isArray(data)) {
+    const wrapped = data as Record<string, unknown>;
+    if (wrapped.coupon && typeof wrapped.coupon === 'object' && !Array.isArray(wrapped.coupon)) {
+      return {
+        ...(wrapped.coupon as BillingRecord),
+        plans: Array.isArray(wrapped.plans) ? wrapped.plans as BillingRecord[] : [],
+        tenants: Array.isArray(wrapped.tenants) ? wrapped.tenants as BillingRecord[] : [],
+        redemptions: Array.isArray(wrapped.redemptions) ? wrapped.redemptions as BillingRecord[] : []
+      };
     }
   }
   return data as BillingRecord;
@@ -129,10 +147,10 @@ export const platformBillingApi = {
   },
   coupons: {
     list: (query?: ApiQuery) => list('/coupons', query),
-    detail: async (id: string) => unwrap(await platformClient.get(`/coupons/${encodeURIComponent(id)}`), ['coupon']),
-    create: async (body: Record<string, unknown>) => unwrap(await platformClient.post('/coupons', body), ['coupon']),
+    detail: async (id: string) => unwrapCoupon(await platformClient.get(`/coupons/${encodeURIComponent(id)}`)),
+    create: async (body: Record<string, unknown>) => unwrapCoupon(await platformClient.post('/coupons', body)),
     update: async (id: string, body: Record<string, unknown>) =>
-      unwrap(await platformClient.patch(`/coupons/${encodeURIComponent(id)}`, body), ['coupon']),
+      unwrapCoupon(await platformClient.patch(`/coupons/${encodeURIComponent(id)}`, body)),
     delete: (id: string) => platformClient.delete(`/coupons/${encodeURIComponent(id)}`),
     activate: (id: string) => platformClient.post(`/coupons/${encodeURIComponent(id)}/activate`),
     deactivate: (id: string) => platformClient.post(`/coupons/${encodeURIComponent(id)}/deactivate`),
@@ -140,5 +158,9 @@ export const platformBillingApi = {
     restrictPlans: (id: string, plan_uuids: string[]) => platformClient.put(`/coupons/${encodeURIComponent(id)}/plans`, { plan_uuids }),
     restrictTenants: (id: string, tenant_uuids: string[]) => platformClient.put(`/coupons/${encodeURIComponent(id)}/tenants`, { tenant_uuids }),
     export: () => platformClient.post('/coupons/export')
+  },
+  references: {
+    plans: (query?: ApiQuery) => list('/plans', query),
+    tenants: (query?: ApiQuery) => list('/tenants', query)
   }
 };

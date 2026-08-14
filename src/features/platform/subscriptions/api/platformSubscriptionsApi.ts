@@ -193,7 +193,7 @@ export const platformSubscriptionsApi = {
     create: async (body: PlanPayload) => unwrap<CatalogRecord>(await platformClient.post('/plans', body), ['plan']),
     update: async (id: string, body: Partial<PlanPayload>) =>
       unwrap<CatalogRecord>(await platformClient.patch(`/plans/${encodeURIComponent(id)}`, body), ['plan']),
-    archive: (id: string) => platformClient.delete(`/plans/${encodeURIComponent(id)}`),
+    delete: (id: string) => platformClient.delete(`/plans/${encodeURIComponent(id)}`),
     clone: (id: string, body: Record<string, unknown>) =>
       platformClient.post(`/plans/${encodeURIComponent(id)}/clone`, body),
     features: (id: string) => platformClient.get<{ features: CatalogRecord[] }>(`/plans/${encodeURIComponent(id)}/features`),
@@ -219,6 +219,6 @@ export const platformSubscriptionsApi = {
     create: async (body: AddonPayload) => unwrap<CatalogRecord>(await platformClient.post('/addons', body), ['addon']),
     update: async (id: string, body: Partial<AddonPayload>) =>
       unwrap<CatalogRecord>(await platformClient.patch(`/addons/${encodeURIComponent(id)}`, body), ['addon']),
-    archive: (id: string) => platformClient.delete(`/addons/${encodeURIComponent(id)}`)
+    delete: (id: string) => platformClient.delete(`/addons/${encodeURIComponent(id)}`)
   }
 };

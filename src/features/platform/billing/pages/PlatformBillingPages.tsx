@@ -17,7 +17,7 @@ import { Button, PermissionButton } from '@/shared/components/ui';
 import { ConfirmDialog } from '@/shared/components/workflows';
 
 type BillingKind = 'invoices' | 'payments' | 'refunds' | 'coupons';
-type BillingModal = 'manualInvoice' | 'lineItemEditor' | 'sendInvoice' | 'recordPayment' | 'cancelInvoice' | 'pdfPreview' | 'gatewayResponse' | 'retryPayment' | 'refundPayment' | 'retryRefund' | 'couponRules' | 'assignPlans' | 'assignTenants' | 'disableCoupon' | null;
+type BillingModal = 'manualInvoice' | 'lineItemEditor' | 'sendInvoice' | 'recordPayment' | 'cancelInvoice' | 'pdfPreview' | 'gatewayResponse' | 'retryPayment' | 'refundPayment' | 'retryRefund' | 'couponRules' | 'assignPlans' | 'assignTenants' | 'activateCoupon' | 'deactivateCoupon' | 'deleteCoupon' | null;
 
 type InvoiceLineItem = {
   item_type: string;
@@ -33,6 +33,7 @@ type ModalField = {
   label: string;
   type?: string;
   options?: string[];
+  required?: boolean;
 };
 
 const billingMeta = {
@@ -70,6 +71,10 @@ function statusTone(status: string): 'neutral' | 'success' | 'warning' | 'danger
   if (['draft', 'pending', 'processing'].includes(status)) return 'warning';
   if (['failed', 'cancelled', 'canceled', 'void', 'disabled'].includes(status)) return 'danger';
   return 'neutral';
+}
+
+function isActiveCoupon(record?: BillingRecord | null) {
+  return textOf(record, ['status'], '').toLowerCase() === 'active';
 }
 
 function Badge({ value }: { value: string }) {
@@ -221,12 +226,18 @@ function BillingView({ kind }: { kind: BillingKind }) {
   const queryClient = useQueryClient();
   const [modal, setModal] = useState<BillingModal>(null);
   const query = useQuery({ queryKey: platformQueryKeys.detail(meta.resourceKey, id), queryFn: () => detailFor(kind, id) });
+  const redemptionsQuery = useQuery({
+    queryKey: platformQueryKeys.related('coupons', id, 'redemptions'),
+    queryFn: () => platformBillingApi.coupons.redemptions(id),
+    enabled: kind === 'coupons' && Boolean(id)
+  });
   const mutation = useMutation({
     mutationFn: ({ action, record, payload }: { action: BillingModal; record: BillingRecord; payload: Record<string, unknown> }) => mutateFor(kind, action, record, payload),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource(meta.resourceKey) });
-      setModal(null);
-    }
+	    onSuccess: async () => {
+	      await queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource(meta.resourceKey) });
+	      await queryClient.invalidateQueries({ queryKey: platformQueryKeys.detail(meta.resourceKey, id) });
+	      setModal(null);
+	    }
   });
   if (query.isLoading) return <div className="surface-state">Loading {meta.singular.toLowerCase()}...</div>;
   if (query.isError) return <div className="surface-error">{errorMessage(query.error)}</div>;
@@ -234,14 +245,20 @@ function BillingView({ kind }: { kind: BillingKind }) {
   if (!record) return <div className="empty-state">{meta.singular} not found.</div>;
   return (
     <section className="enterprise-module-page platform-billing-page">
-      <PageHeader title={textOf(record, ['invoice_number', 'payment_number', 'refund_number', 'code', 'name'], meta.singular)} description={textOf(record, ['tenant_name', 'organization_name', 'status', 'payment_status', 'refund_status'])} actions={<ViewActions kind={kind} onModal={setModal} />} />
+      <PageHeader title={textOf(record, ['invoice_number', 'payment_number', 'refund_number', 'code', 'name'], meta.singular)} description={textOf(record, ['tenant_name', 'organization_name', 'status', 'payment_status', 'refund_status'])} actions={<ViewActions kind={kind} record={record} onModal={setModal} />} />
       <BillingStats kind={kind} rows={[record]} />
       <DetailTabs tabs={[
         { id: 'summary', label: 'Summary', content: <RecordDetails record={record} /> },
         { id: 'items', label: 'Line items', content: <RecordList rows={record.items ?? []} /> },
         { id: 'payments', label: 'Payments', content: <RecordList rows={record.payments ?? []} /> },
         { id: 'refunds', label: 'Refunds', content: <RecordList rows={record.refunds ?? []} /> },
-        { id: 'redemptions', label: 'Redemptions', content: <RecordList rows={record.redemptions ?? []} /> }
+        ...(kind === 'coupons'
+          ? [
+              { id: 'plans', label: 'Plans', content: <RecordList rows={record.plans ?? []} /> },
+              { id: 'tenants', label: 'Tenants', content: <RecordList rows={record.tenants ?? []} /> },
+              { id: 'redemptions', label: 'Redemptions', content: <RecordList rows={(redemptionsQuery.data?.data.redemptions ?? record.redemptions ?? []) as BillingRecord[]} /> }
+            ]
+          : [{ id: 'redemptions', label: 'Redemptions', content: <RecordList rows={record.redemptions ?? []} /> }])
       ]} />
       <BillingActionSurface modal={modal} kind={kind} record={record} loading={mutation.isPending} error={mutation.error} onClose={() => setModal(null)} onConfirm={(payload) => { if (!modal) return; mutation.mutate({ action: modal, record, payload }); }} />
     </section>
@@ -296,6 +313,7 @@ function columnsFor(kind: BillingKind, handlers: { onView: (record: BillingRecor
 function BillingRowActions({ kind, row, handlers }: { kind: BillingKind; row: BillingRecord; handlers: { onView: (record: BillingRecord) => void; onModal: (modal: BillingModal, record: BillingRecord) => void } }) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const couponActive = isActiveCoupon(row);
   function run(callback: () => void) { callback(); setOpen(false); }
   return (
     <div className="action-dropdown">
@@ -306,7 +324,7 @@ function BillingRowActions({ kind, row, handlers }: { kind: BillingKind; row: Bi
           {kind === 'invoices' ? <><PermissionButton guard="platform" permission="billing.invoice.send" type="button" role="menuitem" variant="ghost" onClick={() => run(() => handlers.onModal('sendInvoice', row))}><Send size={15} aria-hidden /> Send Invoice</PermissionButton><PermissionButton guard="platform" permission="billing.payment.create" type="button" role="menuitem" variant="ghost" onClick={() => run(() => handlers.onModal('recordPayment', row))}><BadgeDollarSign size={15} aria-hidden /> Record Payment</PermissionButton><button type="button" role="menuitem" onClick={() => run(() => handlers.onModal('pdfPreview', row))}><FileText size={15} aria-hidden /> PDF Preview</button><hr /><PermissionButton guard="platform" permission="billing.invoice.cancel" type="button" role="menuitem" variant="ghost" className="is-danger" onClick={() => run(() => handlers.onModal('cancelInvoice', row))}><Trash2 size={15} aria-hidden /> Cancel Invoice</PermissionButton></> : null}
           {kind === 'payments' ? <><button type="button" role="menuitem" onClick={() => run(() => handlers.onModal('gatewayResponse', row))}><FileSpreadsheet size={15} aria-hidden /> Gateway Response</button><PermissionButton guard="platform" permission="billing.payment.create" type="button" role="menuitem" variant="ghost" onClick={() => run(() => handlers.onModal('retryPayment', row))}><RotateCw size={15} aria-hidden /> Retry Payment</PermissionButton><PermissionButton guard="platform" permission="billing.payment.refund" type="button" role="menuitem" variant="ghost" onClick={() => run(() => handlers.onModal('refundPayment', row))}><RefreshCw size={15} aria-hidden /> Initiate Refund</PermissionButton></> : null}
           {kind === 'refunds' ? <><button type="button" role="menuitem" onClick={() => run(() => handlers.onModal('gatewayResponse', row))}><FileSpreadsheet size={15} aria-hidden /> Gateway Response</button><PermissionButton guard="platform" permission="billing.payment.refund" type="button" role="menuitem" variant="ghost" onClick={() => run(() => handlers.onModal('retryRefund', row))}><RotateCw size={15} aria-hidden /> Retry Refund</PermissionButton></> : null}
-          {kind === 'coupons' ? <><PermissionButton guard="platform" permission="coupon.edit" type="button" role="menuitem" variant="ghost" onClick={() => run(() => handlers.onModal('couponRules', row))}><Pencil size={15} aria-hidden /> Rule Builder</PermissionButton><PermissionButton guard="platform" permission="coupon.edit" type="button" role="menuitem" variant="ghost" onClick={() => run(() => handlers.onModal('assignPlans', row))}><Tags size={15} aria-hidden /> Assign Plans</PermissionButton><PermissionButton guard="platform" permission="coupon.edit" type="button" role="menuitem" variant="ghost" onClick={() => run(() => handlers.onModal('assignTenants', row))}><Tags size={15} aria-hidden /> Assign Tenants</PermissionButton><PermissionButton guard="platform" permission="coupon.delete" type="button" role="menuitem" variant="ghost" className="is-danger" onClick={() => run(() => handlers.onModal('disableCoupon', row))}><Trash2 size={15} aria-hidden /> Disable Coupon</PermissionButton></> : null}
+          {kind === 'coupons' ? <><PermissionButton guard="platform" permission="coupon.edit" type="button" role="menuitem" variant="ghost" onClick={() => run(() => handlers.onModal('couponRules', row))}><Pencil size={15} aria-hidden /> Rule Builder</PermissionButton><PermissionButton guard="platform" permission="coupon.edit" type="button" role="menuitem" variant="ghost" onClick={() => run(() => handlers.onModal('assignPlans', row))}><Tags size={15} aria-hidden /> Assign Plans</PermissionButton><PermissionButton guard="platform" permission="coupon.edit" type="button" role="menuitem" variant="ghost" onClick={() => run(() => handlers.onModal('assignTenants', row))}><Tags size={15} aria-hidden /> Assign Tenants</PermissionButton>{couponActive ? <PermissionButton guard="platform" permission="coupon.edit" type="button" role="menuitem" variant="ghost" onClick={() => run(() => handlers.onModal('deactivateCoupon', row))}><Trash2 size={15} aria-hidden /> Deactivate</PermissionButton> : <PermissionButton guard="platform" permission="coupon.edit" type="button" role="menuitem" variant="ghost" onClick={() => run(() => handlers.onModal('activateCoupon', row))}><RefreshCw size={15} aria-hidden /> Activate</PermissionButton>}<PermissionButton guard="platform" permission="coupon.delete" type="button" role="menuitem" variant="ghost" className="is-danger" onClick={() => run(() => handlers.onModal('deleteCoupon', row))}><Trash2 size={15} aria-hidden /> Delete / Archive</PermissionButton></> : null}
         </div>
       </PortalActionMenu>
     </div>
@@ -345,7 +363,12 @@ function BillingActionSurface({ modal, kind, record, loading, error, onClose, on
   }
   if (modal === 'gatewayResponse') return <AppDrawer open onClose={onClose} title="Gateway Response" guard="platform" permission="billing.payment.view" size="lg"><DetailSummary record={rawSummary(record?.raw_response ?? record ?? {})} /></AppDrawer>;
   if (modal === 'cancelInvoice') return <ConfirmDialog open onClose={onClose} title="Cancel invoice?" description="This affects accounting records. If this invoice has been sent, type CANCEL and provide a reason before cancelling." confirmLabel="Cancel Invoice" confirmTone="danger" typedConfirmation="CANCEL" reasonRequired guard="platform" permission="billing.invoice.cancel" loading={loading} error={error ? errorMessage(error) : null} onConfirm={(values) => onConfirm({ reason: values.reason ?? payload.reason })} />;
-  if (modal === 'disableCoupon') return <ConfirmDialog open onClose={onClose} title="Disable coupon?" description="Active and future redemptions may be affected. Existing redemptions remain in reporting." confirmLabel="Disable Coupon" confirmTone="danger" guard="platform" permission="coupon.delete" loading={loading} error={error ? errorMessage(error) : null} onConfirm={() => onConfirm({})} />;
+  if (modal === 'activateCoupon') return <ConfirmDialog open onClose={onClose} title="Activate coupon?" description="This makes the coupon available for eligible future redemptions." confirmLabel="Activate" guard="platform" permission="coupon.edit" loading={loading} error={error ? errorMessage(error) : null} onConfirm={() => onConfirm({})} />;
+  if (modal === 'deactivateCoupon') return <ConfirmDialog open onClose={onClose} title="Deactivate coupon?" description="Future redemptions will stop. Existing redemptions remain in reporting." confirmLabel="Deactivate" confirmTone="danger" guard="platform" permission="coupon.edit" loading={loading} error={error ? errorMessage(error) : null} onConfirm={() => onConfirm({})} />;
+  if (modal === 'deleteCoupon') return <ConfirmDialog open onClose={onClose} title="Delete or archive coupon?" description="Unused coupons are deleted. Coupons with redemptions are archived by the API." confirmLabel="Delete / Archive" confirmTone="danger" typedConfirmation="DELETE" guard="platform" permission="coupon.delete" loading={loading} error={error ? errorMessage(error) : null} onConfirm={() => onConfirm({})} />;
+  if (modal === 'assignPlans' || modal === 'assignTenants') {
+    return <CouponAssignmentModal modal={modal} record={record} loading={loading} error={error} onClose={onClose} onConfirm={onConfirm} />;
+  }
   if (modal === 'refundPayment') {
     const reasonOk = String(payload.reason ?? '').trim().length > 0;
     return (
@@ -358,12 +381,64 @@ function BillingActionSurface({ modal, kind, record, loading, error, onClose, on
   }
 
   const fields = fieldsForModal(modal);
+  const missingRequired = fields.some((field) => field.required && !payload[field.name]);
   return (
-    <AppModal open onClose={onClose} title={titleFor(modal)} guard="platform" permission={permissionFor(modal, kind)} size="lg" loading={loading} error={error ? errorMessage(error) : null} footer={<><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="button" onClick={() => onConfirm(payload)} disabled={loading}>Confirm</Button></>}>
+    <AppModal open onClose={onClose} title={titleFor(modal)} guard="platform" permission={permissionFor(modal, kind)} size="lg" loading={loading} error={error ? errorMessage(error) : null} footer={<><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="button" onClick={() => onConfirm(payload)} disabled={loading || missingRequired}>Confirm</Button></>}>
       {modal === 'couponRules' ? <div className="surface-state">Build coupon restrictions for discount, dates, redemption limits, plans and tenants.</div> : null}
-      {modal === 'assignPlans' ? <div className="surface-state">Paste comma-separated plan UUIDs. This calls PUT /coupons/{`id`}/plans.</div> : null}
-      {modal === 'assignTenants' ? <div className="surface-state">Paste comma-separated tenant UUIDs. This calls PUT /coupons/{`id`}/tenants.</div> : null}
       <GenericFields fields={fields} payload={payload} onChange={setPayload} />
+    </AppModal>
+  );
+}
+
+function CouponAssignmentModal({ modal, record, loading, error, onClose, onConfirm }: {
+  modal: 'assignPlans' | 'assignTenants';
+  record?: BillingRecord | null;
+  loading: boolean;
+  error: unknown;
+  onClose: () => void;
+  onConfirm: (payload: Record<string, unknown>) => void;
+}) {
+  const couponId = idOf(record);
+  const isPlans = modal === 'assignPlans';
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const optionsQuery = useQuery({
+    queryKey: platformQueryKeys.list(isPlans ? 'plans' : 'tenants', { per_page: 100, status: isPlans ? 'active' : undefined }),
+    queryFn: () => isPlans ? platformBillingApi.references.plans({ per_page: 100, status: 'active' }) : platformBillingApi.references.tenants({ per_page: 100 })
+  });
+  const detailQuery = useQuery({
+    queryKey: platformQueryKeys.detail('coupon-assignment-source', couponId),
+    queryFn: () => platformBillingApi.coupons.detail(couponId),
+    enabled: Boolean(couponId)
+  });
+  const options = optionsQuery.data?.data ?? [];
+
+  useEffect(() => {
+    const assigned = isPlans ? detailQuery.data?.plans : detailQuery.data?.tenants;
+    if (!assigned) {
+      setSelectedIds([]);
+      return;
+    }
+    setSelectedIds(assigned.map(idOf).filter(Boolean));
+  }, [detailQuery.data, isPlans]);
+
+  function toggle(id: string) {
+    setSelectedIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  }
+
+  return (
+    <AppModal open onClose={onClose} title={isPlans ? 'Assign Plans' : 'Assign Tenants'} guard="platform" permission="coupon.edit" size="lg" loading={loading || optionsQuery.isLoading || detailQuery.isLoading} error={error ? errorMessage(error) : optionsQuery.isError ? errorMessage(optionsQuery.error) : detailQuery.isError ? errorMessage(detailQuery.error) : null} footer={<><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="button" onClick={() => onConfirm(isPlans ? { plan_uuids: selectedIds } : { tenant_uuids: selectedIds })} disabled={loading}>Save Assignments</Button></>}>
+      <div className="surface-state">{selectedIds.length} {isPlans ? 'plan' : 'tenant'} assignment{selectedIds.length === 1 ? '' : 's'} selected.</div>
+      <div className="record-list">
+        {options.map((option) => {
+          const optionId = idOf(option);
+          return (
+            <label key={optionId} className="check-row">
+              <input type="checkbox" checked={selectedIds.includes(optionId)} onChange={() => toggle(optionId)} />
+              <span>{isPlans ? `${textOf(option, ['name'])} (${textOf(option, ['code'])})` : `${textOf(option, ['organization_name', 'name'])} (${textOf(option, ['slug'])})`}</span>
+            </label>
+          );
+        })}
+      </div>
     </AppModal>
   );
 }
@@ -400,7 +475,7 @@ function PortalActionMenu({ anchorRef, children, onClose, open }: { anchorRef: R
   return createPortal(<div className="action-menu-portal" style={{ left: position.left, top: position.top }}><button type="button" className="action-menu-backdrop" aria-label="Close actions menu" onClick={onClose} />{children}</div>, document.body);
 }
 
-function ViewActions({ kind, onModal }: { kind: BillingKind; onModal: (modal: BillingModal) => void }) {
+function ViewActions({ kind, record, onModal }: { kind: BillingKind; record?: BillingRecord | null; onModal: (modal: BillingModal) => void }) {
   if (kind === 'invoices') {
     return (
       <>
@@ -428,12 +503,18 @@ function ViewActions({ kind, onModal }: { kind: BillingKind; onModal: (modal: Bi
       </>
     );
   }
+  const couponActive = isActiveCoupon(record);
   return (
     <>
       <Button type="button" variant="secondary" onClick={() => onModal('couponRules')}><Pencil size={16} aria-hidden />Rules</Button>
       <Button type="button" variant="secondary" onClick={() => onModal('assignPlans')}><Tags size={16} aria-hidden />Plans</Button>
       <Button type="button" variant="secondary" onClick={() => onModal('assignTenants')}><Tags size={16} aria-hidden />Tenants</Button>
-      <Button type="button" variant="danger" onClick={() => onModal('disableCoupon')}><Trash2 size={16} aria-hidden />Disable</Button>
+      {couponActive ? (
+        <Button type="button" variant="secondary" onClick={() => onModal('deactivateCoupon')}><Trash2 size={16} aria-hidden />Deactivate</Button>
+      ) : (
+        <Button type="button" variant="secondary" onClick={() => onModal('activateCoupon')}><RefreshCw size={16} aria-hidden />Activate</Button>
+      )}
+      <Button type="button" variant="danger" onClick={() => onModal('deleteCoupon')}><Trash2 size={16} aria-hidden />Delete</Button>
     </>
   );
 }
@@ -450,15 +531,15 @@ function GenericFields({ fields, payload, onChange }: { fields: ModalField[]; pa
             </>
           ) : (
             <>
-              <span>{field.label}</span>
+              <span>{field.label}{field.required ? <span className="required-marker" aria-hidden="true">*</span> : null}</span>
               {field.type === 'select' ? (
-                <select value={String(payload[field.name] ?? '')} onChange={(event) => onChange({ ...payload, [field.name]: event.target.value })}>
+                <select required={field.required} value={String(payload[field.name] ?? '')} onChange={(event) => onChange({ ...payload, [field.name]: event.target.value })}>
                   {field.options?.map((option) => <option key={option} value={option}>{option}</option>)}
                 </select>
               ) : field.type === 'textarea' ? (
-                <textarea value={String(payload[field.name] ?? '')} onChange={(event) => onChange({ ...payload, [field.name]: event.target.value })} />
+                <textarea required={field.required} value={String(payload[field.name] ?? '')} onChange={(event) => onChange({ ...payload, [field.name]: event.target.value })} />
               ) : (
-                <input type={field.type ?? 'text'} value={String(payload[field.name] ?? '')} onChange={(event) => onChange({ ...payload, [field.name]: field.type === 'number' ? Number(event.target.value) : event.target.value })} />
+                <input required={field.required} type={field.type ?? 'text'} value={String(payload[field.name] ?? '')} onChange={(event) => onChange({ ...payload, [field.name]: field.type === 'number' ? Number(event.target.value) : event.target.value })} />
               )}
             </>
           )}
@@ -602,9 +683,11 @@ async function mutateFor(kind: BillingKind, action: BillingModal, record: Billin
     const coupon = id ? await platformBillingApi.coupons.update(id, payload) : await platformBillingApi.coupons.create(payload);
     return { data: coupon };
   }
-  if (action === 'assignPlans') return platformBillingApi.coupons.restrictPlans(id, parseCsv(payload.plan_uuids));
-  if (action === 'assignTenants') return platformBillingApi.coupons.restrictTenants(id, parseCsv(payload.tenant_uuids));
-  if (action === 'disableCoupon') return platformBillingApi.coupons.deactivate(id);
+  if (action === 'assignPlans') return platformBillingApi.coupons.restrictPlans(id, Array.isArray(payload.plan_uuids) ? payload.plan_uuids.map(String) : parseCsv(payload.plan_uuids));
+  if (action === 'assignTenants') return platformBillingApi.coupons.restrictTenants(id, Array.isArray(payload.tenant_uuids) ? payload.tenant_uuids.map(String) : parseCsv(payload.tenant_uuids));
+  if (action === 'activateCoupon') return platformBillingApi.coupons.activate(id);
+  if (action === 'deactivateCoupon') return platformBillingApi.coupons.deactivate(id);
+  if (action === 'deleteCoupon') return platformBillingApi.coupons.delete(id);
   return { data: null };
 }
 
@@ -621,9 +704,7 @@ function fieldsForModal(modal: BillingModal): ModalField[] {
   if (modal === 'retryPayment') return [{ name: 'gateway', label: 'Gateway' }, { name: 'amount', label: 'Amount', type: 'number' }, { name: 'reason', label: 'Reason' }];
   if (modal === 'refundPayment') return [{ name: 'amount', label: 'Refund Amount', type: 'number' }, { name: 'currency', label: 'Currency' }, { name: 'reason', label: 'Reason' }, { name: 'gateway', label: 'Gateway' }, { name: 'confirm_gateway_refund', label: 'Confirm gateway refund', type: 'checkbox' }];
   if (modal === 'retryRefund') return [{ name: 'gateway', label: 'Gateway' }, { name: 'reason', label: 'Retry Reason' }];
-  if (modal === 'couponRules') return [{ name: 'code', label: 'Code' }, { name: 'name', label: 'Name' }, { name: 'discount_type', label: 'Discount Type', type: 'select', options: ['percent', 'fixed'] }, { name: 'discount_value', label: 'Discount Value', type: 'number' }, { name: 'starts_at', label: 'Starts At', type: 'datetime-local' }, { name: 'expires_at', label: 'Expires At', type: 'datetime-local' }, { name: 'max_redemptions', label: 'Max Redemptions', type: 'number' }, { name: 'minimum_invoice_amount', label: 'Minimum Invoice Amount', type: 'number' }, { name: 'per_tenant_limit', label: 'Per Tenant Limit', type: 'number' }, { name: 'first_payment_only', label: 'First Payment Only', type: 'checkbox' }, { name: 'status', label: 'Status', type: 'select', options: ['active', 'inactive'] }];
-  if (modal === 'assignPlans') return [{ name: 'plan_uuids', label: 'Plan UUIDs', type: 'textarea' }];
-  if (modal === 'assignTenants') return [{ name: 'tenant_uuids', label: 'Tenant UUIDs', type: 'textarea' }];
+  if (modal === 'couponRules') return [{ name: 'code', label: 'Code', required: true }, { name: 'name', label: 'Name', required: true }, { name: 'discount_type', label: 'Discount Type', type: 'select', options: ['percent', 'fixed'], required: true }, { name: 'discount_value', label: 'Discount Value', type: 'number', required: true }, { name: 'starts_at', label: 'Starts At', type: 'datetime-local' }, { name: 'expires_at', label: 'Expires At', type: 'datetime-local' }, { name: 'max_redemptions', label: 'Max Redemptions', type: 'number' }, { name: 'status', label: 'Status', type: 'select', options: ['active', 'inactive'] }];
   return [];
 }
 
@@ -634,9 +715,7 @@ function defaultPayload(modal: BillingModal, record?: BillingRecord | null): Rec
   if (modal === 'retryPayment') return { gateway: textOf(record, ['gateway'], 'razorpay'), amount: Number(record?.amount ?? 0), reason: 'Retry failed payment' };
   if (modal === 'refundPayment') return { amount: Number(record?.amount ?? 0), currency: textOf(record, ['currency'], 'INR'), reason: '', gateway: textOf(record, ['gateway'], 'razorpay'), confirm_gateway_refund: false };
   if (modal === 'retryRefund') return { gateway: textOf(record, ['gateway'], 'razorpay'), reason: 'Retry failed refund' };
-  if (modal === 'couponRules') return { code: textOf(record, ['code'], ''), name: textOf(record, ['name'], ''), discount_type: textOf(record, ['discount_type'], 'percent'), discount_value: Number(record?.discount_value ?? 0), starts_at: textOf(record, ['starts_at'], now), expires_at: textOf(record, ['expires_at'], ''), max_redemptions: Number(record?.max_redemptions ?? 100), minimum_invoice_amount: Number(record?.minimum_invoice_amount ?? 0), per_tenant_limit: Number(record?.per_tenant_limit ?? 1), first_payment_only: Boolean(record?.first_payment_only), status: textOf(record, ['status'], 'active') };
-  if (modal === 'assignPlans') return { plan_uuids: '' };
-  if (modal === 'assignTenants') return { tenant_uuids: '' };
+  if (modal === 'couponRules') return { code: textOf(record, ['code'], ''), name: textOf(record, ['name'], ''), discount_type: textOf(record, ['discount_type'], 'percent'), discount_value: Number(record?.discount_value ?? 0), starts_at: textOf(record, ['starts_at'], now), expires_at: textOf(record, ['expires_at'], ''), max_redemptions: Number(record?.max_redemptions ?? 100), status: textOf(record, ['status'], 'active') };
   return {};
 }
 
@@ -649,6 +728,9 @@ function titleFor(modal: BillingModal) {
   if (modal === 'couponRules') return 'Coupon Rule Builder';
   if (modal === 'assignPlans') return 'Assign Plans';
   if (modal === 'assignTenants') return 'Assign Tenants';
+  if (modal === 'activateCoupon') return 'Activate Coupon';
+  if (modal === 'deactivateCoupon') return 'Deactivate Coupon';
+  if (modal === 'deleteCoupon') return 'Delete or Archive Coupon';
   return 'Billing Action';
 }
 
@@ -656,6 +738,7 @@ function permissionFor(modal: BillingModal, kind: BillingKind) {
   if (modal === 'sendInvoice') return 'billing.invoice.send';
   if (modal === 'recordPayment' || modal === 'retryPayment') return 'billing.payment.create';
   if (modal === 'refundPayment' || modal === 'retryRefund') return 'billing.payment.refund';
-  if (modal === 'couponRules' || modal === 'assignPlans' || modal === 'assignTenants') return 'coupon.edit';
+  if (modal === 'couponRules' || modal === 'assignPlans' || modal === 'assignTenants' || modal === 'activateCoupon' || modal === 'deactivateCoupon') return 'coupon.edit';
+  if (modal === 'deleteCoupon') return 'coupon.delete';
   return billingMeta[kind].permission + '.view';
 }
