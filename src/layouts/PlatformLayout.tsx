@@ -29,15 +29,13 @@ export function PlatformLayout() {
           onToggleCollapse={toggleSidebar}
         />
       )}
-      topbar={({ toggleSidebar }) => (
+      topbar={() => (
         <AppTopbar
           title="Platform"
-          searchPlaceholder="Search for tenants, users, invoices..."
           locale={locale}
           timezone={timezone}
           notificationCount={4}
           profileName={user?.displayName}
-          onToggleSidebar={toggleSidebar}
           onLogout={handleLogout}
         />
       )}

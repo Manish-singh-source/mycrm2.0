@@ -60,14 +60,13 @@ export function TenantLayout() {
           onToggleCollapse={toggleSidebar}
         />
       )}
-      topbar={({ toggleSidebar }) => (
+      topbar={() => (
         <AppTopbar
           title={tenant?.organizationName ?? 'Tenant CRM'}
           locale={locale}
           timezone={timezone}
           notificationCount={badges.unreadNotifications}
           profileName={user?.displayName}
-          onToggleSidebar={toggleSidebar}
           onLogout={handleLogout}
           quickActions={
             <>

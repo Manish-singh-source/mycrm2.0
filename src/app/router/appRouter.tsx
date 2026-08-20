@@ -5,7 +5,6 @@ import { PlatformLayout } from '@/layouts/PlatformLayout';
 import { TenantLayout } from '@/layouts/TenantLayout';
 import { PublicAuthRoute } from '@/features/auth/guards/PublicAuthRoute';
 import {
-  AccountSettingsPage,
   ApiTokensPage,
   AuthLoginPage,
   ForgotPasswordPage,
@@ -91,7 +90,6 @@ import {
 import { ForbiddenPage } from '@/pages/ForbiddenPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { PlaceholderPage } from '@/pages/PlaceholderPage';
-import { SampleEnterpriseModulePage } from '@/pages/SampleEnterpriseModulePage';
 import { PLATFORM_ROUTES } from '@/features/platform/routes/platformRoutes';
 import { TenantDashboardPage, TenantMyDashboardPage } from '@/features/tenant/pages/TenantDashboardPages';
 import { TenantProfilePage } from '@/features/tenant/pages/TenantProfilePages';
@@ -283,7 +281,6 @@ export const appRouter = createBrowserRouter([
           </RequirePermission>
         )
       },
-      { path: 'sample-module', element: <SampleEnterpriseModulePage /> },
       {
         path: 'staff',
         element: (

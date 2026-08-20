@@ -1,29 +1,23 @@
-import { Bell, ChevronDown, CircleHelp, LogOut, Menu, Moon, UserCircle2 } from 'lucide-react';
+import { Bell, ChevronDown, CircleHelp, LogOut, Moon, UserCircle2 } from 'lucide-react';
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 
-import { Button } from '@/shared/components/ui';
-
 type AppTopbarProps = {
   title: string;
-  searchPlaceholder?: string;
   locale: string;
   timezone: string;
   notificationCount?: number;
   profileName?: string;
-  onToggleSidebar: () => void;
   onLogout?: () => void;
   quickActions?: ReactNode;
 };
 
 export function AppTopbar({
   title,
-  searchPlaceholder = 'Search records, commands, or pages',
   locale,
   timezone,
   notificationCount = 0,
   profileName,
-  onToggleSidebar,
   onLogout,
   quickActions
 }: AppTopbarProps) {
@@ -31,25 +25,7 @@ export function AppTopbar({
 
   return (
     <div className="topbar">
-      <div className="topbar__left">
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="sidebar-toggle"
-          onClick={onToggleSidebar}
-          aria-label="Open navigation"
-        >
-          <Menu size={18} aria-hidden />
-        </Button>
-        {/* <label className="topbar-search">
-          <Search size={16} aria-hidden />
-          <span className="sr-only">Search</span>
-          <input type="search" placeholder={searchPlaceholder} aria-label="Search" />
-          <kbd>Ctrl K</kbd>
-        </label> */}
-      </div>
-
+      <div className="topbar__left" aria-hidden="true" />
       <div className="topbar__right">
         {quickActions ? <div className="topbar-quick-actions">{quickActions}</div> : null}
         <button type="button" className="topbar-icon-button" aria-label="Toggle theme">

@@ -217,8 +217,8 @@ function SubscriptionsList() {
   });
   const rows = listQuery.data?.data ?? [];
 
-  const lifecycleMutation = useMutation({
-    mutationFn: ({ action, record, payload }: { action: Exclude<SubscriptionModal, null | 'invoice'>; record?: SubscriptionRecord | null; payload: Record<string, unknown> }) => {
+  const lifecycleMutation = useMutation<unknown, Error, { action: Exclude<SubscriptionModal, null | 'invoice'>; record?: SubscriptionRecord | null; payload: Record<string, unknown> }>({
+    mutationFn: async ({ action, record, payload }: { action: Exclude<SubscriptionModal, null | 'invoice'>; record?: SubscriptionRecord | null; payload: Record<string, unknown> }) => {
       if (action === 'create') return platformSubscriptionsApi.subscriptions.create(payload);
       if (!record) throw new Error('Select a subscription first.');
       const id = idOf(record);
@@ -245,7 +245,7 @@ function SubscriptionsList() {
     }
   });
 
-  const invoiceMutation = useMutation({
+  const invoiceMutation = useMutation<unknown, Error, SubscriptionRecord>({
     mutationFn: (record: SubscriptionRecord) => platformSubscriptionsApi.subscriptions.invoice(idOf(record)),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource('subscriptions') })
   });
@@ -349,8 +349,8 @@ function SubscriptionView({ id }: { id: string }) {
     queryFn: () => platformSubscriptionsApi.subscriptions.history(id),
     enabled: Boolean(id)
   });
-  const mutation = useMutation({
-    mutationFn: ({ action, payload }: { action: Exclude<SubscriptionModal, null | 'invoice'>; payload: Record<string, unknown> }) => {
+  const mutation = useMutation<unknown, Error, { action: Exclude<SubscriptionModal, null | 'invoice'>; payload: Record<string, unknown> }>({
+    mutationFn: async ({ action, payload }: { action: Exclude<SubscriptionModal, null | 'invoice'>; payload: Record<string, unknown> }) => {
       if (action === 'create') return platformSubscriptionsApi.subscriptions.create(payload);
       if (action === 'edit') return platformSubscriptionsApi.subscriptions.update(id, payload);
       if (action === 'upgrade') return platformSubscriptionsApi.subscriptions.upgrade(id, payload);
