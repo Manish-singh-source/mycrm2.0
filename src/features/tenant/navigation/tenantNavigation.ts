@@ -1,4 +1,4 @@
-import {
+﻿import {
   Banknote,
   BellRing,
   BriefcaseBusiness,
@@ -47,7 +47,6 @@ export function buildTenantNavigation(tenantSlug: string, badges: TenantNavigati
       id: 'access-control',
       label: 'Access Control',
       items: [
-        { label: 'Permissions', to: TENANT_ROUTES.accessControl.permissions(tenantSlug), icon: KeyRound, permission: 'permission.view' },
         { label: 'Roles', to: TENANT_ROUTES.accessControl.roles(tenantSlug), icon: ShieldCheck, permission: 'role.view' },
         { label: 'Teams', to: TENANT_ROUTES.accessControl.teams(tenantSlug), icon: Users, permission: 'team.view' },
         { label: 'Staffs', to: TENANT_ROUTES.accessControl.users(tenantSlug), icon: Users, permission: 'staff.view' }
