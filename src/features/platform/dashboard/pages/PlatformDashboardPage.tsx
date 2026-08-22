@@ -1,13 +1,11 @@
-import { useMemo, useState, type ReactNode } from 'react';
+﻿import { useMemo, useState, type ReactNode } from 'react';
 import {
   AlertTriangle,
   Bell,
   BriefcaseBusiness,
   CalendarDays,
   Download,
-  Filter,
   Plus,
-  Search,
   ShieldAlert,
   Users
 } from 'lucide-react';
@@ -26,7 +24,6 @@ import {
   XAxis,
   YAxis
 } from 'recharts';
-import { useNavigate } from 'react-router-dom';
 
 import {
   usePlatformDashboardMutations,
@@ -37,7 +34,6 @@ import type {
   DashboardDateRange,
   DashboardTableRow
 } from '@/features/platform/dashboard/api/platformDashboardApi';
-import { PLATFORM_ROUTES } from '@/features/platform/routes/platformRoutes';
 import { DataTable, type DataTableColumn } from '@/shared/components/data-table';
 import { AppDrawer } from '@/shared/components/drawer';
 import { AppModal } from '@/shared/components/modal';
@@ -122,7 +118,6 @@ function statusClass(value: string) {
 }
 
 export function PlatformDashboardPage() {
-  const navigate = useNavigate();
   const [range, setRange] = useState<DashboardDateRange>({
     date_from: '2026-08-01',
     date_to: '2026-08-08'
@@ -146,6 +141,7 @@ export function PlatformDashboardPage() {
   const subscriptionStatus = chartFrom(queries.subscriptionStatus);
   const planDistribution = chartFrom(queries.planDistribution);
   const usage = chartFrom(queries.usage);
+  const paymentTrend = chartFrom(queries.paymentTrend);
   const activeAlerts = rowsFrom(queries.activeAlerts);
   const failedJobs = rowsFrom(queries.failedJobs);
   const securityEvents = rowsFrom(queries.securityEvents);
@@ -194,10 +190,6 @@ export function PlatformDashboardPage() {
             <CalendarDays size={16} aria-hidden="true" />
             Date range
           </Button>
-          <Button type="button" variant="secondary" size="sm">
-            <Filter size={16} aria-hidden="true" />
-            Filters
-          </Button>
           <PermissionButton guard="platform" permission="dashboard.view" type="button" variant="secondary" size="sm" onClick={() => setDialog('export')}>
             <Download size={16} aria-hidden="true" />
             Export Snapshot
@@ -205,22 +197,6 @@ export function PlatformDashboardPage() {
         </div>
       </header>
 
-      <div className="dashboard-actions">
-        <PermissionButton guard="platform" permission="tenant.create" type="button" size="sm" onClick={() => navigate(`${PLATFORM_ROUTES.tenants}/create`)}>
-          <Plus size={16} aria-hidden="true" />
-          Create Tenant
-        </PermissionButton>
-        <PermissionButton guard="platform" permission="billing.invoice.create" type="button" size="sm" onClick={() => navigate(`${PLATFORM_ROUTES.billing.invoices}?action=manualInvoice`)}>
-          <Plus size={16} aria-hidden="true" />
-          Create Invoice
-        </PermissionButton>
-        <PermissionButton guard="platform" permission="monitoring.view" type="button" size="sm" onClick={() => navigate(`${PLATFORM_ROUTES.monitoring}?tab=queue`)}>
-          View Failed Jobs
-        </PermissionButton>
-        <PermissionButton guard="platform" permission="monitoring.manage" type="button" size="sm" onClick={() => navigate(`${PLATFORM_ROUTES.monitoring}?tab=incidents&action=incidentEditor`)}>
-          Create Incident
-        </PermissionButton>
-      </div>
 
       <QueryPanel query={queries.summary}>
         <section className="dashboard-kpis" aria-label="Key performance indicators">
@@ -291,9 +267,9 @@ export function PlatformDashboardPage() {
             </LineChart>
           </ResponsiveContainer>
         </DashboardChartPanel>
-        <DashboardChartPanel title="Payment Success/Failure Trend" query={queries.usage}>
+        <DashboardChartPanel title="Payment Success/Failure Trend" query={queries.paymentTrend}>
           <ResponsiveContainer width="100%" height={190}>
-            <LineChart data={usage}>
+            <LineChart data={paymentTrend}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e8edf5" />
               <XAxis dataKey="label" tickLine={false} axisLine={false} />
               <YAxis tickLine={false} axisLine={false} />
@@ -554,6 +530,8 @@ function DashboardTable({
           total={rows.length}
           perPage={Math.max(25, rows.length || 25)}
           emptyState={<div className="empty-state">No {title.toLowerCase()} found.</div>}
+          showToolbar={false}
+          showPagination={false}
         />
       </QueryPanel>
     </article>
@@ -704,3 +682,4 @@ function RecordDetails({ row }: { row: DashboardTableRow | null }) {
     </dl>
   );
 }
+

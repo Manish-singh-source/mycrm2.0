@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+﻿import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { platformQueryKeys } from '@/features/platform/api/platformQueryKeys';
 import {
@@ -31,6 +31,10 @@ export function usePlatformDashboardQueries(range: DashboardDateRange) {
     usage: useQuery({
       queryKey: platformQueryKeys.dashboard('usage', range),
       queryFn: () => platformDashboardApi.usage(range)
+    }),
+    paymentTrend: useQuery({
+      queryKey: platformQueryKeys.dashboard('payment-trend', range),
+      queryFn: () => platformDashboardApi.paymentTrend(range)
     }),
     recentTenants: useQuery({
       queryKey: platformQueryKeys.dashboard('recent-tenants', range),
@@ -90,3 +94,4 @@ export function usePlatformDashboardMutations(range: DashboardDateRange) {
     })
   };
 }
+

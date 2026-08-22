@@ -1,4 +1,4 @@
-import { ApiError } from '@/lib/api/apiError';
+﻿import { ApiError } from '@/lib/api/apiError';
 import type { ApiQuery, NormalizedApiResponse } from '@/lib/api/apiTypes';
 import { platformClient } from '@/lib/api/platformClient';
 
@@ -79,6 +79,8 @@ export const platformDashboardApi = {
     chartEndpoint('/dashboard/charts/subscription-status', range, ['subscription_status', 'subscriptionStatus', 'tenant_status', 'tenantStatus', 'subscriptions']),
   usage: (range: DashboardDateRange) =>
     chartEndpoint('/dashboard/charts/usage', range, ['usage', 'usage_chart', 'usageChart', 'api_usage', 'storage_usage', 'payment_trend']),
+  paymentTrend: (range: DashboardDateRange) =>
+    chartEndpoint('/dashboard/charts/payment-success-failure-trend', range, ['payment_trend', 'paymentTrend', 'revenue', 'revenue_chart']),
   recentTenants: (range: DashboardDateRange) =>
     tableEndpoint('/dashboard/recent-tenants', range, '/dashboard/recent', ['recent_tenants', 'recentTenants', 'tenants']),
   recentPayments: (range: DashboardDateRange) =>
@@ -113,3 +115,4 @@ export const platformDashboardApi = {
       body
     )
 };
+

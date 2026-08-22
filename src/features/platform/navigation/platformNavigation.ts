@@ -1,4 +1,4 @@
-import {
+﻿import {
   Activity,
   BadgeDollarSign,
   Bell,
@@ -41,24 +41,22 @@ export const platformNavigation: NavGroup[] = [
     id: 'access',
     label: 'Access Control',
     items: [
-      { label: 'Platform Roles', to: PLATFORM_ROUTES.accessControl.roles, icon: LockKeyhole, permission: 'platform_role.view' },
-      { label: 'Platform Permissions', to: PLATFORM_ROUTES.accessControl.permissions, icon: ShieldEllipsis, permission: 'platform_permission.view' }
+      { label: 'Platform Permissions', to: PLATFORM_ROUTES.accessControl.permissions, icon: ShieldEllipsis, permission: 'platform_permission.view' },
+      { label: 'Platform Roles', to: PLATFORM_ROUTES.accessControl.roles, icon: LockKeyhole, permission: 'platform_role.view' }
     ]
   },
   {
     id: 'teams',
     label: 'Platform Teams',
     items: [
-      { label: 'Platform Teams', to: PLATFORM_ROUTES.teams, icon: ShieldCheck, permission: 'platform_team.view' },
-      { label: 'Team Roles', to: PLATFORM_ROUTES.teamRoles, icon: LockKeyhole, permission: 'platform_team.view' }
+      { label: 'Team Roles', to: PLATFORM_ROUTES.teamRoles, icon: LockKeyhole, permission: 'platform_team.view' },
+      { label: 'Teams', to: PLATFORM_ROUTES.teams, icon: ShieldCheck, permission: 'platform_team.view' }
     ]
   },
   {
     id: 'staff',
-    label: 'Platform Staff',
-    items: [
-      { label: 'Platform Staff', to: PLATFORM_ROUTES.staff, icon: UserRoundCog, permission: 'platform_user.view' }
-    ]
+    label: 'Platform Staffs',
+    items: [{ label: 'Staffs', to: PLATFORM_ROUTES.staff, icon: UserRoundCog, permission: 'platform_user.view' }]
   },
   {
     id: 'tenants',
@@ -74,10 +72,15 @@ export const platformNavigation: NavGroup[] = [
     id: 'catalog',
     label: 'Plans & Catalog',
     items: [
-      { label: 'Plans', to: PLATFORM_ROUTES.catalog.plans, icon: Package2, permission: 'plan.view' },
+      { label: 'Add-ons', to: PLATFORM_ROUTES.catalog.addons, icon: BadgeDollarSign, permission: 'plan.view' },
       { label: 'Features', to: PLATFORM_ROUTES.catalog.features, icon: SquareKanban, permission: 'feature.view' },
-      { label: 'Add-ons', to: PLATFORM_ROUTES.catalog.addons, icon: BadgeDollarSign, permission: 'plan.view' }
+      { label: 'Plans', to: PLATFORM_ROUTES.catalog.plans, icon: Package2, permission: 'plan.view' }
     ]
+  },
+  {
+    id: 'coupons',
+    label: 'Coupons',
+    items: [{ label: 'Coupons', to: PLATFORM_ROUTES.billing.coupons, icon: Tags, permission: 'coupon.view' }]
   },
   {
     id: 'billing',
@@ -87,11 +90,6 @@ export const platformNavigation: NavGroup[] = [
       { label: 'Payments', to: PLATFORM_ROUTES.billing.payments, icon: HandCoins, permission: 'billing.payment.view' },
       { label: 'Refunds', to: PLATFORM_ROUTES.billing.refunds, icon: HandCoins, permission: 'billing.payment.refund' }
     ]
-  },
-  {
-    id: 'coupons',
-    label: 'Coupons',
-    items: [{ label: 'Coupons', to: PLATFORM_ROUTES.billing.coupons, icon: Tags, permission: 'coupon.view' }]
   },
   {
     id: 'modules',
@@ -115,22 +113,18 @@ export const platformNavigation: NavGroup[] = [
   {
     id: 'monitoring',
     label: 'Monitoring',
-    items: [{ label: 'Monitoring', to: PLATFORM_ROUTES.monitoring, icon: MonitorPause, permission: 'monitoring.view' }]
-  },
-  {
-    id: 'integrations',
-    label: 'Integrations',
-    items: [{ label: 'Integrations', to: PLATFORM_ROUTES.integrations, icon: Plug, permission: 'integration.view' }]
+    items: [
+      { label: 'Monitoring', to: PLATFORM_ROUTES.monitoring, icon: MonitorPause, permission: 'monitoring.view' },
+      { label: 'Audit Logs', to: PLATFORM_ROUTES.audit, icon: Activity, permission: 'audit_log.view' }
+    ]
   },
   {
     id: 'settings',
     label: 'Settings',
-    items: [{ label: 'Settings', to: PLATFORM_ROUTES.settings, icon: Settings, permission: 'setting.view' }]
-  },
-  {
-    id: 'audit',
-    label: 'Audit Logs',
-    items: [{ label: 'Audit Logs', to: PLATFORM_ROUTES.audit, icon: Activity, permission: 'audit_log.view' }]
+    items: [
+      { label: 'Settings', to: PLATFORM_ROUTES.settings, icon: Settings, permission: 'setting.view' },
+      { label: 'Integrations', to: PLATFORM_ROUTES.integrations, icon: Plug, permission: 'integration.view' }
+    ]
   },
   {
     id: 'lifecycle',

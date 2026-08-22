@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+﻿import { useMemo, useState, type ReactNode } from 'react';
 import {
   ArrowDown,
   ArrowUpDown,
@@ -53,6 +53,8 @@ type DataTableProps<TRow> = {
   onPageChange?: (page: number) => void;
   onPerPageChange?: (perPage: number) => void;
   perPageOptions?: number[];
+  showToolbar?: boolean;
+  showPagination?: boolean;
 };
 
 export function DataTable<TRow>({
@@ -82,7 +84,9 @@ export function DataTable<TRow>({
   total = data.length,
   onPageChange,
   onPerPageChange,
-  perPageOptions = [10, 25, 50, 100]
+  perPageOptions = [10, 25, 50, 100],
+  showToolbar = true,
+  showPagination = true
 }: DataTableProps<TRow>) {
   const [internalHiddenColumns, setInternalHiddenColumns] = useState<string[]>([]);
   const [sort, setSort] = useState<{ id: string; direction: 'asc' | 'desc' } | null>(null);
@@ -173,6 +177,7 @@ export function DataTable<TRow>({
 
   return (
     <section className="data-table-shell" aria-busy={loading}>
+      {showToolbar ? (
       <div className="data-table-toolbar">
         <div className="table-toolbar-primary">
           <label className="table-search">
@@ -241,6 +246,7 @@ export function DataTable<TRow>({
           </Button>
         </div>
       </div>
+      ) : null}
 
       {selected.length > 0 ? (
         <div className="bulk-action-bar">
@@ -321,6 +327,7 @@ export function DataTable<TRow>({
         </div>
       ) : null}
 
+      {showPagination ? (
       <footer className="table-pagination">
         <span>
           Showing {startRecord} to {endRecord} of {total} results
@@ -359,6 +366,7 @@ export function DataTable<TRow>({
           </select>
         </div>
       </footer>
+      ) : null}
 
       <div className="column-visibility-inline" hidden>
         {columns.map((column) => (

@@ -1,7 +1,8 @@
-import { useMemo, useState } from 'react';
+﻿import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Bell,
+  CalendarDays,
   CalendarPlus2,
   CheckCircle2,
   Download,
@@ -17,24 +18,25 @@ import {
 import { tenantQueryKeys } from '@/features/tenant/api/tenantQueryKeys';
 import { tenantWorkspaceApi, type TenantRecord } from '@/features/tenant/api/tenantWorkspaceApi';
 import { ApiError } from '@/lib/api/apiError';
-import { createListQuery } from '@/lib/api/listQuery';
 import { DataTable, type DataTableColumn } from '@/shared/components/data-table';
 import { AppDrawer } from '@/shared/components/drawer';
-import { PageHeader, StatusBadge, Tabs } from '@/shared/components/layout';
+import { PageHeader, StatusBadge } from '@/shared/components/layout';
 import { AppModal } from '@/shared/components/modal';
 import { Button, PermissionButton } from '@/shared/components/ui';
 
-type DashboardModal = 'widgetLibrary' | 'widgetSettings' | 'quickActions' | 'notifications' | 'activity' | 'export' | null;
+type DashboardModal = 'widgetLibrary' | 'widgetSettings' | 'quickActions' | 'notifications' | 'activity' | 'export' | 'date' | null;
 
 const chartCodes = ['leads-pipeline', 'projects', 'tasks', 'revenue', 'attendance', 'support'];
-const widgetCodes = ['my-tasks', 'upcoming-events', 'recent-leads', 'overdue-invoices'];
+const widgetCodes = ['my-tasks', 'upcoming-events', 'recent-leads', 'overdue-invoices', 'recent-activities'];
 const tenantKey = 'current';
 
 export function TenantDashboardPage() {
   const queryClient = useQueryClient();
   const [modal, setModal] = useState<DashboardModal>(null);
   const [selectedRecord, setSelectedRecord] = useState<TenantRecord | null>(null);
-  const summaryQuery = useQuery({ queryKey: tenantQueryKeys.dashboard(tenantKey, 'summary'), queryFn: tenantWorkspaceApi.dashboard.summary });
+  const [range, setRange] = useState({ date_from: '2026-08-01', date_to: '2026-08-08' });
+  const [draftRange, setDraftRange] = useState(range);
+  const summaryQuery = useQuery({ queryKey: tenantQueryKeys.dashboard(tenantKey, 'summary', range), queryFn: () => tenantWorkspaceApi.dashboard.summary(range) });
   const widgetsQuery = useQuery({ queryKey: tenantQueryKeys.dashboard(tenantKey, 'widgets'), queryFn: tenantWorkspaceApi.dashboard.widgets });
   const exportMutation = useMutation({
     mutationFn: (payload: Record<string, unknown>) => tenantWorkspaceApi.dashboard.export(payload),
@@ -57,6 +59,7 @@ export function TenantDashboardPage() {
         description="Workspace summary, widgets, recent records, notifications, activity, and quick actions."
         actions={
           <>
+            <Button type="button" variant="secondary" onClick={() => setModal('date')}><CalendarDays size={16} aria-hidden />Date Range</Button>
             <Button type="button" variant="secondary" onClick={() => setModal('quickActions')}><Plus size={16} aria-hidden />Quick Actions</Button>
             <Button type="button" variant="secondary" onClick={() => setModal('notifications')}><Bell size={16} aria-hidden />Notifications</Button>
             <PermissionButton guard="tenant" permission="dashboard.customize" type="button" variant="secondary" onClick={() => setModal('widgetLibrary')}><LayoutGrid size={16} aria-hidden />Widgets</PermissionButton>
@@ -66,15 +69,18 @@ export function TenantDashboardPage() {
       />
       <SummaryGrid payload={summary} />
       <section className="dashboard-grid">
-        {chartCodes.map((chart) => <ChartWidget key={chart} code={chart} />)}
+        {chartCodes.map((chart) => <ChartWidget key={chart} code={chart} range={range} />)}
       </section>
-      <DashboardTables onOpenActivity={(record) => { setSelectedRecord(record); setModal('activity'); }} />
+      <DashboardTables range={range} />
       <DashboardSurfaces
         modal={modal}
         selectedRecord={selectedRecord}
         widgets={widgetsQuery.data?.data}
         exportLoading={exportMutation.isPending}
         exportError={exportMutation.error}
+        range={draftRange}
+        onRangeChange={setDraftRange}
+        onApplyRange={() => { setRange(draftRange); setModal(null); }}
         onClose={() => setModal(null)}
         onExport={(payload) => exportMutation.mutate(payload)}
         onSaveWidgets={(widgets) => saveWidgets.mutate(widgets)}
@@ -102,8 +108,8 @@ function SummaryGrid({ payload }: { payload: Record<string, unknown> }) {
   );
 }
 
-function ChartWidget({ code }: { code: string }) {
-  const query = useQuery({ queryKey: tenantQueryKeys.dashboard(tenantKey, `chart-${code}`), queryFn: () => tenantWorkspaceApi.dashboard.chart(code) });
+function ChartWidget({ code, range }: { code: string; range: Record<string, string> }) {
+  const query = useQuery({ queryKey: tenantQueryKeys.dashboard(tenantKey, `chart-${code}`, range), queryFn: () => tenantWorkspaceApi.dashboard.chart(code, range) });
   const rows = extractRows(query.data?.data);
   return (
     <article className="chart-card">
@@ -123,39 +129,38 @@ function ChartWidget({ code }: { code: string }) {
   );
 }
 
-function DashboardTables({ onOpenActivity }: { onOpenActivity: (record: TenantRecord) => void }) {
-  const [activeTab, setActiveTab] = useState(widgetCodes[0]);
-  const [page, setPage] = useState(1);
-  const queryParams = createListQuery({ page, per_page: 10 });
+function DashboardTables({ range }: { range: Record<string, string> }) {
+  return (
+    <section className="dashboard-grid dashboard-grid--tables">
+      {widgetCodes.map((code) => <DashboardTableWidget key={code} code={code} range={range} />)}
+    </section>
+  );
+}
+
+function DashboardTableWidget({ code, range }: { code: string; range: Record<string, string> }) {
+  const queryParams = { ...range, per_page: 5 };
   const query = useQuery({
-    queryKey: tenantQueryKeys.dashboard(tenantKey, `table-${activeTab}`, queryParams),
-    queryFn: () => activeTab === 'recent-activities' ? tenantWorkspaceApi.dashboard.recentActivities(queryParams) : tenantWorkspaceApi.dashboard.table(activeTab, queryParams)
+    queryKey: tenantQueryKeys.dashboard(tenantKey, `table-${code}`, queryParams),
+    queryFn: () => code === 'recent-activities' ? tenantWorkspaceApi.dashboard.recentActivities(queryParams) : tenantWorkspaceApi.dashboard.table(code, queryParams)
   });
-  const columns = useMemo(() => genericColumns(query.data?.data ?? [], onOpenActivity), [onOpenActivity, query.data?.data]);
+  const columns = useMemo(() => genericColumns(query.data?.data ?? []), [query.data?.data]);
 
   return (
-    <section className="settings-panel">
-      <Tabs
-        tabs={[...widgetCodes, 'recent-activities'].map((code) => ({ id: code, label: label(code) }))}
-        activeId={activeTab}
-        ariaLabel="Dashboard widgets"
-        onChange={(next) => {
-          setActiveTab(next);
-          setPage(1);
-        }}
-      />
+    <article className="dashboard-panel dashboard-table-panel">
+      <header><h2>{label(code)}</h2><button type="button">View all</button></header>
       <DataTable
         columns={columns}
         data={query.data?.data ?? []}
         getRowId={idOf}
         loading={query.isLoading}
         error={query.isError ? errorMessage(query.error) : ''}
-        page={page}
-        perPage={10}
-        total={query.data?.total ?? query.data?.data.length ?? 0}
-        onPageChange={setPage}
+        page={1}
+        perPage={5}
+        total={query.data?.data.length ?? 0}
+        showToolbar={false}
+        showPagination={false}
       />
-    </section>
+    </article>
   );
 }
 
@@ -165,6 +170,9 @@ function DashboardSurfaces({
   widgets,
   exportLoading,
   exportError,
+  range,
+  onRangeChange,
+  onApplyRange,
   onClose,
   onExport,
   onSaveWidgets
@@ -174,12 +182,25 @@ function DashboardSurfaces({
   widgets: unknown;
   exportLoading: boolean;
   exportError: unknown;
+  range: { date_from: string; date_to: string };
+  onRangeChange: (range: { date_from: string; date_to: string }) => void;
+  onApplyRange: () => void;
   onClose: () => void;
   onExport: (payload: Record<string, unknown>) => void;
   onSaveWidgets: (widgets: Record<string, unknown>[]) => void;
 }) {
   const [exportFormat, setExportFormat] = useState('csv');
   if (!modal) return null;
+  if (modal === 'date') {
+    return (
+      <AppModal open onClose={onClose} title="Date Range" guard="tenant" permission="dashboard.view" footer={<><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="button" onClick={onApplyRange}>Apply Range</Button></>}>
+        <div className="form-grid">
+          <label>From<input type="date" value={range.date_from ?? ''} onChange={(event) => onRangeChange({ ...range, date_from: event.target.value })} /></label>
+          <label>To<input type="date" value={range.date_to ?? ''} onChange={(event) => onRangeChange({ ...range, date_to: event.target.value })} /></label>
+        </div>
+      </AppModal>
+    );
+  }
   if (modal === 'quickActions') {
     return (
       <AppModal open onClose={onClose} title="Quick Actions" guard="tenant" permission="dashboard.view" footer={<Button type="button" variant="secondary" onClick={onClose}>Close</Button>}>
@@ -214,7 +235,7 @@ function DashboardSurfaces({
       permission="dashboard.view"
       loading={exportLoading}
       error={exportError ? errorMessage(exportError) : null}
-      footer={<><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="button" onClick={() => onExport({ format: exportFormat, widgets: ['summary', 'revenue'] })}>Export</Button></>}
+      footer={<><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="button" onClick={() => onExport({ format: exportFormat, widgets: ['summary', 'revenue'], ...range })}>Export</Button></>}
     >
       <label>
         <span>Format</span>
@@ -291,18 +312,16 @@ export function TenantNotificationsDrawer({ open, onClose }: { open: boolean; on
   );
 }
 
-function genericColumns(rows: TenantRecord[], onOpenActivity: (record: TenantRecord) => void): DataTableColumn<TenantRecord>[] {
-  const keys = Object.keys(rows[0] ?? {}).filter((key) => !['metadata', 'payload', 'old_values', 'new_values'].includes(key)).slice(0, 6);
+function genericColumns(rows: TenantRecord[]): DataTableColumn<TenantRecord>[] {
+  const keys = Object.keys(rows[0] ?? {}).filter((key) => !['id', 'tenant_id', 'metadata', 'payload', 'old_values', 'new_values'].includes(key)).slice(0, 5);
   const safeKeys = keys.length > 0 ? keys : ['title', 'status', 'created_at'];
-  return [
-    ...safeKeys.map((key) => ({
-      id: key,
-      header: label(key),
-      cell: (row: TenantRecord) => key.includes('status') ? <StatusBadge>{printable(row[key])}</StatusBadge> : printable(row[key])
-    })),
-    { id: 'actions', header: 'Actions', enableHiding: false, cell: (row) => <Button type="button" size="sm" variant="secondary" onClick={() => onOpenActivity(row)}>Open</Button> }
-  ];
+  return safeKeys.map((key) => ({
+    id: key,
+    header: label(key),
+    cell: (row: TenantRecord) => key.includes('status') ? <StatusBadge>{printable(row[key])}</StatusBadge> : printable(row[key])
+  }));
 }
+
 
 function flattenSummary(payload: Record<string, unknown>) {
   const rows: Array<{ label: string; value: unknown }> = [];
@@ -385,3 +404,5 @@ function errorMessage(error: unknown) {
   if (error instanceof Error) return error.message;
   return 'Request failed.';
 }
+
+

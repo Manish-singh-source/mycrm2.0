@@ -1,4 +1,4 @@
-import { authStore } from '@/features/auth/store/authStore';
+﻿import { authStore } from '@/features/auth/store/authStore';
 import type { ApiQuery } from '@/lib/api/apiTypes';
 import { createTenantClient } from '@/lib/api/tenantClient';
 
@@ -51,8 +51,8 @@ async function list(path: string, query?: ApiQuery, keys?: string[]): Promise<Te
 export const tenantWorkspaceApi = {
   navigation: () => tenantClient().get<Record<string, unknown>>('/navigation/sidebar'),
   dashboard: {
-    summary: () => tenantClient().get<Record<string, unknown>>('/dashboard/summary'),
-    chart: (chart: string) => tenantClient().get<Record<string, unknown>>(`/dashboard/charts/${encodeURIComponent(chart)}`),
+    summary: (query?: ApiQuery) => tenantClient().get<Record<string, unknown>>('/dashboard/summary', { query }),
+    chart: (chart: string, query?: ApiQuery) => tenantClient().get<Record<string, unknown>>(`/dashboard/charts/${encodeURIComponent(chart)}`, { query }),
     table: (widget: string, query?: ApiQuery) => list(`/dashboard/${encodeURIComponent(widget)}`, query),
     recentActivities: (query?: ApiQuery) => list('/dashboard/recent-activities', query),
     widgets: () => tenantClient().get<Record<string, unknown>>('/dashboard/widgets'),
