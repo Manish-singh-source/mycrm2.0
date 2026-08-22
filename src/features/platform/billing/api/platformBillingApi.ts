@@ -45,12 +45,14 @@ export type BillingRecord = {
   redemptions?: BillingRecord[];
   plans?: BillingRecord[];
   tenants?: BillingRecord[];
+  activity?: BillingRecord[];
   [key: string]: unknown;
 };
 
 export type BillingListResult = {
   data: BillingRecord[];
   total: number;
+  meta?: Record<string, unknown>;
 };
 
 function paginationTotal(meta?: Record<string, unknown>, fallback = 0) {
@@ -78,7 +80,9 @@ function unwrapCoupon(response: NormalizedApiResponse<BillingRecord | Record<str
         ...(wrapped.coupon as BillingRecord),
         plans: Array.isArray(wrapped.plans) ? wrapped.plans as BillingRecord[] : [],
         tenants: Array.isArray(wrapped.tenants) ? wrapped.tenants as BillingRecord[] : [],
-        redemptions: Array.isArray(wrapped.redemptions) ? wrapped.redemptions as BillingRecord[] : []
+        redemptions: Array.isArray(wrapped.redemptions) ? wrapped.redemptions as BillingRecord[] : [],
+        payments: Array.isArray(wrapped.payments) ? wrapped.payments as BillingRecord[] : [],
+        activity: Array.isArray(wrapped.activity) ? wrapped.activity as BillingRecord[] : []
       };
     }
   }
@@ -89,7 +93,8 @@ async function list(path: string, query?: ApiQuery): Promise<BillingListResult> 
   const response = await platformClient.get<BillingRecord[]>(path, { query });
   return {
     data: Array.isArray(response.data) ? response.data : [],
-    total: paginationTotal(response.meta, Array.isArray(response.data) ? response.data.length : 0)
+    total: paginationTotal(response.meta, Array.isArray(response.data) ? response.data.length : 0),
+    meta: response.meta
   };
 }
 
@@ -152,15 +157,18 @@ export const platformBillingApi = {
     update: async (id: string, body: Record<string, unknown>) =>
       unwrapCoupon(await platformClient.patch(`/coupons/${encodeURIComponent(id)}`, body)),
     delete: (id: string) => platformClient.delete(`/coupons/${encodeURIComponent(id)}`),
+    bulkDelete: (coupon_uuids: string[]) => platformClient.delete('/coupons/bulk', { body: { coupon_uuids } }),
     activate: (id: string) => platformClient.post(`/coupons/${encodeURIComponent(id)}/activate`),
     deactivate: (id: string) => platformClient.post(`/coupons/${encodeURIComponent(id)}/deactivate`),
     redemptions: (id: string) => platformClient.get<{ redemptions: BillingRecord[] }>(`/coupons/${encodeURIComponent(id)}/redemptions`),
     restrictPlans: (id: string, plan_uuids: string[]) => platformClient.put(`/coupons/${encodeURIComponent(id)}/plans`, { plan_uuids }),
     restrictTenants: (id: string, tenant_uuids: string[]) => platformClient.put(`/coupons/${encodeURIComponent(id)}/tenants`, { tenant_uuids }),
-    export: () => platformClient.post('/coupons/export')
+    export: () => platformClient.post('/coupons/export'),
+    import: () => platformClient.post('/coupons/import')
   },
   references: {
     plans: (query?: ApiQuery) => list('/plans', query),
-    tenants: (query?: ApiQuery) => list('/tenants', query)
+    tenants: (query?: ApiQuery) => list('/tenants', query),
+    subscriptions: (query?: ApiQuery) => list('/subscriptions', query)
   }
 };

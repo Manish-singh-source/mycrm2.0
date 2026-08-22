@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+﻿import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BadgeDollarSign, Eye, FileSpreadsheet, FileText, MoreVertical, Pencil, Receipt, RefreshCw, RotateCw, Send, Tags, Trash2 } from 'lucide-react';
@@ -35,6 +35,8 @@ type ModalField = {
   options?: string[];
   required?: boolean;
 };
+
+type BillingStatsData = Record<string, string | number | boolean | null | undefined>;
 
 const billingMeta = {
   invoices: { label: 'Invoices', singular: 'Invoice', route: PLATFORM_ROUTES.billing.invoices, resourceKey: 'billing-invoices', permission: 'billing.invoice' },
@@ -109,7 +111,7 @@ function DetailSummary({ record }: { record: BillingRecord }) {
     <dl className="enterprise-summary-list">
       {Object.entries(record).map(([key, value]) => (
         <div key={key}>
-          <dt>{key}</dt>
+          <dt>{detailLabel(key)}</dt>
           <dd>{displayValue(value)}</dd>
         </div>
       ))}
@@ -121,8 +123,46 @@ function displayValue(value: unknown): string {
   if (value === null || value === undefined || value === '') return '-';
   if (Array.isArray(value)) return `${value.length} item${value.length === 1 ? '' : 's'}`;
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
-  if (typeof value === 'object') return textOf(value as BillingRecord, ['display_name', 'name', 'title', 'uuid'], 'Details available');
+  if (typeof value === 'object') return textOf(value as BillingRecord, ['display_name', 'name', 'title', 'invoice_number', 'payment_number', 'subscription_number'], 'Details available');
   return String(value);
+}
+
+const hiddenRelationshipKeys = new Set([
+  'id',
+  'uuid',
+  'tenant_id',
+  'tenant_uuid',
+  'subscription_id',
+  'subscription_uuid',
+  'plan_id',
+  'plan_uuid',
+  'platform_invoice_id',
+  'invoice_uuid',
+  'platform_payment_id',
+  'payment_uuid',
+  'pdf_file_id'
+]);
+
+function shouldShowDetailField(key: string, value: unknown) {
+  if (hiddenRelationshipKeys.has(key)) return false;
+  if (typeof value === 'object' && value !== null) return false;
+  return true;
+}
+
+function detailLabel(key: string) {
+  const labels: Record<string, string> = {
+    tenant_name: 'Tenant',
+    tenant_slug: 'Workspace',
+    subscription_number: 'Subscription',
+    plan_name: 'Plan',
+    plan_code: 'Plan Code',
+    invoice_number: 'Invoice',
+    payment_number: 'Payment',
+    refund_number: 'Refund',
+    payment_status: 'Payment Status',
+    refund_status: 'Refund Status'
+  };
+  return labels[key] ?? key.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 export function PlatformInvoicesListPage() { return <BillingList kind="invoices" />; }
@@ -132,7 +172,46 @@ export function PlatformPaymentViewPage() { return <BillingView kind="payments" 
 export function PlatformRefundsListPage() { return <BillingList kind="refunds" />; }
 export function PlatformRefundViewPage() { return <BillingView kind="refunds" />; }
 export function PlatformCouponsListPage() { return <BillingList kind="coupons" />; }
+export function PlatformCouponCreatePage() { return <CouponFormPage mode="create" />; }
+export function PlatformCouponEditPage() { return <CouponFormPage mode="edit" />; }
 export function PlatformCouponViewPage() { return <BillingView kind="coupons" />; }
+
+function CouponFormPage({ mode }: { mode: 'create' | 'edit' }) {
+  const navigate = useNavigate();
+  const { id = '' } = useParams();
+  const queryClient = useQueryClient();
+  const query = useQuery({
+    queryKey: platformQueryKeys.detail('coupons', id),
+    queryFn: () => platformBillingApi.coupons.detail(id),
+    enabled: mode === 'edit' && Boolean(id)
+  });
+  const [payload, setPayload] = useState<Record<string, string | boolean | number>>(() => defaultPayload('couponRules'));
+  useEffect(() => {
+    if (query.data) setPayload(defaultPayload('couponRules', query.data));
+  }, [query.data]);
+  const mutation = useMutation({
+    mutationFn: () => mode === 'create' ? platformBillingApi.coupons.create(payload) : platformBillingApi.coupons.update(id, payload),
+    onSuccess: async (coupon) => {
+      await queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource('coupons') });
+      navigate(`${PLATFORM_ROUTES.billing.coupons}/${idOf(coupon) || id}`);
+    }
+  });
+  if (query.isLoading) return <div className="surface-state">Loading coupon...</div>;
+  return (
+    <section className="enterprise-module-page platform-billing-page">
+      <PageHeader title={`${mode === 'create' ? 'Create' : 'Edit'} Coupon`} description="Configure billing coupon rules and redemption limits." actions={<Button type="button" variant="secondary" onClick={() => navigate(PLATFORM_ROUTES.billing.coupons)}>Back</Button>} />
+      {query.isError ? <div className="surface-error">{errorMessage(query.error)}</div> : null}
+      {mutation.error ? <div className="surface-error">{errorMessage(mutation.error)}</div> : null}
+      <form className="enterprise-form" onSubmit={(event) => { event.preventDefault(); mutation.mutate(); }}>
+        <GenericFields fields={fieldsForModal('couponRules')} payload={payload} onChange={setPayload} />
+        <footer className="enterprise-form__footer">
+          <Button type="button" variant="secondary" onClick={() => navigate(PLATFORM_ROUTES.billing.coupons)}>Cancel</Button>
+          <PermissionButton guard="platform" permission={mode === 'create' ? 'coupon.create' : 'coupon.edit'} type="submit" disabled={mutation.isPending}>{mutation.isPending ? 'Saving...' : 'Save'}</PermissionButton>
+        </footer>
+      </form>
+    </section>
+  );
+}
 
 function BillingList({ kind }: { kind: BillingKind }) {
   const meta = billingMeta[kind];
@@ -144,7 +223,16 @@ function BillingList({ kind }: { kind: BillingKind }) {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectedRecord, setSelectedRecord] = useState<BillingRecord | null>(null);
   const [modal, setModal] = useState<BillingModal>(null);
-  const queryParams = createListQuery({ page, per_page: 25, search });
+  const [perPage, setPerPage] = useState(kind === 'coupons' ? 10 : 25);
+  const [statusFilter, setStatusFilter] = useState('');
+  const [hiddenColumnIds, setHiddenColumnIds] = useState<string[]>([]);
+  const [viewsOpen, setViewsOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [columnsOpen, setColumnsOpen] = useState(false);
+  const queryParams = {
+    ...createListQuery({ page, per_page: perPage, search }),
+    ...(kind === 'coupons' && statusFilter ? { status: statusFilter } : {})
+  };
   const query = useQuery({
     queryKey: platformQueryKeys.list(meta.resourceKey, queryParams),
     queryFn: () => listFor(kind, queryParams)
@@ -156,6 +244,7 @@ function BillingList({ kind }: { kind: BillingKind }) {
       await queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource(meta.resourceKey) });
       setModal(null);
       setSelectedRecord(null);
+      setSelectedIds([]);
     }
   });
 
@@ -170,6 +259,10 @@ function BillingList({ kind }: { kind: BillingKind }) {
   const columns = useMemo(() => columnsFor(kind, {
     onView: (record) => navigate(`${meta.route}/${idOf(record)}`),
     onModal: (nextModal, record) => {
+      if (kind === 'coupons' && nextModal === 'couponRules') {
+        navigate(`${meta.route}/${idOf(record)}/edit`);
+        return;
+      }
       setSelectedRecord(record);
       setModal(nextModal);
     }
@@ -183,12 +276,12 @@ function BillingList({ kind }: { kind: BillingKind }) {
         actions={
           <>
             {kind === 'invoices' ? <Button type="button" variant="secondary" onClick={() => { setSelectedRecord(null); setModal('manualInvoice'); }}><Receipt size={16} aria-hidden />Manual Invoice</Button> : null}
-            {kind === 'coupons' ? <Button type="button" onClick={() => { setSelectedRecord(null); setModal('couponRules'); }}><Tags size={16} aria-hidden />Coupon Rule Builder</Button> : null}
+            {kind === 'coupons' ? <PermissionButton guard="platform" permission="coupon.create" type="button" onClick={() => navigate(`${meta.route}/create`)}><Tags size={16} aria-hidden />Create Coupon</PermissionButton> : null}
             <Button type="button" variant="secondary" onClick={() => exportFor(kind)}><FileSpreadsheet size={16} aria-hidden />Export</Button>
           </>
         }
       />
-      <BillingStats kind={kind} rows={rows} />
+      <BillingStats kind={kind} rows={rows} stats={query.data?.meta?.stats as BillingStatsData | undefined} totalCount={query.data?.total} />
       <DataTable
         columns={columns}
         data={rows}
@@ -197,13 +290,32 @@ function BillingList({ kind }: { kind: BillingKind }) {
         error={query.isError ? errorMessage(query.error) : ''}
         searchValue={search}
         searchPlaceholder={`Search ${meta.label.toLowerCase()}...`}
-        onSearchChange={setSearch}
+        onSearchChange={(value) => { setSearch(value); setPage(1); }}
         selectedRowIds={selectedIds}
         onSelectionChange={setSelectedIds}
+        bulkActions={kind === 'coupons' ? <PermissionButton guard="platform" permission="coupon.delete" type="button" variant="danger" size="sm" disabled={selectedIds.length === 0} onClick={() => { setSelectedRecord(null); setModal('deleteCoupon'); }}><Trash2 size={15} aria-hidden />Delete selected</PermissionButton> : undefined}
         page={page}
+        perPage={perPage}
         total={query.data?.total ?? rows.length}
         onPageChange={setPage}
+        onPerPageChange={(value) => { setPerPage(value); setPage(1); setSelectedIds([]); }}
+        hiddenColumnIds={hiddenColumnIds}
+        onHiddenColumnIdsChange={setHiddenColumnIds}
+        onOpenSavedViews={() => setViewsOpen(true)}
+        onOpenFilters={() => setFiltersOpen(true)}
+        onOpenColumns={() => setColumnsOpen(true)}
+        onOpenExport={() => exportFor(kind)}
+        onOpenImport={kind === 'coupons' ? () => { platformBillingApi.coupons.import(); } : undefined}
       />
+      <AppModal open={viewsOpen} onClose={() => setViewsOpen(false)} title="Saved Views" size="sm">
+        <div className="surface-state">Default table view</div>
+      </AppModal>
+      <AppModal open={filtersOpen} onClose={() => setFiltersOpen(false)} title="Filters" size="sm">
+        <label className="form-field"><span>Status</span><select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1); }}><option value="">All statuses</option><option value="active">active</option><option value="inactive">inactive</option><option value="archived">archived</option></select></label>
+      </AppModal>
+      <AppModal open={columnsOpen} onClose={() => setColumnsOpen(false)} title="Columns" size="sm">
+        <div className="record-list">{columns.filter((column) => column.enableHiding !== false).map((column) => <label key={column.id} className="check-row"><input type="checkbox" checked={!hiddenColumnIds.includes(column.id)} onChange={(event) => setHiddenColumnIds((current) => event.target.checked ? current.filter((id) => id !== column.id) : [...current, column.id])} /><span>{String(column.header)}</span></label>)}</div>
+      </AppModal>
       <BillingActionSurface
         modal={modal}
         kind={kind}
@@ -213,7 +325,8 @@ function BillingList({ kind }: { kind: BillingKind }) {
         onClose={() => setModal(null)}
         onConfirm={(payload) => {
           if (!modal) return;
-          mutation.mutate({ action: modal, record: selectedRecord ?? {}, payload });
+          const nextPayload = modal === 'deleteCoupon' && !selectedRecord && selectedIds.length > 0 ? { ...payload, coupon_uuids: selectedIds } : payload;
+          mutation.mutate({ action: modal, record: selectedRecord ?? {}, payload: nextPayload });
         }}
       />
     </section>
@@ -223,6 +336,7 @@ function BillingList({ kind }: { kind: BillingKind }) {
 function BillingView({ kind }: { kind: BillingKind }) {
   const meta = billingMeta[kind];
   const { id = '' } = useParams();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [modal, setModal] = useState<BillingModal>(null);
   const query = useQuery({ queryKey: platformQueryKeys.detail(meta.resourceKey, id), queryFn: () => detailFor(kind, id) });
@@ -245,10 +359,10 @@ function BillingView({ kind }: { kind: BillingKind }) {
   if (!record) return <div className="empty-state">{meta.singular} not found.</div>;
   return (
     <section className="enterprise-module-page platform-billing-page">
-      <PageHeader title={textOf(record, ['invoice_number', 'payment_number', 'refund_number', 'code', 'name'], meta.singular)} description={textOf(record, ['tenant_name', 'organization_name', 'status', 'payment_status', 'refund_status'])} actions={<ViewActions kind={kind} record={record} onModal={setModal} />} />
+      <PageHeader title={textOf(record, ['invoice_number', 'payment_number', 'refund_number', 'code', 'name'], meta.singular)} description={textOf(record, ['tenant_name', 'organization_name', 'status', 'payment_status', 'refund_status'])} actions={<ViewActions kind={kind} record={record} onModal={setModal} onBack={() => navigate(meta.route)} onEdit={() => navigate(`${meta.route}/${id}/edit`)} />} />
       <BillingStats kind={kind} rows={[record]} />
       <DetailTabs tabs={[
-        { id: 'summary', label: 'Summary', content: <RecordDetails record={record} /> },
+        { id: 'summary', label: kind === 'coupons' ? 'Overview' : 'Summary', content: <RecordDetails record={record} /> },
         { id: 'items', label: 'Line items', content: <RecordList rows={record.items ?? []} /> },
         { id: 'payments', label: 'Payments', content: <RecordList rows={record.payments ?? []} /> },
         { id: 'refunds', label: 'Refunds', content: <RecordList rows={record.refunds ?? []} /> },
@@ -256,7 +370,8 @@ function BillingView({ kind }: { kind: BillingKind }) {
           ? [
               { id: 'plans', label: 'Plans', content: <RecordList rows={record.plans ?? []} /> },
               { id: 'tenants', label: 'Tenants', content: <RecordList rows={record.tenants ?? []} /> },
-              { id: 'redemptions', label: 'Redemptions', content: <RecordList rows={(redemptionsQuery.data?.data.redemptions ?? record.redemptions ?? []) as BillingRecord[]} /> }
+              { id: 'redemptions', label: 'Redemptions', content: <RecordList rows={(Array.isArray(redemptionsQuery.data?.data) ? redemptionsQuery.data.data : record.redemptions ?? []) as BillingRecord[]} /> },
+              { id: 'activity', label: 'Activity', content: <RecordList rows={(record.activity as BillingRecord[] | undefined) ?? []} /> }
             ]
           : [{ id: 'redemptions', label: 'Redemptions', content: <RecordList rows={record.redemptions ?? []} /> }])
       ]} />
@@ -269,7 +384,7 @@ function columnsFor(kind: BillingKind, handlers: { onView: (record: BillingRecor
   const commonActions = { id: 'actions', header: 'Actions', enableHiding: false, cell: (row: BillingRecord) => <BillingRowActions kind={kind} row={row} handlers={handlers} /> };
   if (kind === 'invoices') return [
     { id: 'invoice_number', header: 'Invoice #', accessor: (row) => row.invoice_number, cell: (row) => <strong>{textOf(row, ['invoice_number'])}</strong> },
-    { id: 'tenant', header: 'Tenant', cell: (row) => textOf(row, ['tenant_name', 'organization_name', 'tenant_id']) },
+    { id: 'tenant', header: 'Tenant', cell: (row) => textOf(row, ['tenant_name', 'organization_name']) },
     { id: 'invoice_date', header: 'Invoice Date', cell: (row) => formatDate(row.invoice_date) },
     { id: 'due_date', header: 'Due Date', cell: (row) => formatDate(row.due_date) },
     { id: 'total', header: 'Total', cell: (row) => money(row.total ?? row.total_amount, row.currency) },
@@ -280,8 +395,8 @@ function columnsFor(kind: BillingKind, handlers: { onView: (record: BillingRecor
   ];
   if (kind === 'payments') return [
     { id: 'payment_number', header: 'Payment #', cell: (row) => <strong>{textOf(row, ['payment_number'])}</strong> },
-    { id: 'tenant', header: 'Tenant', cell: (row) => textOf(row, ['tenant_name', 'organization_name', 'tenant_id']) },
-    { id: 'invoice', header: 'Invoice', cell: (row) => textOf(row, ['invoice_number', 'platform_invoice_id']) },
+    { id: 'tenant', header: 'Tenant', cell: (row) => textOf(row, ['tenant_name', 'organization_name']) },
+    { id: 'invoice', header: 'Invoice', cell: (row) => textOf(row, ['invoice_number']) },
     { id: 'gateway', header: 'Gateway', cell: (row) => textOf(row, ['gateway']) },
     { id: 'method', header: 'Method', cell: (row) => textOf(row, ['payment_method']) },
     { id: 'amount', header: 'Amount', cell: (row) => money(row.amount, row.currency) },
@@ -291,8 +406,8 @@ function columnsFor(kind: BillingKind, handlers: { onView: (record: BillingRecor
   ];
   if (kind === 'refunds') return [
     { id: 'refund_number', header: 'Refund #', cell: (row) => <strong>{textOf(row, ['refund_number'])}</strong> },
-    { id: 'payment', header: 'Payment', cell: (row) => textOf(row, ['payment_number', 'platform_payment_id']) },
-    { id: 'invoice', header: 'Invoice', cell: (row) => textOf(row, ['invoice_number', 'platform_invoice_id']) },
+    { id: 'payment', header: 'Payment', cell: (row) => textOf(row, ['payment_number']) },
+    { id: 'invoice', header: 'Invoice', cell: (row) => textOf(row, ['invoice_number']) },
     { id: 'amount', header: 'Amount', cell: (row) => money(row.amount, row.currency) },
     { id: 'refund_status', header: 'Status', cell: (row) => <Badge value={textOf(row, ['refund_status', 'status'], 'pending')} /> },
     { id: 'refunded_at', header: 'Refunded At', cell: (row) => formatDate(row.refunded_at) },
@@ -443,10 +558,13 @@ function CouponAssignmentModal({ modal, record, loading, error, onClose, onConfi
   );
 }
 
-function BillingStats({ kind, rows }: { kind: BillingKind; rows: BillingRecord[] }) {
+function BillingStats({ kind, rows, stats, totalCount }: { kind: BillingKind; rows: BillingRecord[]; stats?: BillingStatsData; totalCount?: number }) {
   const currency = rows[0]?.currency ?? 'INR';
-  const total = rows.reduce((sum, row) => sum + Number(row.total ?? row.total_amount ?? row.amount ?? 0), 0);
-  return <section className="platform-access-summary"><SummaryTile icon={<Receipt />} label={`Total ${billingMeta[kind].label}`} value={String(rows.length)} /><SummaryTile icon={<BadgeDollarSign />} label="Amount" value={money(total, currency)} /><SummaryTile icon={<RefreshCw />} label="Active/Success" value={String(rows.filter((row) => ['active', 'success', 'paid'].includes(textOf(row, ['status', 'payment_status', 'refund_status'], '').toLowerCase())).length)} /><SummaryTile icon={<Trash2 />} label="Failed/Cancelled" value={String(rows.filter((row) => ['failed', 'cancelled', 'canceled'].includes(textOf(row, ['status', 'payment_status', 'refund_status'], '').toLowerCase())).length)} /></section>;
+  const total = Number(stats?.amount ?? rows.reduce((sum, row) => sum + Number(row.total ?? row.total_amount ?? row.amount ?? row.discount_value ?? 0), 0));
+  const activeSuccess = Number(stats?.active_success ?? rows.filter((row) => ['active', 'success', 'paid'].includes(textOf(row, ['status', 'payment_status', 'refund_status'], '').toLowerCase())).length);
+  const failedCancelled = Number(stats?.failed_cancelled ?? rows.filter((row) => ['failed', 'cancelled', 'canceled', 'archived', 'inactive'].includes(textOf(row, ['status', 'payment_status', 'refund_status'], '').toLowerCase())).length);
+  const recordTotal = Number(stats?.total ?? totalCount ?? rows.length);
+  return <section className="platform-access-summary"><SummaryTile icon={<Receipt />} label={`Total ${billingMeta[kind].label}`} value={String(recordTotal)} /><SummaryTile icon={<BadgeDollarSign />} label="Amount" value={money(total, currency)} /><SummaryTile icon={<RefreshCw />} label="Active/Success" value={String(activeSuccess)} /><SummaryTile icon={<Trash2 />} label="Failed/Cancelled" value={String(failedCancelled)} /></section>;
 }
 
 function SummaryTile({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
@@ -460,22 +578,31 @@ function DetailTabs({ tabs }: { tabs: Array<{ id: string; label: string; content
 }
 
 function RecordDetails({ record }: { record: BillingRecord }) {
-  return <dl className="enterprise-summary-list">{Object.entries(record).filter(([, value]) => typeof value !== 'object').map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{['amount', 'total', 'total_amount', 'paid_amount', 'balance_amount', 'discount_amount', 'tax_amount'].includes(key) ? money(value, record.currency) : String(value ?? '-')}</dd></div>)}</dl>;
+  return (
+    <dl className="enterprise-summary-list">
+      {Object.entries(record).filter(([key, value]) => shouldShowDetailField(key, value)).map(([key, value]) => (
+        <div key={key}>
+          <dt>{detailLabel(key)}</dt>
+          <dd>{['amount', 'total', 'total_amount', 'paid_amount', 'balance_amount', 'discount_amount', 'tax_amount'].includes(key) ? money(value, record.currency) : displayValue(value)}</dd>
+        </div>
+      ))}
+    </dl>
+  );
 }
 
 function RecordList({ rows }: { rows: BillingRecord[] }) {
   if (rows.length === 0) return <div className="empty-state">No records returned.</div>;
-  return <div className="record-list">{rows.map((row, index) => <article key={idOf(row) || index}><strong>{textOf(row, ['invoice_number', 'payment_number', 'refund_number', 'code', 'name'], `Record ${index + 1}`)}</strong><p>{textOf(row, ['status', 'payment_status', 'refund_status', 'amount'])}</p></article>)}</div>;
+  return <div className="record-list">{rows.map((row, index) => <article key={idOf(row) || index}><strong>{textOf(row, ['invoice_number', 'payment_number', 'refund_number', 'subscription_number', 'code', 'name'], `Record ${index + 1}`)}</strong><p>{textOf(row, ['tenant_name', 'plan_name', 'status', 'payment_status', 'refund_status', 'amount'])}</p></article>)}</div>;
 }
 
 function PortalActionMenu({ anchorRef, children, onClose, open }: { anchorRef: React.RefObject<HTMLElement>; children: ReactNode; onClose: () => void; open: boolean }) {
   const [position, setPosition] = useState({ left: 0, top: 0 });
   useEffect(() => { if (!open) return; const rect = anchorRef.current?.getBoundingClientRect(); if (!rect) return; const width = 240; setPosition({ left: Math.min(Math.max(12, rect.right - width), window.innerWidth - width - 12), top: Math.min(rect.bottom + 8, window.innerHeight - 12) }); }, [anchorRef, open]);
   if (!open) return null;
-  return createPortal(<div className="action-menu-portal" style={{ left: position.left, top: position.top }}><button type="button" className="action-menu-backdrop" aria-label="Close actions menu" onClick={onClose} />{children}</div>, document.body);
+  return createPortal(<div className="action-menu-portal" style={{ left: position.left + window.scrollX, top: position.top + window.scrollY }}><button type="button" className="action-menu-backdrop" aria-label="Close actions menu" onClick={onClose} />{children}</div>, document.body);
 }
 
-function ViewActions({ kind, record, onModal }: { kind: BillingKind; record?: BillingRecord | null; onModal: (modal: BillingModal) => void }) {
+function ViewActions({ kind, record, onModal, onBack, onEdit }: { kind: BillingKind; record?: BillingRecord | null; onModal: (modal: BillingModal) => void; onBack?: () => void; onEdit?: () => void }) {
   if (kind === 'invoices') {
     return (
       <>
@@ -506,7 +633,8 @@ function ViewActions({ kind, record, onModal }: { kind: BillingKind; record?: Bi
   const couponActive = isActiveCoupon(record);
   return (
     <>
-      <Button type="button" variant="secondary" onClick={() => onModal('couponRules')}><Pencil size={16} aria-hidden />Rules</Button>
+      <Button type="button" variant="secondary" onClick={onBack}>Back</Button>
+      <Button type="button" variant="secondary" onClick={() => onEdit ? onEdit() : onModal('couponRules')}><Pencil size={16} aria-hidden />Edit</Button>
       <Button type="button" variant="secondary" onClick={() => onModal('assignPlans')}><Tags size={16} aria-hidden />Plans</Button>
       <Button type="button" variant="secondary" onClick={() => onModal('assignTenants')}><Tags size={16} aria-hidden />Tenants</Button>
       {couponActive ? (
@@ -550,6 +678,10 @@ function GenericFields({ fields, payload, onChange }: { fields: ModalField[]; pa
 }
 
 function ManualInvoiceDrawer({ loading, error, onClose, onConfirm }: { loading: boolean; error: unknown; onClose: () => void; onConfirm: (payload: Record<string, unknown>) => void }) {
+  const tenantsQuery = useQuery({ queryKey: platformQueryKeys.list('billing-tenants-reference', { per_page: 100 }), queryFn: () => platformBillingApi.references.tenants({ per_page: 100 }) });
+  const subscriptionsQuery = useQuery({ queryKey: platformQueryKeys.list('billing-subscriptions-reference', { per_page: 100 }), queryFn: () => platformBillingApi.references.subscriptions({ per_page: 100 }) });
+  const tenantOptions = tenantsQuery.data?.data ?? [];
+  const subscriptionOptions = subscriptionsQuery.data?.data ?? [];
   const today = new Date().toISOString().slice(0, 10);
   const [draft, setDraft] = useState<Record<string, string | number>>({ tenant_id: '', subscription_id: '', invoice_date: today, due_date: today, currency: 'INR', status: 'draft', discount_amount: 0, tax_amount: 0 });
   const [items, setItems] = useState<InvoiceLineItem[]>([{ item_type: 'plan', description: 'Subscription plan', quantity: 1, unit_price: 0, tax_rate: 18, metadata: '{}' }]);
@@ -583,7 +715,21 @@ function ManualInvoiceDrawer({ loading, error, onClose, onConfirm }: { loading: 
         {manualInvoiceFields.map((field) => (
           <label key={field.name}>
             <span>{field.label}</span>
-            <input type={field.type ?? 'text'} value={String(draft[field.name] ?? '')} onChange={(event) => setDraft((current) => ({ ...current, [field.name]: field.type === 'number' ? Number(event.target.value) : event.target.value }))} />
+            {field.name === 'tenant_id' ? (
+              <select value={String(draft.tenant_id ?? '')} onChange={(event) => setDraft((current) => ({ ...current, tenant_id: event.target.value, subscription_id: '' }))}>
+                <option value="">Select tenant</option>
+                {tenantOptions.map((tenant) => <option key={idOf(tenant)} value={idOf(tenant)}>{textOf(tenant, ['organization_name', 'tenant_name', 'name'])}</option>)}
+              </select>
+            ) : field.name === 'subscription_id' ? (
+              <select value={String(draft.subscription_id ?? '')} onChange={(event) => setDraft((current) => ({ ...current, subscription_id: event.target.value }))}>
+                <option value="">Select subscription</option>
+                {subscriptionOptions.filter((subscription) => !draft.tenant_id || String(subscription.tenant_uuid ?? '') === String(draft.tenant_id) || String(subscription.tenant_id ?? '') === String(draft.tenant_id)).map((subscription) => (
+                  <option key={idOf(subscription)} value={idOf(subscription)}>{textOf(subscription, ['subscription_number'])} - {textOf(subscription, ['tenant_name', 'organization_name'])} / {textOf(subscription, ['plan_name'])}</option>
+                ))}
+              </select>
+            ) : (
+              <input type={field.type ?? 'text'} value={String(draft[field.name] ?? '')} onChange={(event) => setDraft((current) => ({ ...current, [field.name]: field.type === 'number' ? Number(event.target.value) : event.target.value }))} />
+            )}
           </label>
         ))}
       </div>
@@ -647,8 +793,8 @@ function parseCsv(value: unknown) {
 }
 
 const manualInvoiceFields: ModalField[] = [
-  { name: 'tenant_id', label: 'Tenant UUID' },
-  { name: 'subscription_id', label: 'Subscription UUID' },
+  { name: 'tenant_id', label: 'Tenant' },
+  { name: 'subscription_id', label: 'Subscription' },
   { name: 'invoice_date', label: 'Invoice Date', type: 'date' },
   { name: 'due_date', label: 'Due Date', type: 'date' },
   { name: 'currency', label: 'Currency' },
@@ -687,6 +833,7 @@ async function mutateFor(kind: BillingKind, action: BillingModal, record: Billin
   if (action === 'assignTenants') return platformBillingApi.coupons.restrictTenants(id, Array.isArray(payload.tenant_uuids) ? payload.tenant_uuids.map(String) : parseCsv(payload.tenant_uuids));
   if (action === 'activateCoupon') return platformBillingApi.coupons.activate(id);
   if (action === 'deactivateCoupon') return platformBillingApi.coupons.deactivate(id);
+  if (action === 'deleteCoupon' && Array.isArray(payload.coupon_uuids)) return platformBillingApi.coupons.bulkDelete(payload.coupon_uuids.map(String));
   if (action === 'deleteCoupon') return platformBillingApi.coupons.delete(id);
   return { data: null };
 }
@@ -742,3 +889,4 @@ function permissionFor(modal: BillingModal, kind: BillingKind) {
   if (modal === 'deleteCoupon') return 'coupon.delete';
   return billingMeta[kind].permission + '.view';
 }
+

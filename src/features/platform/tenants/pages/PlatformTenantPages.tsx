@@ -316,6 +316,7 @@ export function PlatformTenantsListPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(10);
   const [search, setSearch] = useState('');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectedTenant, setSelectedTenant] = useState<PlatformTenantRecord | null>(null);
@@ -325,7 +326,7 @@ export function PlatformTenantsListPage() {
   const [hiddenColumnIds, setHiddenColumnIds] = useState<string[]>([]);
   const query = createListQuery({
     page,
-    per_page: 25,
+    per_page: perPage,
     search,
     filter: {
       status: filters.status || undefined,
@@ -356,6 +357,8 @@ export function PlatformTenantsListPage() {
     }) => {
       const id = idOf(tenant);
       if (action === 'activate') return platformTenantsApi.activate(id, payload);
+      if (action === 'suspend') return platformTenantsApi.suspend(id, payload);
+      if (action === 'reactivate') return platformTenantsApi.reactivate(id, payload);
       if (action === 'archive') return platformTenantsApi.archive(id, payload);
       if (action === 'delete') return platformTenantsApi.delete(id, payload);
       throw new Error(`Unsupported tenant action ${action}`);
@@ -494,7 +497,7 @@ export function PlatformTenantsListPage() {
         }
       />
 
-      <TenantStats rows={rows} />
+      <TenantStats rows={rows} stats={listQuery.data?.stats} />
 
       <DataTable
         columns={columns}
@@ -514,12 +517,30 @@ export function PlatformTenantsListPage() {
         selectedRowIds={selectedIds}
         onSelectionChange={setSelectedIds}
         page={page}
+        perPage={perPage}
         total={listQuery.data?.total ?? rows.length}
         onPageChange={setPage}
+        onPerPageChange={setPerPage}
         bulkActions={
           <div className="table-actions">
             <Button type="button" size="sm" variant="secondary" onClick={() => setModal('export')}>
               Export Selected
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="danger"
+              onClick={() =>
+                platformTenantsApi
+                  .bulkDelete(selectedIds, { reason: 'Bulk delete from tenants list' })
+                  .then(() =>
+                    queryClient.invalidateQueries({
+                      queryKey: platformQueryKeys.resource('platform-tenants')
+                    })
+                  )
+              }
+            >
+              Delete Selected
             </Button>
           </div>
         }
@@ -1219,17 +1240,33 @@ function ChangePlanModal({
   tenant: PlatformTenantRecord | null;
   onClose: () => void;
 }) {
+  const queryClient = useQueryClient();
   const [planUuid, setPlanUuid] = useState('');
   const [billingCycle, setBillingCycle] = useState('monthly');
   const [effectiveDate, setEffectiveDate] = useState('');
+  const mutation = useMutation({
+    mutationFn: () =>
+      platformTenantsApi.changePlan(idOf(tenant), {
+        plan_uuid: planUuid,
+        billing_cycle: billingCycle,
+        starts_at: effectiveDate || undefined,
+        reason: 'Plan changed from tenant lifecycle page'
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource('platform-tenants') });
+      onClose();
+    }
+  });
   return (
     <TenantModalShell
       open={open}
       onClose={onClose}
       title="Change plan"
       permission="subscription.edit"
-      submitLabel="Queue plan change"
-      onSubmit={onClose}
+      submitLabel="Change plan"
+      loading={mutation.isPending}
+      error={mutation.error}
+      onSubmit={() => mutation.mutate()}
     >
       <RecordDetails
         record={{
@@ -1242,22 +1279,15 @@ function ChangePlanModal({
         Billing cycle
         <select value={billingCycle} onChange={(event) => setBillingCycle(event.target.value)}>
           <option value="monthly">Monthly</option>
+          <option value="quarterly">Quarterly</option>
+          <option value="half-yearly">Half-yearly</option>
           <option value="yearly">Yearly</option>
         </select>
       </label>
-      <SimpleInput
-        label="Effective date"
-        type="date"
-        value={effectiveDate}
-        onChange={setEffectiveDate}
-      />
-      <div className="surface-state">
-        Proration preview will appear here when the subscription change endpoint is connected.
-      </div>
+      <SimpleInput label="Effective date" type="date" value={effectiveDate} onChange={setEffectiveDate} />
     </TenantModalShell>
   );
 }
-
 function ExtendTrialModal({
   open,
   tenant,
@@ -1490,9 +1520,23 @@ function OwnerResetPasswordModal({
   tenant: PlatformTenantRecord | null;
   onClose: () => void;
 }) {
+  const queryClient = useQueryClient();
   const [mode, setMode] = useState('send_link');
   const [temporaryPassword, setTemporaryPassword] = useState('');
   const [forceChange, setForceChange] = useState(true);
+  const mutation = useMutation({
+    mutationFn: () =>
+      platformTenantsApi.resetOwnerPassword(idOf(tenant), {
+        password: mode === 'temporary_password' ? temporaryPassword : undefined,
+        notify_owner: mode === 'send_link',
+        force_change: forceChange,
+        reason: 'Owner password reset from tenant lifecycle page'
+      }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource('platform-tenants') });
+      onClose();
+    }
+  });
   return (
     <TenantModalShell
       open={open}
@@ -1500,40 +1544,27 @@ function OwnerResetPasswordModal({
       title="Owner reset password"
       permission="tenant.edit"
       submitLabel="Reset owner password"
-      onSubmit={onClose}
+      loading={mutation.isPending}
+      error={mutation.error}
+      onSubmit={() => mutation.mutate()}
     >
       <RecordDetails record={{ owner: textOf(tenant, ['owner_email', 'owner_name']) }} />
       <label>
         Mode
         <select value={mode} onChange={(event) => setMode(event.target.value)}>
-          <option value="send_link">Send reset link</option>
+          <option value="send_link">Generate password and notify</option>
           <option value="temporary_password">Set temporary password</option>
         </select>
       </label>
       {mode === 'temporary_password' ? (
-        <SimpleInput
-          label="Temporary password"
-          value={temporaryPassword}
-          onChange={setTemporaryPassword}
-          type="password"
-        />
+        <SimpleInput label="Temporary password" value={temporaryPassword} onChange={setTemporaryPassword} type="password" />
       ) : null}
       <label className="check-row">
-        <input
-          checked={forceChange}
-          type="checkbox"
-          onChange={(event) => setForceChange(event.target.checked)}
-        />{' '}
-        Force change on login
+        <input checked={forceChange} type="checkbox" onChange={(event) => setForceChange(event.target.checked)} /> Force change on login
       </label>
-      <div className="surface-state">
-        Owner-specific reset endpoint is not listed in completed tenant curls; this preserves the
-        required UI surface.
-      </div>
     </TenantModalShell>
   );
 }
-
 function ModuleOverrideDrawer({
   open,
   tenant,
@@ -1941,7 +1972,7 @@ function PortalActionMenu({
   }, [anchorRef, onClose, open]);
   if (!open) return null;
   return createPortal(
-    <div className="action-menu-portal" style={{ left: position.left, top: position.top }}>
+    <div className="action-menu-portal" style={{ left: position.left + window.scrollX, top: position.top + window.scrollY }}>
       <button
         type="button"
         className="action-menu-backdrop"
@@ -2361,35 +2392,39 @@ function CompactStatus({ status }: { status: string }) {
   );
 }
 
-function TenantStats({ rows }: { rows: PlatformTenantRecord[] }) {
+function TenantStats({ rows, stats }: { rows: PlatformTenantRecord[]; stats?: { total?: number; active?: number; trial?: number; suspended?: number } }) {
+  const value = (key: 'total' | 'active' | 'trial' | 'suspended', fallback: number) =>
+    String(stats?.[key] ?? fallback);
   return (
     <section className="platform-access-summary">
-      <SummaryTile icon={<Building2 />} label="Total Tenants" value={String(rows.length)} />
+      <SummaryTile icon={<Building2 />} label="Total Tenants" value={value('total', rows.length)} />
       <SummaryTile
         icon={<CheckCircle2 />}
         label="Active"
-        value={String(
+        value={value(
+          'active',
           rows.filter((row) => textOf(row, ['status'], '').toLowerCase() === 'active').length
         )}
       />
       <SummaryTile
         icon={<CalendarPlus />}
         label="Trial"
-        value={String(
+        value={value(
+          'trial',
           rows.filter((row) => textOf(row, ['status'], '').toLowerCase() === 'trial').length
         )}
       />
       <SummaryTile
         icon={<ShieldAlert />}
         label="Suspended"
-        value={String(
+        value={value(
+          'suspended',
           rows.filter((row) => textOf(row, ['status'], '').toLowerCase().includes('suspend')).length
         )}
       />
     </section>
   );
 }
-
 function SummaryTile({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
   return (
     <article className="summary-card">
@@ -2410,12 +2445,45 @@ function AdminBreadcrumbs({ items }: { items: string[] }) {
   );
 }
 
+const hiddenTenantDetailKeys = new Set([
+  'id',
+  'uuid',
+  'tenant_id',
+  'tenant_uuid',
+  'business_type_id',
+  'industry_id',
+  'country_id',
+  'state_id',
+  'city_id',
+  'plan_id',
+  'plan_uuid',
+  'subscription_id',
+  'subscription_uuid',
+  'platform_invoice_id',
+  'platform_payment_id',
+  'logo_file_id',
+  'favicon_file_id',
+  'default_office_id',
+  'created_by',
+  'updated_by'
+]);
+
+function shouldShowTenantDetail(key: string) {
+  if (hiddenTenantDetailKeys.has(key)) return false;
+  return !key.toLowerCase().endsWith('_id') && !key.toLowerCase().endsWith('_uuid');
+}
+
+function tenantDetailLabel(key: string) {
+  const labels: Record<string, string> = { organization_name: 'Organization', display_name: 'Display Name', organization_code: 'Code', current_plan: 'Plan', plan_name: 'Plan', subscription_status: 'Subscription', owner_name: 'Owner', owner_email: 'Owner Email', default_currency: 'Currency', default_timezone: 'Timezone', trial_ends_at: 'Trial Ends' };
+  return labels[key] ?? key.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 function RecordDetails({ record }: { record: Record<string, unknown> }) {
   return (
     <dl className="enterprise-summary-list">
-      {Object.entries(record).map(([key, value]) => (
+      {Object.entries(record).filter(([key]) => shouldShowTenantDetail(key)).map(([key, value]) => (
         <div key={key}>
-          <dt>{key}</dt>
+          <dt>{tenantDetailLabel(key)}</dt>
           <dd>{humanValue(value)}</dd>
         </div>
       ))}
@@ -2428,10 +2496,10 @@ function SafeRecordDetails({ record }: { record: Record<string, unknown> }) {
   return (
     <dl className="enterprise-summary-list">
       {Object.entries(record)
-        .filter(([key]) => !hidden.some((item) => key.toLowerCase().includes(item)))
+        .filter(([key]) => shouldShowTenantDetail(key) && !hidden.some((item) => key.toLowerCase().includes(item)))
         .map(([key, value]) => (
           <div key={key}>
-            <dt>{key}</dt>
+            <dt>{tenantDetailLabel(key)}</dt>
             <dd>{humanValue(maskSecrets(value))}</dd>
           </div>
         ))}
@@ -2445,7 +2513,7 @@ function humanValue(value: unknown): string {
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
   if (typeof value === 'object') {
     const payload = value as Record<string, unknown>;
-    return textOf(payload as PlatformTenantRecord, ['display_name', 'name', 'title', 'email', 'uuid'], 'Details available');
+    return textOf(payload as PlatformTenantRecord, ['display_name', 'organization_name', 'name', 'title', 'email', 'invoice_number', 'payment_number', 'subscription_number'], 'Details available');
   }
   return String(value);
 }
@@ -2479,3 +2547,10 @@ function RecordList({ rows, fallback }: { rows: PlatformTenantRecord[]; fallback
     </div>
   );
 }
+
+
+
+
+
+
+

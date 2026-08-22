@@ -1031,15 +1031,11 @@ textarea:disabled {
   align-items: center;
   background: #ffffff;
   border-top: 1px solid #edf1f5;
-  bottom: 16px;
-  box-shadow: 0 14px 36px rgb(16 24 40 / 8%);
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
   padding-top: 14px;
-  position: sticky;
-  z-index: 3;
 }
 
 .enterprise-view-actions {
@@ -2149,22 +2145,12 @@ textarea:disabled {
   grid-column: 1 / -1;
 }
 
-.app-main .enterprise-form {
-  padding-bottom: 104px;
-}
-
 .app-main .enterprise-form__footer {
-  border: 1px solid var(--crm-line, #dfe4ea);
-  border-radius: 10px;
-  bottom: 16px;
-  left: 272px;
-  padding: 14px 16px;
-  position: fixed;
-  right: 24px;
-}
-
-.app-shell--sidebar-collapsed .app-main .enterprise-form__footer {
-  left: 96px;
+  margin-top: 4px;
+  min-width: 0;
+  padding: 14px 0 0;
+  position: static;
+  width: 100%;
 }
 
 .rbac-toolbar {
@@ -3081,7 +3067,7 @@ body {
 }
 
 .action-menu-portal {
-  position: fixed;
+  position: absolute;
   z-index: 60;
 }
 
@@ -4185,18 +4171,12 @@ textarea:focus-visible {
     visibility: visible;
   }
 
-  .app-main .enterprise-form {
-    padding-bottom: 104px;
-  }
-
   .app-main .enterprise-form__footer {
-    bottom: 12px;
-    left: 20px;
-    right: 20px;
+    justify-content: stretch;
   }
 
-  .app-shell--sidebar-collapsed .app-main .enterprise-form__footer {
-    left: 20px;
+  .app-main .enterprise-form__footer .button {
+    flex: 1 1 140px;
   }
 
   .topbar {
@@ -4492,3 +4472,136 @@ textarea:focus-visible {
   padding: 6px 8px;
 }
 
+
+
+.registration-stepper {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.registration-stepper button {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #dfe4ea;
+  border-radius: 8px;
+  color: #475467;
+  display: inline-flex;
+  gap: 6px;
+  justify-content: center;
+  min-height: 42px;
+  padding: 8px 10px;
+}
+
+.registration-stepper button.is-active {
+  background: #eef4ff;
+  border-color: #2f66f5;
+  color: #174ea6;
+}
+
+.tenant-registration-form--stepped {
+  gap: 16px;
+}
+
+.registration-step-panel {
+  min-height: 360px;
+}
+
+.registration-choice-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.registration-choice {
+  background: #ffffff;
+  border: 1px solid #dfe4ea;
+  border-radius: 8px;
+  color: #344054;
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  text-align: left;
+}
+
+.registration-choice.is-active {
+  border-color: #2f66f5;
+  box-shadow: 0 0 0 3px rgb(47 102 245 / 12%);
+}
+
+.registration-choice strong {
+  color: #17202a;
+}
+
+.registration-review-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
+.registration-review-grid div {
+  background: #f8fafc;
+  border: 1px solid #e6ebf2;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.registration-review-grid dt {
+  color: #667085;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.registration-review-grid dd {
+  color: #17202a;
+  font-weight: 800;
+  margin: 4px 0 0;
+}
+
+.registration-step-actions {
+  border-top: 1px solid #edf1f5;
+  justify-content: space-between;
+  padding-top: 16px;
+}
+
+.registration-success-module {
+  align-items: flex-start;
+  display: flex;
+  gap: 14px;
+}
+
+.registration-success-module > svg {
+  color: #16a34a;
+  flex: 0 0 auto;
+}
+
+.registration-success-module div {
+  display: grid;
+  gap: 6px;
+}
+
+.registration-success-module strong {
+  color: #17202a;
+  font-size: 18px;
+}
+
+.registration-success-module code {
+  background: #f8fafc;
+  border: 1px solid #e6ebf2;
+  border-radius: 6px;
+  color: #174ea6;
+  padding: 6px 8px;
+}
+
+@media (max-width: 920px) {
+  .registration-stepper,
+  .registration-choice-grid,
+  .registration-review-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .registration-stepper button {
+    justify-content: flex-start;
+  }
+}

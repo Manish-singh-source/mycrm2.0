@@ -24,7 +24,11 @@ export type CatalogRecord = {
   created_at?: string;
   updated_at?: string;
   features?: CatalogRecord[];
+  addons?: CatalogRecord[];
+  coupon_history?: CatalogRecord[];
   subscriptions?: CatalogRecord[];
+  features_limits?: CatalogRecord[];
+  activity?: CatalogRecord[];
   [key: string]: unknown;
 };
 
@@ -63,6 +67,7 @@ export type SubscriptionRecord = CatalogRecord & {
 export type ListResult<TRecord extends CatalogRecord> = {
   data: TRecord[];
   total: number;
+  meta?: Record<string, unknown>;
 };
 
 export type PlanPayload = {
@@ -90,11 +95,12 @@ export type FeaturePayload = {
 
 export type AddonPayload = {
   name: string;
-  code: string;
+  code?: string;
   pricing_type: string;
   price: string;
   currency: string;
   status: string;
+  is_public?: boolean;
 };
 
 function paginationTotal(meta?: Record<string, unknown>, fallback = 0) {
@@ -144,7 +150,8 @@ async function list<TRecord extends CatalogRecord>(path: string, query?: ApiQuer
   const response = await platformClient.get<TRecord[]>(path, { query });
   return {
     data: Array.isArray(response.data) ? response.data : [],
-    total: paginationTotal(response.meta, Array.isArray(response.data) ? response.data.length : 0)
+    total: paginationTotal(response.meta, Array.isArray(response.data) ? response.data.length : 0),
+    meta: response.meta
   };
 }
 
@@ -226,40 +233,96 @@ export const platformSubscriptionsApi = {
   },
   plans: {
     list: (query?: ApiQuery) => list<CatalogRecord>('/plans', query),
-    detail: async (id: string) => unwrap<CatalogRecord>(await platformClient.get(`/plans/${encodeURIComponent(id)}`), ['plan']),
+    detail: async (id: string) => {
+      const response = await platformClient.get<CatalogRecord | Record<string, CatalogRecord | CatalogRecord[] | unknown>>(`/plans/${encodeURIComponent(id)}`);
+      const data = response.data;
+      if (data && typeof data === 'object' && !Array.isArray(data)) {
+        const wrapped = data as Record<string, CatalogRecord | CatalogRecord[] | unknown>;
+        const plan = (wrapped.plan && !Array.isArray(wrapped.plan) ? wrapped.plan : wrapped) as CatalogRecord;
+        return {
+          ...plan,
+          features: (wrapped.features as CatalogRecord[] | undefined) ?? plan.features,
+          addons: (wrapped.addons as CatalogRecord[] | undefined) ?? plan.addons,
+          coupon_history: (wrapped.coupon_history as CatalogRecord[] | undefined) ?? plan.coupon_history,
+          subscriptions: (wrapped.subscriptions as CatalogRecord[] | undefined) ?? plan.subscriptions,
+          activity: (wrapped.activity as CatalogRecord[] | undefined) ?? plan.activity
+        };
+      }
+      return data as CatalogRecord;
+    },
     create: async (body: PlanPayload) => unwrap<CatalogRecord>(await platformClient.post('/plans', body), ['plan']),
     update: async (id: string, body: Partial<PlanPayload>) =>
       unwrap<CatalogRecord>(await platformClient.patch(`/plans/${encodeURIComponent(id)}`, body), ['plan']),
     delete: (id: string) => platformClient.delete(`/plans/${encodeURIComponent(id)}`),
+    bulkDelete: (plan_uuids: string[]) => platformClient.delete('/plans/bulk', { body: { plan_uuids } }),
+    activate: (id: string) => platformClient.post(`/plans/${encodeURIComponent(id)}/activate`),
+    deactivate: (id: string) => platformClient.post(`/plans/${encodeURIComponent(id)}/deactivate`),
     clone: (id: string, body: Record<string, unknown>) =>
       platformClient.post(`/plans/${encodeURIComponent(id)}/clone`, body),
     features: (id: string) => platformClient.get<{ features: CatalogRecord[] }>(`/plans/${encodeURIComponent(id)}/features`),
     replaceFeatures: (id: string, features: Record<string, unknown>[]) =>
       platformClient.put(`/plans/${encodeURIComponent(id)}/features`, { features }),
+    addons: (id: string) => platformClient.get<{ addons: CatalogRecord[] }>(`/plans/${encodeURIComponent(id)}/addons`),
+    replaceAddons: (id: string, addon_uuids: string[]) =>
+      platformClient.put(`/plans/${encodeURIComponent(id)}/addons`, { addon_uuids }),
     subscriptions: (id: string) =>
       platformClient.get<CatalogRecord[]>(`/plans/${encodeURIComponent(id)}/subscriptions`),
-    export: () => platformClient.post('/plans/export')
+    export: () => platformClient.post('/plans/export'),
+    import: () => platformClient.post('/plans/import')
   },
   features: {
     list: (query?: ApiQuery) => list<CatalogRecord>('/features', query),
-    detail: async (id: string) =>
-      unwrap<CatalogRecord>(await platformClient.get(`/features/${encodeURIComponent(id)}`), ['feature']),
+    detail: async (id: string) => {
+      const response = await platformClient.get<CatalogRecord | Record<string, CatalogRecord | CatalogRecord[] | unknown>>(`/features/${encodeURIComponent(id)}`);
+      const data = response.data;
+      if (data && typeof data === 'object' && !Array.isArray(data)) {
+        const wrapped = data as Record<string, CatalogRecord | CatalogRecord[] | unknown>;
+        const feature = (wrapped.feature && !Array.isArray(wrapped.feature) ? wrapped.feature : wrapped) as CatalogRecord;
+        return {
+          ...feature,
+          features_limits: (wrapped.features_limits as CatalogRecord[] | undefined) ?? feature.features_limits,
+          subscriptions: (wrapped.subscriptions as CatalogRecord[] | undefined) ?? feature.subscriptions,
+          activity: (wrapped.activity as CatalogRecord[] | undefined) ?? feature.activity
+        };
+      }
+      return data as CatalogRecord;
+    },
     create: async (body: FeaturePayload) => unwrap<CatalogRecord>(await platformClient.post('/features', body), ['feature']),
     update: async (id: string, body: Partial<FeaturePayload>) =>
       unwrap<CatalogRecord>(await platformClient.patch(`/features/${encodeURIComponent(id)}`, body), ['feature']),
     delete: (id: string) => platformClient.delete(`/features/${encodeURIComponent(id)}`),
-    export: () => platformClient.post('/features/export')
+    bulkDelete: (feature_uuids: string[]) => platformClient.delete('/features/bulk', { body: { feature_uuids } }),
+    export: () => platformClient.post('/features/export'),
+    import: () => platformClient.post('/features/import')
   },
   addons: {
     list: (query?: ApiQuery) => list<CatalogRecord>('/addons', query),
-    detail: async (id: string) => unwrap<CatalogRecord>(await platformClient.get(`/addons/${encodeURIComponent(id)}`), ['addon']),
+    detail: async (id: string) => {
+      const response = await platformClient.get<CatalogRecord | Record<string, CatalogRecord | CatalogRecord[] | unknown>>(`/addons/${encodeURIComponent(id)}`);
+      const data = response.data;
+      if (data && typeof data === 'object' && !Array.isArray(data)) {
+        const wrapped = data as Record<string, CatalogRecord | CatalogRecord[] | unknown>;
+        const addon = (wrapped.addon && !Array.isArray(wrapped.addon) ? wrapped.addon : wrapped) as CatalogRecord;
+        return {
+          ...addon,
+          features_limits: (wrapped.features_limits as CatalogRecord[] | undefined) ?? addon.features_limits,
+          subscriptions: (wrapped.subscriptions as CatalogRecord[] | undefined) ?? addon.subscriptions,
+          activity: (wrapped.activity as CatalogRecord[] | undefined) ?? addon.activity
+        };
+      }
+      return data as CatalogRecord;
+    },
     create: async (body: AddonPayload) => unwrap<CatalogRecord>(await platformClient.post('/addons', body), ['addon']),
     update: async (id: string, body: Partial<AddonPayload>) =>
       unwrap<CatalogRecord>(await platformClient.patch(`/addons/${encodeURIComponent(id)}`, body), ['addon']),
-    delete: (id: string) => platformClient.delete(`/addons/${encodeURIComponent(id)}`)
+    delete: (id: string) => platformClient.delete(`/addons/${encodeURIComponent(id)}`),
+    bulkDelete: (addon_uuids: string[]) => platformClient.delete('/addons/bulk', { body: { addon_uuids } }),
+    export: () => platformClient.post('/addons/export'),
+    import: () => platformClient.post('/addons/import')
   },
   references: {
     tenants: (query?: ApiQuery) => list<CatalogRecord>('/tenants', query),
-    coupons: (query?: ApiQuery) => list<CatalogRecord>('/coupons', query)
+    coupons: (query?: ApiQuery) => list<CatalogRecord>('/coupons', query),
+    modules: (query?: ApiQuery) => list<CatalogRecord>('/modules', query)
   }
 };

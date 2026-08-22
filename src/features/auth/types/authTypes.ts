@@ -144,6 +144,16 @@ export type ResetPasswordRequest = {
   password_confirmation: string;
 };
 
+export type PublicPlan = {
+  uuid: string;
+  name: string;
+  code?: string | null;
+  billing_cycle?: string | null;
+  base_price?: number | string | null;
+  currency?: string | null;
+  trial_days?: number | null;
+  description?: string | null;
+};
 export type TenantRegistrationRequest = {
   organization_name: string;
   legal_name?: string;
@@ -159,6 +169,15 @@ export type TenantRegistrationRequest = {
   website?: string;
   default_currency: string;
   default_timezone: string;
+  plan_uuid?: string;
+  trial_days?: number;
+  subscription?: {
+    type?: 'free' | 'trial' | 'paid' | string;
+    billing_cycle?: 'monthly' | 'quarterly' | 'half-yearly' | 'yearly' | string;
+  };
+  payment?: {
+    method?: 'free' | 'cash' | 'online' | string;
+  };
   owner: {
     first_name: string;
     last_name: string;
@@ -196,6 +215,15 @@ export type TenantRegistrationResponse = {
     status?: string;
     trial_ends_at?: string | null;
   };
+  subscription?: Record<string, unknown>;
+  payment_order?: {
+    id?: string;
+    amount?: number;
+    currency?: string;
+    [key: string]: unknown;
+  } | null;
+  payment?: Record<string, unknown> | null;
+  razorpay_key?: string | null;
   owner?: {
     uuid?: string;
     display_name?: string;
@@ -211,3 +239,4 @@ export type TenantRegistrationResponse = {
   auto_login?: boolean;
   message?: string;
 };
+

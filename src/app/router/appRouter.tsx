@@ -62,6 +62,8 @@ import {
 } from '@/features/platform/subscriptions/pages/PlatformSubscriptionCatalogPages';
 import {
   PlatformCouponViewPage,
+  PlatformCouponCreatePage,
+  PlatformCouponEditPage,
   PlatformCouponsListPage,
   PlatformInvoiceViewPage,
   PlatformInvoicesListPage,
@@ -76,7 +78,10 @@ import {
   PlatformIntegrationsPage,
   PlatformKnowledgeBasePage,
   PlatformLegalPage,
+  PlatformModuleCreatePage,
+  PlatformModuleEditPage,
   PlatformModulesPage,
+  PlatformModuleViewPage,
   PlatformMonitoringPage,
   PlatformOnboardingPage,
   PlatformRemoteLoginPage,
@@ -642,6 +647,14 @@ export const appRouter = createBrowserRouter([
         )
       },
       {
+        path: 'billing/coupons/create',
+        element: (
+          <RequirePermission guard="platform" anyOf={['coupon.create']}>
+            <PlatformCouponCreatePage />
+          </RequirePermission>
+        )
+      },
+      {
         path: 'billing/coupons/:id',
         element: (
           <RequirePermission guard="platform" anyOf={['coupon.view']}>
@@ -650,10 +663,42 @@ export const appRouter = createBrowserRouter([
         )
       },
       {
+        path: 'billing/coupons/:id/edit',
+        element: (
+          <RequirePermission guard="platform" anyOf={['coupon.edit']}>
+            <PlatformCouponEditPage />
+          </RequirePermission>
+        )
+      },
+      {
         path: 'catalog/modules',
         element: (
           <RequirePermission guard="platform" anyOf={['module.view']}>
             <PlatformModulesPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'catalog/modules/create',
+        element: (
+          <RequirePermission guard="platform" anyOf={['module.edit']}>
+            <PlatformModuleCreatePage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'catalog/modules/:id',
+        element: (
+          <RequirePermission guard="platform" anyOf={['module.view']}>
+            <PlatformModuleViewPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'catalog/modules/:id/edit',
+        element: (
+          <RequirePermission guard="platform" anyOf={['module.edit']}>
+            <PlatformModuleEditPage />
           </RequirePermission>
         )
       },

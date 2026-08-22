@@ -1481,7 +1481,7 @@ function PortalActionMenu({
   if (!open) return null;
 
   return createPortal(
-    <div className="action-menu-portal" style={{ left: position.left, top: position.top }}>
+    <div className="action-menu-portal" style={{ left: position.left + window.scrollX, top: position.top + window.scrollY }}>
       <button
         type="button"
         className="action-menu-backdrop"

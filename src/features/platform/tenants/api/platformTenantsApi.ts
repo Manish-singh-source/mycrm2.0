@@ -46,6 +46,7 @@ export type PlatformTenantRecord = {
 export type PlatformTenantListResult = {
   data: PlatformTenantRecord[];
   total: number;
+  stats?: { total?: number; active?: number; trial?: number; suspended?: number };
 };
 
 export type TenantCreatePayload = {
@@ -81,7 +82,8 @@ function paginationTotal(meta?: Record<string, unknown>, fallback = 0) {
 
 function unwrapTenant(data: unknown): PlatformTenantRecord {
   if (data && typeof data === 'object' && 'tenant' in data) {
-    return (data as { tenant: PlatformTenantRecord }).tenant;
+    const payload = data as Record<string, unknown> & { tenant: PlatformTenantRecord };
+    return { ...payload.tenant, owner: payload.owner as PlatformTenantRecord | undefined, office: payload.office as PlatformTenantRecord | undefined, subscription: payload.subscription as PlatformTenantRecord | undefined };
   }
   return data as PlatformTenantRecord;
 }
@@ -99,7 +101,7 @@ export const platformTenantsApi = {
   list: async (query?: ApiQuery): Promise<PlatformTenantListResult> => {
     const response = await platformClient.get<PlatformTenantRecord[]>('/tenants', { query });
     const rows = Array.isArray(response.data) ? response.data : [];
-    return { data: rows, total: paginationTotal(response.meta, rows.length) };
+    return { data: rows, total: paginationTotal(response.meta, rows.length), stats: response.meta?.stats as PlatformTenantListResult['stats'] };
   },
   detail: async (id: string) => {
     const response = await platformClient.get<PlatformTenantRecord | { tenant: PlatformTenantRecord }>(`/tenants/${encodeURIComponent(id)}`);
@@ -127,7 +129,14 @@ export const platformTenantsApi = {
     platformClient.post(`/tenants/${encodeURIComponent(id)}/archive`, body),
   extendTrial: (id: string, body: { trial_ends_at: string; reason: string }) =>
     platformClient.post(`/tenants/${encodeURIComponent(id)}/extend-trial`, body),
-  impersonate: (id: string, body: { reason: string; duration_minutes: number; target_user_uuid?: string }) =>
+  bulkDelete: (ids: string[], body: Record<string, unknown> = {}) =>
+    platformClient.delete('/tenants/bulk', { body: { tenant_uuids: ids, ...body } }),
+  changePlan: (id: string, body: Record<string, unknown>) =>
+    platformClient.post(`/tenants/${encodeURIComponent(id)}/change-plan`, body),
+  resetOwnerPassword: (id: string, body: Record<string, unknown>) =>
+    platformClient.post(`/tenants/${encodeURIComponent(id)}/reset-owner-password`, body),
+  paymentOrder: (id: string, body: Record<string, unknown>) =>
+    platformClient.post(`/tenants/${encodeURIComponent(id)}/payment-order`, body),  impersonate: (id: string, body: { reason: string; duration_minutes: number; target_user_uuid?: string }) =>
     platformClient.post(`/tenants/${encodeURIComponent(id)}/impersonate`, body, { impersonationReason: body.reason }),
   endImpersonation: (id: string, sessionId: string) =>
     platformClient.delete(`/tenants/${encodeURIComponent(id)}/impersonate/${encodeURIComponent(sessionId)}`),
@@ -139,3 +148,5 @@ export const platformTenantsApi = {
     platformClient.put(`/tenants/${encodeURIComponent(id)}/modules`, body),
   export: (body: Record<string, unknown>) => platformClient.post('/tenants/export', body)
 };
+
+

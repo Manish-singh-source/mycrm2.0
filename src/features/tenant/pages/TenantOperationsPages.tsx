@@ -457,7 +457,7 @@ function PortalActionMenu({ anchorRef, children, onClose, open }: { anchorRef: R
     ? { top: rect.bottom + 8, left: Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8)) }
     : { top: 80, left: 80 };
   return createPortal(
-    <div className="action-menu-portal" style={{ left: position.left, top: position.top }}>
+    <div className="action-menu-portal" style={{ left: position.left + window.scrollX, top: position.top + window.scrollY }}>
       <button type="button" className="action-menu-backdrop" aria-label="Close actions menu" onClick={onClose} />
       {children}
     </div>,

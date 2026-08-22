@@ -16,6 +16,7 @@ import {
   FileText,
   LifeBuoy,
   Link2,
+  Plus,
   LockKeyhole,
   MessageSquareReply,
   MoreVertical,
@@ -28,6 +29,7 @@ import {
   Save,
   Send,
   Settings2,
+  Trash2,
   Split,
   UserCheck,
   UploadCloud,
@@ -36,6 +38,7 @@ import {
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
 import { platformQueryKeys } from '@/features/platform/api/platformQueryKeys';
+import { PLATFORM_ROUTES } from '@/features/platform/routes/platformRoutes';
 import { platformOperationsApi, type PlatformRecord } from '@/features/platform/operations/api/platformOperationsApi';
 import type { ApiQuery, NormalizedApiResponse } from '@/lib/api/apiTypes';
 import { ApiError } from '@/lib/api/apiError';
@@ -44,7 +47,8 @@ import { DataTable, type DataTableColumn } from '@/shared/components/data-table'
 import { AppDrawer } from '@/shared/components/drawer';
 import { PageHeader, StatusBadge, Tabs } from '@/shared/components/layout';
 import { AppModal } from '@/shared/components/modal';
-import { Button } from '@/shared/components/ui';
+import { Button, PermissionButton } from '@/shared/components/ui';
+import { ConfirmDialog } from '@/shared/components/workflows';
 
 type OperationArea =
   | 'modules'
@@ -140,7 +144,10 @@ type AreaConfig = {
   }>;
 };
 
-export function PlatformModulesPage() { return <OperationsPage config={configs.modules} />; }
+export function PlatformModulesPage() { return <PlatformModulesListPage />; }
+export function PlatformModuleCreatePage() { return <PlatformModuleFormPage mode="create" />; }
+export function PlatformModuleEditPage() { return <PlatformModuleFormPage mode="edit" />; }
+export function PlatformModuleViewPage() { return <PlatformModuleDetailPage />; }
 export function PlatformSupportTicketsPage() { return <OperationsPage config={configs['support-tickets']} />; }
 export function PlatformSupportTicketViewPage() {
   const navigate = useNavigate();
@@ -192,6 +199,477 @@ export function PlatformLegalPage() { return <OperationsPage config={configs.leg
 export function PlatformAnnouncementsPage() { return <OperationsPage config={configs.announcements} />; }
 export function PlatformWebhooksPage() { return <OperationsPage config={configs.webhooks} />; }
 
+type ModuleModal = 'filters' | 'views' | 'columns' | 'features' | 'delete' | 'bulkDelete' | 'toggle' | null;
+
+const moduleRoute = PLATFORM_ROUTES.catalog.modules;
+const moduleStatusOptions = ['active', 'inactive'];
+const moduleCategoryOptions = ['crm', 'sales', 'support', 'billing', 'commerce', 'operations', 'analytics', 'integrations', 'security', 'platform'];
+
+function PlatformModulesListPage() {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedRecord, setSelectedRecord] = useState<PlatformRecord | null>(null);
+  const [modal, setModal] = useState<ModuleModal>(null);
+  const [statusFilter, setStatusFilter] = useState('');
+  const [hiddenColumnIds, setHiddenColumnIds] = useState<string[]>([]);
+  const [perPage, setPerPage] = useState(10);
+  const queryParams = { ...createListQuery({ page, per_page: perPage, search }), status: statusFilter || undefined };
+  const query = useQuery({
+    queryKey: platformQueryKeys.list('modules', queryParams),
+    queryFn: () => platformOperationsApi.modules.list(queryParams)
+  });
+  const rows = query.data?.data ?? [];
+  const selectedRows = rows.filter((row) => selectedIds.includes(idOf(row)));
+  const mutation = useMutation({
+    mutationFn: async ({ action, record }: { action: 'delete' | 'bulkDelete' | 'toggle'; record?: PlatformRecord | null }) => {
+      if (action === 'bulkDelete') return platformOperationsApi.modules.bulkDelete(selectedIds);
+      const target = record ?? selectedRecord;
+      if (!target) throw new Error('Select a module first.');
+      const id = idOf(target);
+      if (action === 'toggle') return target.status === 'active' ? platformOperationsApi.modules.disable(id) : platformOperationsApi.modules.enable(id);
+      return platformOperationsApi.modules.delete(id);
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource('modules') });
+      setModal(null);
+      setSelectedRecord(null);
+      setSelectedIds([]);
+    }
+  });
+  const columns = moduleColumns({
+    onView: (record) => navigate(`${moduleRoute}/${idOf(record)}`),
+    onEdit: (record) => navigate(`${moduleRoute}/${idOf(record)}/edit`),
+    onToggle: (record) => { setSelectedRecord(record); setModal('toggle'); },
+    onFeatures: (record) => { setSelectedRecord(record); setModal('features'); },
+    onDelete: (record) => { setSelectedRecord(record); setModal('delete'); }
+  });
+
+  return (
+    <section className="enterprise-module-page platform-operations-page">
+      <PageHeader
+        title="Modules"
+        description="Manage platform module registry records and feature assignments."
+        actions={<PermissionButton guard="platform" permission="module.edit" type="button" onClick={() => navigate(`${moduleRoute}/create`)}><Plus size={16} aria-hidden />Create Module</PermissionButton>}
+      />
+      <ModuleStats rows={rows} stats={query.data?.meta?.stats as ModuleStatsData | undefined} totalCount={query.data?.total} />
+      <DataTable
+        columns={columns}
+        data={rows}
+        getRowId={idOf}
+        loading={query.isLoading}
+        error={query.isError ? errorMessage(query.error) : ''}
+        searchValue={search}
+        searchPlaceholder="Search modules..."
+        onSearchChange={(value) => { setSearch(value); setPage(1); }}
+        hiddenColumnIds={hiddenColumnIds}
+        onHiddenColumnIdsChange={setHiddenColumnIds}
+        onOpenSavedViews={() => setModal('views')}
+        onOpenFilters={() => setModal('filters')}
+        onOpenColumns={() => setModal('columns')}
+        onOpenExport={() => platformOperationsApi.modules.export()}
+        onOpenImport={() => platformOperationsApi.modules.import()}
+        selectedRowIds={selectedIds}
+        onSelectionChange={setSelectedIds}
+        bulkActions={<PermissionButton guard="platform" permission="module.edit" type="button" variant="danger" size="sm" onClick={() => setModal('bulkDelete')}><Trash2 size={15} aria-hidden />Delete selected</PermissionButton>}
+        page={page}
+        perPage={perPage}
+        total={query.data?.total ?? rows.length}
+        onPageChange={setPage}
+        onPerPageChange={(value) => { setPerPage(value); setPage(1); setSelectedIds([]); }}
+      />
+      <ModuleTableModals
+        modal={modal}
+        columns={columns}
+        hiddenColumnIds={hiddenColumnIds}
+        statusFilter={statusFilter}
+        onClose={() => setModal(null)}
+        onStatusFilterChange={(value) => { setStatusFilter(value); setPage(1); }}
+        onHiddenColumnIdsChange={setHiddenColumnIds}
+      />
+      <ModuleFeatureModal module={selectedRecord} open={modal === 'features'} onClose={() => setModal(null)} onComplete={() => { setModal(null); void queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource('modules') }); }} />
+      <ConfirmDialog
+        open={modal === 'toggle'}
+        onClose={() => setModal(null)}
+        title={`${selectedRecord?.status === 'active' ? 'Deactivate' : 'Activate'} module?`}
+        description={`${selectedRecord?.status === 'active' ? 'Deactivate' : 'Activate'} ${printable(selectedRecord?.name ?? selectedRecord?.code)}.`}
+        confirmLabel={selectedRecord?.status === 'active' ? 'Deactivate' : 'Activate'}
+        confirmTone="primary"
+        guard="platform"
+        permission="module.edit"
+        loading={mutation.isPending}
+        error={mutation.error ? errorMessage(mutation.error) : null}
+        onConfirm={() => mutation.mutate({ action: 'toggle' })}
+      />
+      <ConfirmDialog
+        open={modal === 'delete'}
+        onClose={() => setModal(null)}
+        title="Delete module?"
+        description={`This permanently deletes ${printable(selectedRecord?.name ?? selectedRecord?.code)} when it is not core and has no feature or tenant override assignments.`}
+        confirmLabel="Delete"
+        confirmTone="danger"
+        typedConfirmation="delete"
+        guard="platform"
+        permission="module.edit"
+        loading={mutation.isPending}
+        error={mutation.error ? errorMessage(mutation.error) : null}
+        onConfirm={() => mutation.mutate({ action: 'delete' })}
+      />
+      <ConfirmDialog
+        open={modal === 'bulkDelete'}
+        onClose={() => setModal(null)}
+        title="Delete selected modules?"
+        description={`This permanently deletes ${selectedRows.length} selected module${selectedRows.length === 1 ? '' : 's'} when they are not core and have no assignments.`}
+        confirmLabel="Delete"
+        confirmTone="danger"
+        typedConfirmation="delete"
+        guard="platform"
+        permission="module.edit"
+        loading={mutation.isPending}
+        error={mutation.error ? errorMessage(mutation.error) : null}
+        onConfirm={() => mutation.mutate({ action: 'bulkDelete' })}
+      />
+    </section>
+  );
+}
+
+function PlatformModuleFormPage({ mode }: { mode: 'create' | 'edit' }) {
+  const navigate = useNavigate();
+  const { id = '' } = useParams();
+  const queryClient = useQueryClient();
+  const detailQuery = useQuery({
+    queryKey: platformQueryKeys.detail('modules', id),
+    queryFn: () => platformOperationsApi.modules.detail(id),
+    enabled: mode === 'edit' && Boolean(id)
+  });
+  const [form, setForm] = useState<Record<string, string | boolean | number>>(() => defaultModuleForm());
+  const mutation = useMutation({
+    mutationFn: () => mode === 'create' ? platformOperationsApi.modules.create(cleanModulePayload(form)) : platformOperationsApi.modules.update(id, cleanModulePayload(form)),
+    onSuccess: async (response) => {
+      await queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource('modules') });
+      const payload = (response as NormalizedApiResponse<Record<string, unknown>>).data;
+      const record = recordFromResponse(payload, 'module');
+      navigate(`${moduleRoute}/${idOf(record) || id}`);
+    }
+  });
+
+  useEffect(() => {
+    if (detailQuery.data) setForm(defaultModuleForm(detailQuery.data));
+  }, [detailQuery.data]);
+
+  if (detailQuery.isLoading) return <div className="surface-state">Loading module...</div>;
+
+  return (
+    <section className="enterprise-module-page platform-operations-page">
+      <PageHeader
+        title={`${mode === 'create' ? 'Create' : 'Edit'} Module`}
+        description="Registry fields control platform module availability and ordering."
+        actions={<Button type="button" variant="secondary" onClick={() => navigate(moduleRoute)}>Back</Button>}
+      />
+      {detailQuery.isError ? <div className="surface-error">{errorMessage(detailQuery.error)}</div> : null}
+      {mutation.error ? <div className="surface-error">{errorMessage(mutation.error)}</div> : null}
+      <form className="enterprise-form" onSubmit={(event) => { event.preventDefault(); mutation.mutate(); }}>
+        <div className="enterprise-form__grid">
+          {moduleFormFields.map((field) => (
+            <label key={field.name} className={field.type === 'checkbox' ? 'check-row' : undefined}>
+              {field.type === 'checkbox' ? (
+                <><input type="checkbox" checked={Boolean(form[field.name])} onChange={(event) => setForm((current) => ({ ...current, [field.name]: event.target.checked }))} />{field.label}</>
+              ) : (
+                <>
+                  <FieldLabel required={field.required}>{field.label}</FieldLabel>
+                  {field.type === 'select' ? (
+                    <select required={field.required} value={String(form[field.name] ?? '')} onChange={(event) => setForm((current) => ({ ...current, [field.name]: event.target.value }))}>
+                      {field.options?.map((option) => <option key={option} value={option}>{label(option)}</option>)}
+                    </select>
+                  ) : field.type === 'textarea' ? (
+                    <textarea value={String(form[field.name] ?? '')} onChange={(event) => setForm((current) => ({ ...current, [field.name]: event.target.value }))} />
+                  ) : (
+                    <input required={field.required} type={field.type ?? 'text'} value={String(form[field.name] ?? '')} onChange={(event) => setForm((current) => ({ ...current, [field.name]: field.type === 'number' ? Number(event.target.value) : event.target.value }))} />
+                  )}
+                </>
+              )}
+            </label>
+          ))}
+        </div>
+        <footer className="enterprise-form__footer">
+          <Button type="button" variant="secondary" onClick={() => navigate(moduleRoute)}>Cancel</Button>
+          <PermissionButton guard="platform" permission="module.edit" type="submit" disabled={mutation.isPending}>{mutation.isPending ? 'Saving...' : 'Save'}</PermissionButton>
+        </footer>
+      </form>
+    </section>
+  );
+}
+
+function PlatformModuleDetailPage() {
+  const navigate = useNavigate();
+  const { id = '' } = useParams();
+  const queryClient = useQueryClient();
+  const [modal, setModal] = useState<ModuleModal>(null);
+  const [activeTab, setActiveTab] = useState<'overview' | 'features' | 'activity'>('overview');
+  const query = useQuery({
+    queryKey: platformQueryKeys.detail('modules', id),
+    queryFn: () => platformOperationsApi.modules.detail(id),
+    enabled: Boolean(id)
+  });
+  const module = query.data;
+  const features = arrayFromResponse(module?.features, 'features');
+  const activity = arrayFromResponse(module?.activity, 'activity');
+  const mutation = useMutation({
+    mutationFn: async (action: 'toggle' | 'delete') => {
+      if (!module) throw new Error('Module not loaded.');
+      if (action === 'toggle') return module.status === 'active' ? platformOperationsApi.modules.disable(id) : platformOperationsApi.modules.enable(id);
+      return platformOperationsApi.modules.delete(id);
+    },
+    onSuccess: async (_, action) => {
+      await queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource('modules') });
+      if (action === 'delete') navigate(moduleRoute);
+      setModal(null);
+      void query.refetch();
+    }
+  });
+
+  if (query.isLoading) return <div className="surface-state">Loading module...</div>;
+  if (query.isError) return <div className="surface-error">{errorMessage(query.error)}</div>;
+  if (!module) return <div className="empty-state">Module not found.</div>;
+
+  return (
+    <section className="enterprise-module-page platform-operations-page">
+      <PageHeader
+        title={printable(module.name ?? module.code)}
+        description={printable(module.description ?? 'Module registry detail')}
+        actions={
+          <>
+            <Button type="button" variant="secondary" onClick={() => navigate(moduleRoute)}>Back</Button>
+            <Button type="button" variant="secondary" onClick={() => navigate(`${moduleRoute}/${id}/edit`)}><Pencil size={16} aria-hidden />Edit</Button>
+            <PermissionButton guard="platform" permission="module.edit" type="button" variant="secondary" onClick={() => setModal('toggle')}><CheckCircle2 size={16} aria-hidden />{module.status === 'active' ? 'Deactivate' : 'Activate'}</PermissionButton>
+            <PermissionButton guard="platform" permission="module.edit" type="button" variant="secondary" onClick={() => setModal('features')}><Wrench size={16} aria-hidden />Add Feature</PermissionButton>
+            <PermissionButton guard="platform" permission="module.edit" type="button" variant="danger" onClick={() => setModal('delete')}><Trash2 size={16} aria-hidden />Delete</PermissionButton>
+          </>
+        }
+      />
+      <ModuleDetailStats module={module} />
+      <section className="dashboard-panel">
+        <Tabs
+          tabs={[{ id: 'overview', label: 'Overview' }, { id: 'features', label: 'Features' }, { id: 'activity', label: 'Activity' }]}
+          activeId={activeTab}
+          onChange={(tab) => setActiveTab(tab as 'overview' | 'features' | 'activity')}
+          ariaLabel="Module detail tabs"
+        />
+        <div className="surface-body">
+          <ModuleDetailTabs module={module} active={activeTab} />
+        </div>
+      </section>
+      <ModuleFeatureModal module={module} open={modal === 'features'} onClose={() => setModal(null)} onComplete={() => { setModal(null); void query.refetch(); }} />
+      <ConfirmDialog
+        open={modal === 'toggle'}
+        onClose={() => setModal(null)}
+        title={`${module.status === 'active' ? 'Deactivate' : 'Activate'} module?`}
+        description={`${module.status === 'active' ? 'Deactivate' : 'Activate'} ${printable(module.name ?? module.code)}.`}
+        confirmLabel={module.status === 'active' ? 'Deactivate' : 'Activate'}
+        confirmTone="primary"
+        guard="platform"
+        permission="module.edit"
+        loading={mutation.isPending}
+        error={mutation.error ? errorMessage(mutation.error) : null}
+        onConfirm={() => mutation.mutate('toggle')}
+      />
+      <ConfirmDialog
+        open={modal === 'delete'}
+        onClose={() => setModal(null)}
+        title="Delete module?"
+        description={`This permanently deletes ${printable(module.name ?? module.code)} when it is not core and has no assignments.`}
+        confirmLabel="Delete"
+        confirmTone="danger"
+        typedConfirmation="delete"
+        guard="platform"
+        permission="module.edit"
+        loading={mutation.isPending}
+        error={mutation.error ? errorMessage(mutation.error) : null}
+        onConfirm={() => mutation.mutate('delete')}
+      />
+    </section>
+  );
+}
+
+function ModuleDetailTabs({ module, active }: { module: PlatformRecord; active: 'overview' | 'features' | 'activity' }) {
+  if (active === 'features') return <RelatedRows title="Features" rows={arrayFromResponse(module.features, 'features')} />;
+  if (active === 'activity') return <RelatedRows title="Activity" rows={arrayFromResponse(module.activity, 'activity')} />;
+  const detail = Object.fromEntries(Object.entries(module).filter(([key]) => !['features', 'tenant_overrides', 'activity'].includes(key)));
+  return <DetailGrid record={detail} />;
+}
+
+type ModuleStatsData = Record<string, string | number | boolean | null | undefined>;
+
+function ModuleStats({ rows, stats, totalCount }: { rows: PlatformRecord[]; stats?: ModuleStatsData; totalCount?: number }) {
+  const totalRecords = Number(stats?.total ?? totalCount ?? rows.length);
+  const activeRecords = Number(stats?.active ?? rows.filter((row) => row.status === 'active').length);
+  return (
+    <section className="platform-access-summary">
+      <SummaryTile icon={<Wrench />} label="Total Modules" value={String(totalRecords)} />
+      <SummaryTile icon={<CheckCircle2 />} label="Active" value={String(activeRecords)} />
+    </section>
+  );
+}
+
+function ModuleDetailStats({ module }: { module: PlatformRecord }) {
+  const features = arrayFromResponse(module.features, 'features');
+  return (
+    <section className="platform-access-summary">
+      <SummaryTile icon={<Wrench />} label="Total Modules" value="1" />
+      <SummaryTile icon={<FileJson2 />} label="Total Features" value={String(features.length)} />
+      <SummaryTile icon={<CheckCircle2 />} label="Active" value={module.status === 'active' ? '1' : '0'} />
+    </section>
+  );
+}
+
+function SummaryTile({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
+  return <article className="summary-card"><span>{icon}</span><p>{label}</p><strong>{value}</strong></article>;
+}
+
+function moduleColumns({ onView, onEdit, onToggle, onFeatures, onDelete }: {
+  onView: (record: PlatformRecord) => void;
+  onEdit: (record: PlatformRecord) => void;
+  onToggle: (record: PlatformRecord) => void;
+  onFeatures: (record: PlatformRecord) => void;
+  onDelete: (record: PlatformRecord) => void;
+}): DataTableColumn<PlatformRecord>[] {
+  const allColumns: DataTableColumn<PlatformRecord>[] = [
+    { id: 'name', header: 'Name', accessor: (row) => printable(row.name), enableSorting: true, cell: (row) => <strong>{printable(row.name)}</strong> },
+    { id: 'code', header: 'Code', accessor: (row) => printable(row.code), enableSorting: true, cell: (row) => printable(row.code) },
+    { id: 'category', header: 'Category', accessor: (row) => printable(row.category), cell: (row) => printable(row.category) },
+    { id: 'icon', header: 'Icon', accessor: (row) => printable(row.icon), cell: (row) => printable(row.icon) },
+    { id: 'is_core', header: 'Core', accessor: (row) => Boolean(row.is_core), cell: (row) => printable(row.is_core) },
+    { id: 'status', header: 'Status', accessor: (row) => printable(row.status), cell: (row) => <StatusBadge tone={tone(String(row.status ?? 'neutral'))}>{printable(row.status)}</StatusBadge> },
+    { id: 'sort_order', header: 'Sort Order', accessor: (row) => Number(row.sort_order ?? 0), cell: (row) => printable(row.sort_order ?? 0) },
+    { id: 'actions', header: 'Actions', enableHiding: false, cell: (row) => <ModuleRowActions row={row} onView={onView} onEdit={onEdit} onToggle={onToggle} onFeatures={onFeatures} onDelete={onDelete} /> }
+  ];
+  return allColumns;
+}
+
+function ModuleRowActions({ row, onView, onEdit, onToggle, onFeatures, onDelete }: {
+  row: PlatformRecord;
+  onView: (record: PlatformRecord) => void;
+  onEdit: (record: PlatformRecord) => void;
+  onToggle: (record: PlatformRecord) => void;
+  onFeatures: (record: PlatformRecord) => void;
+  onDelete: (record: PlatformRecord) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  function run(callback: () => void) { callback(); setOpen(false); }
+  return (
+    <div className="action-dropdown">
+      <button ref={triggerRef} type="button" className="action-menu-trigger" aria-label={`Open actions for ${printable(row.name ?? row.code)}`} aria-expanded={open} onClick={() => setOpen((current) => !current)}><MoreVertical size={16} aria-hidden /></button>
+      <PortalActionMenu open={open} anchorRef={triggerRef} onClose={() => setOpen(false)}>
+        <div className="action-menu" role="menu">
+          <button type="button" role="menuitem" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => onView(row))}><Eye size={15} aria-hidden /> View</button>
+          <button type="button" role="menuitem" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => onEdit(row))}><Pencil size={15} aria-hidden /> Edit</button>
+          <button type="button" role="menuitem" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => onToggle(row))}><CheckCircle2 size={15} aria-hidden /> {row.status === 'active' ? 'Deactivate' : 'Activate'}</button>
+          <button type="button" role="menuitem" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => onFeatures(row))}><Wrench size={15} aria-hidden /> Add Feature</button>
+          <hr />
+          <button type="button" role="menuitem" className="is-danger" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => onDelete(row))}><Trash2 size={15} aria-hidden /> Delete</button>
+        </div>
+      </PortalActionMenu>
+    </div>
+  );
+}
+
+function ModuleTableModals({ modal, columns, hiddenColumnIds, statusFilter, onClose, onStatusFilterChange, onHiddenColumnIdsChange }: {
+  modal: ModuleModal;
+  columns: DataTableColumn<PlatformRecord>[];
+  hiddenColumnIds: string[];
+  statusFilter: string;
+  onClose: () => void;
+  onStatusFilterChange: (value: string) => void;
+  onHiddenColumnIdsChange: (ids: string[]) => void;
+}) {
+  return (
+    <>
+      <AppModal open={modal === 'views'} onClose={onClose} title="Saved views"><div className="form-grid"><label className="check-row"><input type="radio" checked readOnly /> Default table</label></div></AppModal>
+      <AppModal open={modal === 'filters'} onClose={onClose} title="Filters"><div className="form-grid"><label><FieldLabel>Status</FieldLabel><select value={statusFilter} onChange={(event) => onStatusFilterChange(event.target.value)}><option value="">All statuses</option>{moduleStatusOptions.map((option) => <option key={option} value={option}>{label(option)}</option>)}</select></label></div></AppModal>
+      <AppModal open={modal === 'columns'} onClose={onClose} title="Columns"><div className="form-grid">{columns.filter((column) => column.enableHiding !== false).map((column) => <label key={column.id} className="check-row"><input type="checkbox" checked={!hiddenColumnIds.includes(column.id)} onChange={() => onHiddenColumnIdsChange(hiddenColumnIds.includes(column.id) ? hiddenColumnIds.filter((id) => id !== column.id) : [...hiddenColumnIds, column.id])} />{column.header}</label>)}</div></AppModal>
+    </>
+  );
+}
+
+function ModuleFeatureModal({ module, open, onClose, onComplete }: { module?: PlatformRecord | null; open: boolean; onClose: () => void; onComplete: () => void }) {
+  const queryClient = useQueryClient();
+  const [selected, setSelected] = useState<string[]>([]);
+  const moduleId = idOf(module ?? undefined);
+  const optionsQuery = useQuery({
+    queryKey: platformQueryKeys.list('features', { per_page: 200 }),
+    queryFn: () => platformOperationsApi.references.features({ per_page: 200 }),
+    enabled: open
+  });
+  const currentQuery = useQuery({
+    queryKey: platformQueryKeys.related('modules', moduleId, 'features'),
+    queryFn: () => platformOperationsApi.modules.features(moduleId),
+    enabled: open && Boolean(moduleId)
+  });
+  const mutation = useMutation({
+    mutationFn: () => platformOperationsApi.modules.replaceFeatures(moduleId, selected),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource('modules') });
+      onComplete();
+    }
+  });
+  useEffect(() => {
+    if (!open) return;
+    setSelected(arrayFromResponse(currentQuery.data?.data, 'features').map(idOf).filter(Boolean));
+  }, [currentQuery.data, open]);
+  return (
+    <AppModal
+      open={open}
+      onClose={onClose}
+      title={`Features for ${printable(module?.name ?? module?.code)}`}
+      guard="platform"
+      permission="module.edit"
+      loading={mutation.isPending}
+      error={mutation.error ? errorMessage(mutation.error) : null}
+      footer={<><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="button" disabled={!moduleId || optionsQuery.isLoading} onClick={() => mutation.mutate()}>Save</Button></>}
+    >
+      {optionsQuery.isLoading ? <div className="surface-state">Loading features...</div> : null}
+      {optionsQuery.isError ? <div className="surface-error">{errorMessage(optionsQuery.error)}</div> : null}
+      <CheckboxSelect options={optionsQuery.data?.data ?? []} selected={selected} onChange={setSelected} />
+    </AppModal>
+  );
+}
+
+const moduleFormFields: Field[] = [
+  { name: 'name', label: 'Name', required: true },
+  { name: 'code', label: 'Code', required: true },
+  { name: 'category', label: 'Category', type: 'select', options: moduleCategoryOptions },
+  { name: 'icon', label: 'Icon' },
+  { name: 'is_core', label: 'Core module', type: 'checkbox' },
+  { name: 'status', label: 'Status', type: 'select', options: moduleStatusOptions },
+  { name: 'sort_order', label: 'Sort Order', type: 'number' },
+  { name: 'description', label: 'Description', type: 'textarea' }
+];
+
+function defaultModuleForm(record?: PlatformRecord): Record<string, string | boolean | number> {
+  return {
+    name: printable(record?.name === '-' ? '' : record?.name ?? ''),
+    code: printable(record?.code === '-' ? '' : record?.code ?? ''),
+    category: String(record?.category ?? 'platform'),
+    icon: String(record?.icon ?? ''),
+    is_core: Boolean(record?.is_core),
+    status: String(record?.status ?? 'active'),
+    sort_order: Number(record?.sort_order ?? 0),
+    description: String(record?.description ?? '')
+  };
+}
+
+function cleanModulePayload(form: Record<string, string | boolean | number>) {
+  return Object.fromEntries(Object.entries(form).filter(([, value]) => value !== ''));
+}
+
+function recordFromResponse(payload: unknown, key: string): PlatformRecord {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return {};
+  const record = payload as Record<string, unknown>;
+  return record[key] && typeof record[key] === 'object' && !Array.isArray(record[key]) ? record[key] as PlatformRecord : record as PlatformRecord;
+}
 function OperationsPage({ config }: { config: AreaConfig }) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -407,7 +885,7 @@ function PortalActionMenu({
   if (!open) return null;
 
   return createPortal(
-    <div className="action-menu-portal" style={{ left: position.left, top: position.top }}>
+    <div className="action-menu-portal" style={{ left: position.left + window.scrollX, top: position.top + window.scrollY }}>
       <button type="button" className="action-menu-backdrop" aria-label="Close actions menu" onClick={onClose} />
       {children}
     </div>,

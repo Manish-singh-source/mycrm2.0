@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+﻿import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -57,7 +57,7 @@ type SubscriptionModal =
   | 'removeCoupon'
   | 'invoice'
   | null;
-type PlanModal = 'clone' | 'delete' | 'attachFeature' | null;
+type PlanModal = 'clone' | 'delete' | 'attachFeature' | 'attachAddon' | 'activate' | 'deactivate' | 'bulkDelete' | null;
 
 type SubscriptionField = {
   name: string;
@@ -121,6 +121,8 @@ function money(value: unknown, currency = 'INR') {
     maximumFractionDigits: 2
   }).format(Number.isFinite(amount) ? amount : 0);
 }
+
+const CURRENCY_OPTIONS = ['AED', 'AFN', 'ALL', 'AMD', 'ANG', 'AOA', 'ARS', 'AUD', 'AWG', 'AZN', 'BAM', 'BBD', 'BDT', 'BGN', 'BHD', 'BIF', 'BMD', 'BND', 'BOB', 'BRL', 'BSD', 'BTN', 'BWP', 'BYN', 'BZD', 'CAD', 'CDF', 'CHF', 'CLP', 'CNY', 'COP', 'CRC', 'CUP', 'CVE', 'CZK', 'DJF', 'DKK', 'DOP', 'DZD', 'EGP', 'ERN', 'ETB', 'EUR', 'FJD', 'FKP', 'GBP', 'GEL', 'GHS', 'GIP', 'GMD', 'GNF', 'GTQ', 'GYD', 'HKD', 'HNL', 'HRK', 'HTG', 'HUF', 'IDR', 'ILS', 'INR', 'IQD', 'IRR', 'ISK', 'JMD', 'JOD', 'JPY', 'KES', 'KGS', 'KHR', 'KMF', 'KPW', 'KRW', 'KWD', 'KYD', 'KZT', 'LAK', 'LBP', 'LKR', 'LRD', 'LSL', 'LYD', 'MAD', 'MDL', 'MGA', 'MKD', 'MMK', 'MNT', 'MOP', 'MRU', 'MUR', 'MVR', 'MWK', 'MXN', 'MYR', 'MZN', 'NAD', 'NGN', 'NIO', 'NOK', 'NPR', 'NZD', 'OMR', 'PAB', 'PEN', 'PGK', 'PHP', 'PKR', 'PLN', 'PYG', 'QAR', 'RON', 'RSD', 'RUB', 'RWF', 'SAR', 'SBD', 'SCR', 'SDG', 'SEK', 'SHP', 'SLE', 'SOS', 'SRD', 'SSP', 'STN', 'SYP', 'SZL', 'THB', 'TJS', 'TMT', 'TND', 'TOP', 'TRY', 'TTD', 'TWD', 'TZS', 'UAH', 'UGX', 'USD', 'UYU', 'UZS', 'VES', 'VND', 'VUV', 'WST', 'XAF', 'XCD', 'XOF', 'XPF', 'YER', 'ZAR', 'ZMW', 'ZWL'];
 
 function statusTone(status: string): 'neutral' | 'success' | 'warning' | 'danger' | 'info' {
   if (['active', 'paid', 'success'].includes(status)) return 'success';
@@ -253,8 +255,8 @@ function SubscriptionsList() {
   const columns = useMemo<DataTableColumn<SubscriptionRecord>[]>(
     () => [
       { id: 'subscription_number', header: 'Subscription', accessor: (row) => row.subscription_number, enableSorting: true, cell: (row) => <strong>{textOf(row, ['subscription_number'])}</strong> },
-      { id: 'tenant', header: 'Tenant', accessor: (row) => row.tenant_name ?? row.organization_name, cell: (row) => textOf(row, ['tenant_name', 'organization_name', 'tenant_uuid', 'tenant_id']) },
-      { id: 'plan', header: 'Plan', accessor: (row) => row.plan_name, cell: (row) => textOf(row, ['plan_name', 'plan_uuid', 'plan_id']) },
+      { id: 'tenant', header: 'Tenant', accessor: (row) => row.tenant_name ?? row.organization_name, cell: (row) => textOf(row, ['tenant_name', 'organization_name']) },
+      { id: 'plan', header: 'Plan', accessor: (row) => row.plan_name, cell: (row) => textOf(row, ['plan_name']) },
       { id: 'type', header: 'Type', accessor: (row) => row.type, cell: (row) => textOf(row, ['type']) },
       { id: 'billing_cycle', header: 'Cycle', accessor: (row) => row.billing_cycle, cell: (row) => textOf(row, ['billing_cycle']) },
       { id: 'status', header: 'Status', accessor: (row) => row.status, cell: (row) => <Badge value={textOf(row, ['status'], 'inactive')} /> },
@@ -430,7 +432,13 @@ function CatalogList({ kind }: { kind: CatalogKind }) {
   const [selectedRecord, setSelectedRecord] = useState<CatalogRecord | null>(null);
   const [planModal, setPlanModal] = useState<PlanModal>(null);
   const [matrixOpen, setMatrixOpen] = useState(false);
-  const queryParams = createListQuery({ page, per_page: 25, search });
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [viewsOpen, setViewsOpen] = useState(false);
+  const [columnsOpen, setColumnsOpen] = useState(false);
+  const [statusFilter, setStatusFilter] = useState('');
+  const [hiddenColumnIds, setHiddenColumnIds] = useState<string[]>([]);
+  const [perPage, setPerPage] = useState(10);
+  const queryParams = { ...createListQuery({ page, per_page: perPage, search }), status: statusFilter || undefined };
   const query = useQuery({
     queryKey: platformQueryKeys.list(meta.resourceKey, queryParams),
     queryFn: () => {
@@ -440,16 +448,40 @@ function CatalogList({ kind }: { kind: CatalogKind }) {
     }
   });
   const rows = query.data?.data ?? [];
+  const selectedRows = rows.filter((row) => selectedIds.includes(idOf(row)));
   const lifecycleMutation = useMutation({
     mutationFn: (record: CatalogRecord) => deleteCatalog(kind, idOf(record)),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource(meta.resourceKey) });
       setPlanModal(null);
+      setSelectedRecord(null);
+    }
+  });
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (ids: string[]) => kind === 'plans' ? platformSubscriptionsApi.plans.bulkDelete(ids) : kind === 'features' ? platformSubscriptionsApi.features.bulkDelete(ids) : platformSubscriptionsApi.addons.bulkDelete(ids),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource(meta.resourceKey) });
+      setPlanModal(null);
+      setSelectedIds([]);
     }
   });
   const cloneMutation = useMutation({
     mutationFn: ({ record, payload }: { record: CatalogRecord; payload: Record<string, unknown> }) =>
       platformSubscriptionsApi.plans.clone(idOf(record), payload),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource(meta.resourceKey) });
+      setPlanModal(null);
+    }
+  });
+  const statusMutation = useMutation({
+    mutationFn: ({ record, status }: { record: CatalogRecord; status: 'active' | 'inactive' }) => status === 'active' ? platformSubscriptionsApi.plans.activate(idOf(record)) : platformSubscriptionsApi.plans.deactivate(idOf(record)),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource(meta.resourceKey) });
+      setPlanModal(null);
+    }
+  });
+  const attachAddonMutation = useMutation({
+    mutationFn: ({ record, addonIds }: { record: CatalogRecord; addonIds: string[] }) => platformSubscriptionsApi.plans.replaceAddons(idOf(record), addonIds),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource(meta.resourceKey) });
       setPlanModal(null);
@@ -496,6 +528,18 @@ function CatalogList({ kind }: { kind: CatalogKind }) {
     onAttachFeature: (record) => {
       setSelectedRecord(record);
       setPlanModal('attachFeature');
+    },
+    onAttachAddon: (record) => {
+      setSelectedRecord(record);
+      setPlanModal('attachAddon');
+    },
+    onActivate: (record) => {
+      setSelectedRecord(record);
+      setPlanModal('activate');
+    },
+    onDeactivate: (record) => {
+      setSelectedRecord(record);
+      setPlanModal('deactivate');
     }
   });
 
@@ -513,7 +557,7 @@ function CatalogList({ kind }: { kind: CatalogKind }) {
           </>
         }
       />
-      <CatalogStats kind={kind} rows={rows} />
+      <CatalogStats kind={kind} rows={rows} stats={query.data?.meta?.stats as CatalogStatsData | undefined} totalCount={query.data?.total} />
       <DataTable
         columns={columns}
         data={rows}
@@ -522,29 +566,133 @@ function CatalogList({ kind }: { kind: CatalogKind }) {
         error={query.isError ? errorMessage(query.error) : ''}
         searchValue={search}
         searchPlaceholder={`Search ${meta.label.toLowerCase()}...`}
-        onSearchChange={setSearch}
+        onSearchChange={(value) => { setSearch(value); setPage(1); }}
+        hiddenColumnIds={hiddenColumnIds}
+        onHiddenColumnIdsChange={setHiddenColumnIds}
+        onOpenSavedViews={() => setViewsOpen(true)}
+        onOpenFilters={() => setFiltersOpen(true)}
+        onOpenColumns={() => setColumnsOpen(true)}
+        onOpenExport={kind === 'addons' ? () => platformSubscriptionsApi.addons.export() : kind === 'plans' ? () => platformSubscriptionsApi.plans.export() : () => platformSubscriptionsApi.features.export()}
+        onOpenImport={kind === 'features' ? () => platformSubscriptionsApi.features.import() : kind === 'addons' ? () => platformSubscriptionsApi.addons.import() : () => platformSubscriptionsApi.plans.import()}
         selectedRowIds={selectedIds}
         onSelectionChange={setSelectedIds}
+        bulkActions={<PermissionButton guard="platform" permission={kind === 'features' ? 'feature.delete' : 'plan.delete'} type="button" variant="danger" size="sm" disabled={selectedIds.length === 0} onClick={() => setPlanModal('bulkDelete')}><Trash2 size={15} aria-hidden />Delete selected</PermissionButton>}
         page={page}
+        perPage={perPage}
         total={query.data?.total ?? rows.length}
         onPageChange={setPage}
+        onPerPageChange={(value) => { setPerPage(value); setPage(1); setSelectedIds([]); }}
+      />
+      <CatalogTableModals
+        kind={kind}
+        columns={columns}
+        hiddenColumnIds={hiddenColumnIds}
+        statusFilter={statusFilter}
+        viewsOpen={viewsOpen}
+        filtersOpen={filtersOpen}
+        columnsOpen={columnsOpen}
+        onCloseViews={() => setViewsOpen(false)}
+        onCloseFilters={() => setFiltersOpen(false)}
+        onCloseColumns={() => setColumnsOpen(false)}
+        onStatusFilterChange={(value) => { setStatusFilter(value); setPage(1); }}
+        onHiddenColumnIdsChange={setHiddenColumnIds}
       />
       <FeatureMatrixDrawer open={matrixOpen} plans={rows} onClose={() => setMatrixOpen(false)} />
       <PlanActionModals
         modal={planModal}
         kind={kind}
         record={selectedRecord}
-        loading={lifecycleMutation.isPending || cloneMutation.isPending || attachMutation.isPending}
-        error={lifecycleMutation.error ?? cloneMutation.error ?? attachMutation.error}
+        loading={lifecycleMutation.isPending || cloneMutation.isPending || attachMutation.isPending || attachAddonMutation.isPending || statusMutation.isPending}
+        error={lifecycleMutation.error ?? cloneMutation.error ?? attachMutation.error ?? attachAddonMutation.error ?? statusMutation.error}
         onClose={() => setPlanModal(null)}
         onArchive={() => selectedRecord && lifecycleMutation.mutate(selectedRecord)}
         onClone={(payload) => selectedRecord && cloneMutation.mutate({ record: selectedRecord, payload })}
         onAttach={(payload) => selectedRecord && attachMutation.mutate({ record: selectedRecord, payload })}
+        onAttachAddon={(addonIds) => selectedRecord && attachAddonMutation.mutate({ record: selectedRecord, addonIds })}
+        onStatus={(status) => selectedRecord && statusMutation.mutate({ record: selectedRecord, status })}
+      />
+      <ConfirmDialog
+        open={planModal === 'bulkDelete'}
+        onClose={() => setPlanModal(null)}
+        title={`Delete selected ${meta.label.toLowerCase()}?`}
+        description={`This permanently deletes ${selectedRows.length} selected ${meta.singular.toLowerCase()}${selectedRows.length === 1 ? '' : 's'} when not assigned to related records.`}
+        confirmLabel="Delete"
+        confirmTone="danger"
+        typedConfirmation="delete"
+        guard="platform"
+        permission={kind === 'features' ? 'feature.delete' : 'plan.delete'}
+        loading={bulkDeleteMutation.isPending}
+        error={bulkDeleteMutation.error ? errorMessage(bulkDeleteMutation.error) : null}
+        onConfirm={() => bulkDeleteMutation.mutate(selectedIds)}
       />
     </section>
   );
 }
 
+function CatalogTableModals({
+  kind,
+  columns,
+  hiddenColumnIds,
+  statusFilter,
+  viewsOpen,
+  filtersOpen,
+  columnsOpen,
+  onCloseViews,
+  onCloseFilters,
+  onCloseColumns,
+  onStatusFilterChange,
+  onHiddenColumnIdsChange
+}: {
+  kind: CatalogKind;
+  columns: DataTableColumn<CatalogRecord>[];
+  hiddenColumnIds: string[];
+  statusFilter: string;
+  viewsOpen: boolean;
+  filtersOpen: boolean;
+  columnsOpen: boolean;
+  onCloseViews: () => void;
+  onCloseFilters: () => void;
+  onCloseColumns: () => void;
+  onStatusFilterChange: (value: string) => void;
+  onHiddenColumnIdsChange: (ids: string[]) => void;
+}) {
+  const statusOptions = kind === 'features' ? ['active', 'inactive'] : ['active', 'inactive', 'archived'];
+
+  return (
+    <>
+      <AppModal open={viewsOpen} onClose={onCloseViews} title="Saved views">
+        <div className="form-grid">
+          <label className="check-row"><input type="radio" checked readOnly /> Default table</label>
+        </div>
+      </AppModal>
+      <AppModal open={filtersOpen} onClose={onCloseFilters} title="Filters">
+        <div className="form-grid">
+          <label>
+            <FieldLabel>Status</FieldLabel>
+            <select value={statusFilter} onChange={(event) => onStatusFilterChange(event.target.value)}>
+              <option value="">All statuses</option>
+              {statusOptions.map((option) => <option key={option} value={option}>{labelize(option)}</option>)}
+            </select>
+          </label>
+        </div>
+      </AppModal>
+      <AppModal open={columnsOpen} onClose={onCloseColumns} title="Columns">
+        <div className="form-grid">
+          {columns.filter((column) => column.enableHiding !== false).map((column) => (
+            <label key={column.id} className="check-row">
+              <input
+                type="checkbox"
+                checked={!hiddenColumnIds.includes(column.id)}
+                onChange={() => onHiddenColumnIdsChange(hiddenColumnIds.includes(column.id) ? hiddenColumnIds.filter((id) => id !== column.id) : [...hiddenColumnIds, column.id])}
+              />
+              {column.header}
+            </label>
+          ))}
+        </div>
+      </AppModal>
+    </>
+  );
+}
 function CatalogForm({ kind, mode }: { kind: CatalogKind; mode: 'create' | 'edit' }) {
   const meta = catalogMeta[kind];
   const navigate = useNavigate();
@@ -555,6 +703,12 @@ function CatalogForm({ kind, mode }: { kind: CatalogKind; mode: 'create' | 'edit
     queryFn: () => catalogDetail(kind, id),
     enabled: mode === 'edit'
   });
+  const moduleOptionsQuery = useQuery({
+    queryKey: platformQueryKeys.list('modules', { per_page: 200 }),
+    queryFn: () => platformSubscriptionsApi.references.modules({ per_page: 200 }),
+    enabled: kind === 'features'
+  });
+  const moduleOptions = moduleOptionsQuery.data?.data ?? [];
   const [form, setForm] = useState<Record<string, string | boolean | number>>(() => defaultCatalogForm(kind));
 
   useEffect(() => {
@@ -597,14 +751,19 @@ function CatalogForm({ kind, mode }: { kind: CatalogKind; mode: 'create' | 'edit
               ) : (
                 <>
                   {label}
-                  {field.type === 'select' ? (
+                  {kind === 'features' && field.name === 'module' ? (
+                    <select required={required} value={String(form[field.name] ?? '')} onChange={(event) => setForm((current) => ({ ...current, module: event.target.value }))}>
+                      <option value="">{moduleOptionsQuery.isLoading ? 'Loading modules...' : 'Select module'}</option>
+                      {moduleOptions.map((module) => <option key={idOf(module)} value={textOf(module, ['code'])}>{textOf(module, ['name'])} ({textOf(module, ['code'])})</option>)}
+                    </select>
+                  ) : field.type === 'select' ? (
                     <select required={required} value={String(form[field.name] ?? '')} onChange={(event) => setForm((current) => ({ ...current, [field.name]: event.target.value }))}>
                       {field.options?.map((option) => <option key={option} value={option}>{option}</option>)}
                     </select>
                   ) : field.type === 'textarea' ? (
                     <textarea required={required} value={String(form[field.name] ?? '')} onChange={(event) => setForm((current) => ({ ...current, [field.name]: event.target.value }))} />
                   ) : (
-                    <input required={required} type={field.type ?? 'text'} value={String(form[field.name] ?? '')} onChange={(event) => setForm((current) => ({ ...current, [field.name]: field.type === 'number' ? Number(event.target.value) : event.target.value }))} />
+                    <input required={required} type={field.type ?? 'text'} min={field.name === 'price' ? '0.01' : undefined} step={field.type === 'number' ? '0.01' : undefined} placeholder={kind === 'addons' && field.name === 'code' ? 'Auto-generated when blank' : undefined} value={String(form[field.name] ?? '')} onChange={(event) => setForm((current) => ({ ...current, [field.name]: field.type === 'number' ? Number(event.target.value) : event.target.value }))} />
                   )}
                 </>
               )}
@@ -627,7 +786,10 @@ function CatalogView({ kind }: { kind: CatalogKind }) {
   const meta = catalogMeta[kind];
   const { id = '' } = useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [matrixOpen, setMatrixOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [planModal, setPlanModal] = useState<PlanModal>(null);
   const query = useQuery({
     queryKey: platformQueryKeys.detail(meta.resourceKey, id),
     queryFn: () => catalogDetail(kind, id)
@@ -636,6 +798,13 @@ function CatalogView({ kind }: { kind: CatalogKind }) {
     queryKey: platformQueryKeys.related('plans', id, 'features'),
     queryFn: () => platformSubscriptionsApi.plans.features(id),
     enabled: kind === 'plans'
+  });
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteCatalog(kind, id),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource(meta.resourceKey) });
+      navigate(meta.route);
+    }
   });
 
   if (query.isLoading) return <div className="surface-state">Loading {meta.singular.toLowerCase()}...</div>;
@@ -653,6 +822,7 @@ function CatalogView({ kind }: { kind: CatalogKind }) {
             <Button type="button" variant="secondary" onClick={() => navigate(meta.route)}>Back</Button>
             {kind === 'plans' ? <Button type="button" variant="secondary" onClick={() => setMatrixOpen(true)}><FileSpreadsheet size={16} aria-hidden />Feature Matrix</Button> : null}
             <Button type="button" variant="secondary" onClick={() => navigate(`${meta.route}/${id}/edit`)}><Pencil size={16} aria-hidden />Edit</Button>
+            <PermissionButton guard="platform" permission={kind === 'features' ? 'feature.delete' : 'plan.delete'} type="button" variant="danger" onClick={() => setDeleteOpen(true)}><Trash2 size={16} aria-hidden />Delete</PermissionButton>
           </>
         }
       />
@@ -660,12 +830,26 @@ function CatalogView({ kind }: { kind: CatalogKind }) {
       <DetailTabs
         tabs={[
           { id: 'overview', label: 'Overview', content: <RecordDetails record={record} moneyFields={['base_price', 'price']} /> },
-          { id: 'features', label: 'Features and limits', content: <RecordList rows={featuresQuery.data?.data.features ?? record.features ?? []} /> },
-          { id: 'subscriptions', label: 'Active subscriptions', content: <RecordList rows={record.subscriptions ?? []} /> },
-          { id: 'history', label: 'Change history', content: <RecordList rows={[]} /> }
+          { id: 'features', label: 'Features and Limits', content: <RecordList rows={kind === 'addons' ? record.features_limits ?? [] : featuresQuery.data?.data.features ?? record.features ?? []} /> },
+          { id: 'subscriptions', label: 'Active Subscriptions', content: <RecordList rows={record.subscriptions ?? []} /> },
+          { id: 'activity', label: 'Activity', content: <RecordList rows={record.activity ?? []} /> }
         ]}
       />
       <FeatureMatrixDrawer open={matrixOpen} plans={[record]} onClose={() => setMatrixOpen(false)} />
+      <ConfirmDialog
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        title={`Delete ${meta.singular.toLowerCase()}?`}
+        description={`This permanently deletes ${textOf(record, ['name', 'code'], meta.singular)} when it is not assigned to related records.`}
+        confirmLabel="Delete"
+        confirmTone="danger"
+        typedConfirmation="delete"
+        guard="platform"
+        permission={kind === 'features' ? 'feature.delete' : 'plan.delete'}
+        loading={deleteMutation.isPending}
+        error={deleteMutation.error ? errorMessage(deleteMutation.error) : null}
+        onConfirm={() => deleteMutation.mutate()}
+      />
     </section>
   );
 }
@@ -676,6 +860,9 @@ function catalogColumns(kind: CatalogKind, handlers: {
   onClone: (record: CatalogRecord) => void;
   onArchive: (record: CatalogRecord) => void;
   onAttachFeature: (record: CatalogRecord) => void;
+  onAttachAddon: (record: CatalogRecord) => void;
+  onActivate: (record: CatalogRecord) => void;
+  onDeactivate: (record: CatalogRecord) => void;
 }): DataTableColumn<CatalogRecord>[] {
   if (kind === 'features') {
     return [
@@ -714,6 +901,9 @@ function actionColumn(handlers: {
   onClone: (record: CatalogRecord) => void;
   onArchive: (record: CatalogRecord) => void;
   onAttachFeature: (record: CatalogRecord) => void;
+  onAttachAddon: (record: CatalogRecord) => void;
+  onActivate: (record: CatalogRecord) => void;
+  onDeactivate: (record: CatalogRecord) => void;
 }, kind?: CatalogKind): DataTableColumn<CatalogRecord> {
   return {
     id: 'actions',
@@ -785,6 +975,9 @@ function CatalogRowActions({
     onClone: (record: CatalogRecord) => void;
     onArchive: (record: CatalogRecord) => void;
     onAttachFeature: (record: CatalogRecord) => void;
+    onAttachAddon: (record: CatalogRecord) => void;
+    onActivate: (record: CatalogRecord) => void;
+    onDeactivate: (record: CatalogRecord) => void;
   };
 }) {
   const [open, setOpen] = useState(false);
@@ -814,7 +1007,13 @@ function CatalogRowActions({
           {kind === 'plans' ? (
             <>
               <hr />
-              <PermissionButton guard="platform" permission="plan.edit" type="button" role="menuitem" variant="ghost" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => handlers.onAttachFeature(row))}><Plus size={15} aria-hidden /> Attach Feature</PermissionButton>
+              <PermissionButton guard="platform" permission="plan.edit" type="button" role="menuitem" variant="ghost" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => handlers.onAttachFeature(row))}><Plus size={15} aria-hidden /> Add Feature</PermissionButton>
+              <PermissionButton guard="platform" permission="plan.edit" type="button" role="menuitem" variant="ghost" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => handlers.onAttachAddon(row))}><Tags size={15} aria-hidden /> Add Add-on</PermissionButton>
+              {textOf(row, ['status'], '').toLowerCase() === 'active' ? (
+                <PermissionButton guard="platform" permission="plan.edit" type="button" role="menuitem" variant="ghost" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => handlers.onDeactivate(row))}><Pause size={15} aria-hidden /> Deactivate</PermissionButton>
+              ) : (
+                <PermissionButton guard="platform" permission="plan.edit" type="button" role="menuitem" variant="ghost" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => handlers.onActivate(row))}><Play size={15} aria-hidden /> Activate</PermissionButton>
+              )}
               <PermissionButton guard="platform" permission="plan.create" type="button" role="menuitem" variant="ghost" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => handlers.onClone(row))}><Copy size={15} aria-hidden /> Clone Plan</PermissionButton>
             </>
           ) : null}
@@ -853,7 +1052,7 @@ function PortalActionMenu({
   if (!open) return null;
 
   return createPortal(
-    <div className="action-menu-portal" style={{ left: position.left, top: position.top }}>
+    <div className="action-menu-portal" style={{ left: position.left + window.scrollX, top: position.top + window.scrollY }}>
       <button type="button" className="action-menu-backdrop" aria-label="Close actions menu" onClick={onClose} />
       {children}
     </div>,
@@ -1019,7 +1218,7 @@ function PlanComparison({ plans, record, payload }: { plans: CatalogRecord[]; re
       <article className="summary-card">
         <span><BadgeDollarSign size={18} aria-hidden /></span>
         <p>Current Plan</p>
-        <strong>{textOf(record, ['plan_name', 'plan_uuid', 'plan_id'])}</strong>
+        <strong>{textOf(record, ['plan_name'])}</strong>
         <small>{money(totalFor(record), record.currency)} / {textOf(record, ['billing_cycle'])}</small>
       </article>
       <article className="summary-card">
@@ -1032,7 +1231,7 @@ function PlanComparison({ plans, record, payload }: { plans: CatalogRecord[]; re
   );
 }
 
-function PlanActionModals({ modal, kind, record, loading, error, onClose, onArchive, onClone, onAttach }: {
+function PlanActionModals({ modal, kind, record, loading, error, onClose, onArchive, onClone, onAttach, onAttachAddon, onStatus }: {
   modal: PlanModal;
   kind: CatalogKind;
   record?: CatalogRecord | null;
@@ -1042,6 +1241,8 @@ function PlanActionModals({ modal, kind, record, loading, error, onClose, onArch
   onArchive: () => void;
   onClone: (payload: Record<string, unknown>) => void;
   onAttach: (payload: Record<string, unknown>) => void;
+  onAttachAddon: (addonIds: string[]) => void;
+  onStatus: (status: 'active' | 'inactive') => void;
 }) {
   const [payload, setPayload] = useState<Record<string, string | boolean>>({});
   const featureOptionsQuery = useQuery({
@@ -1049,7 +1250,24 @@ function PlanActionModals({ modal, kind, record, loading, error, onClose, onArch
     queryFn: () => platformSubscriptionsApi.features.list({ status: 'active', per_page: 100 }),
     enabled: modal === 'attachFeature'
   });
+  const addonOptionsQuery = useQuery({
+    queryKey: platformQueryKeys.list('addons', { status: 'active', per_page: 100 }),
+    queryFn: () => platformSubscriptionsApi.addons.list({ status: 'active', per_page: 100 }),
+    enabled: modal === 'attachAddon'
+  });
+  const detailQuery = useQuery({
+    queryKey: platformQueryKeys.detail('plan-addon-assignment', idOf(record)),
+    queryFn: () => platformSubscriptionsApi.plans.detail(idOf(record)),
+    enabled: modal === 'attachAddon' && Boolean(record)
+  });
   const featureOptions = featureOptionsQuery.data?.data ?? [];
+  const addonOptions = addonOptionsQuery.data?.data ?? [];
+  const [selectedAddonIds, setSelectedAddonIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (modal !== 'attachAddon') return;
+    setSelectedAddonIds((detailQuery.data?.addons ?? []).map(idOf).filter(Boolean));
+  }, [detailQuery.data, modal]);
 
   useEffect(() => {
     setPayload({
@@ -1073,6 +1291,24 @@ function PlanActionModals({ modal, kind, record, loading, error, onClose, onArch
     });
   }, [record]);
   if (!modal || !record) return null;
+  if (modal === 'activate' || modal === 'deactivate') {
+    const activating = modal === 'activate';
+    return (
+      <ConfirmDialog
+        open
+        onClose={onClose}
+        title={`${activating ? 'Activate' : 'Deactivate'} plan?`}
+        description={`${activating ? 'This makes the plan available again.' : 'This stops new selections for this plan. Existing subscriptions remain untouched.'}`}
+        confirmLabel={activating ? 'Activate' : 'Deactivate'}
+        confirmTone={activating ? undefined : 'danger'}
+        guard="platform"
+        permission="plan.edit"
+        loading={loading}
+        error={error ? errorMessage(error) : null}
+        onConfirm={() => onStatus(activating ? 'active' : 'inactive')}
+      />
+    );
+  }
   if (modal === 'delete') {
     return (
       <ConfirmDialog
@@ -1082,7 +1318,7 @@ function PlanActionModals({ modal, kind, record, loading, error, onClose, onArch
         description={`This permanently deletes the ${catalogMeta[kind].singular.toLowerCase()} when it is not assigned to any related records.`}
         confirmLabel="Delete"
         confirmTone="danger"
-        typedConfirmation="DELETE"
+        typedConfirmation="delete"
         guard="platform"
         permission={kind === 'features' ? 'feature.delete' : 'plan.delete'}
         loading={loading}
@@ -1104,21 +1340,37 @@ function PlanActionModals({ modal, kind, record, loading, error, onClose, onArch
     { name: 'is_custom', label: 'Custom Plan', type: 'checkbox' }
   ];
   const attachFeatureDisabled = modal === 'attachFeature' && (!payload.feature_uuid || featureOptionsQuery.isLoading);
+  const attachAddonDisabled = modal === 'attachAddon' && (addonOptionsQuery.isLoading || detailQuery.isLoading);
   const cloneDisabled = modal === 'clone' && (!payload.name || !payload.code || !payload.billing_cycle || !payload.base_price);
 
   return (
     <AppModal
       open
       onClose={onClose}
-      title={modal === 'clone' ? 'Clone Plan' : 'Attach Feature'}
+      title={modal === 'clone' ? 'Clone Plan' : modal === 'attachAddon' ? 'Add Add-on' : 'Add Feature'}
       guard="platform"
       permission={modal === 'clone' ? 'plan.create' : 'plan.edit'}
       loading={loading}
       error={error ? errorMessage(error) : null}
-      footer={<><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="button" disabled={attachFeatureDisabled || cloneDisabled} onClick={() => modal === 'clone' ? onClone(payload) : onAttach({ feature_uuid: payload.feature_uuid, value: payload.value, metadata: buildFeatureMetadata(payload) })}>Confirm</Button></>}
+      footer={<><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="button" disabled={attachFeatureDisabled || attachAddonDisabled || cloneDisabled} onClick={() => modal === 'clone' ? onClone(payload) : modal === 'attachAddon' ? onAttachAddon(selectedAddonIds) : onAttach({ feature_uuid: payload.feature_uuid, value: payload.value, metadata: buildFeatureMetadata(payload) })}>Confirm</Button></>}
     >
       <div className="form-grid">
-        {modal === 'clone' ? cloneFields.map((field) => (
+        {modal === 'attachAddon' ? (
+          <>
+            <div className="surface-state">{selectedAddonIds.length} add-on{selectedAddonIds.length === 1 ? '' : 's'} selected.</div>
+            {addonOptions.map((addon) => {
+              const addonId = idOf(addon);
+              return (
+                <label key={addonId} className="check-row">
+                  <input type="checkbox" checked={selectedAddonIds.includes(addonId)} onChange={() => setSelectedAddonIds((current) => current.includes(addonId) ? current.filter((id) => id !== addonId) : [...current, addonId])} />
+                  <span>{textOf(addon, ['name'])} ({textOf(addon, ['code'])})</span>
+                </label>
+              );
+            })}
+            {addonOptionsQuery.isError ? <div className="surface-error">{errorMessage(addonOptionsQuery.error)}</div> : null}
+            {detailQuery.isError ? <div className="surface-error">{errorMessage(detailQuery.error)}</div> : null}
+          </>
+        ) : modal === 'clone' ? cloneFields.map((field) => (
           <label key={field.name} className={field.type === 'checkbox' ? 'check-row' : undefined}>
             {field.type === 'checkbox' ? (
               <><input type="checkbox" checked={Boolean(payload[field.name])} onChange={(event) => setPayload((current) => ({ ...current, [field.name]: event.target.checked }))} /><FieldLabel>{field.label}</FieldLabel></>
@@ -1223,17 +1475,23 @@ function SubscriptionStats({ rows }: { rows: SubscriptionRecord[] }) {
   );
 }
 
-function CatalogStats({ kind, rows }: { kind: CatalogKind; rows: CatalogRecord[] }) {
+type CatalogStatsData = Record<string, string | number | boolean | null | undefined>;
+
+function CatalogStats({ kind, rows, stats, totalCount }: { kind: CatalogKind; rows: CatalogRecord[]; stats?: CatalogStatsData; totalCount?: number }) {
   const currency = rows[0]?.currency ?? 'INR';
   const priceKey = kind === 'addons' ? 'price' : 'base_price';
-  const total = rows.reduce((sum, row) => sum + Number(row[priceKey] ?? 0), 0);
+  const total = Number(stats?.catalog_value ?? rows.reduce((sum, row) => sum + Number(row[priceKey] ?? 0), 0));
+  const totalRecords = Number(stats?.total ?? totalCount ?? rows.length);
+  const activeRecords = Number(stats?.active ?? rows.filter((row) => row.status === 'active').length);
+  const archivedRecords = Number(stats?.archived ?? rows.filter((row) => row.status === 'archived').length);
+  const publicRecords = Number(stats?.public ?? rows.filter((row) => row.is_public).length);
   return (
     <section className="platform-access-summary">
-      <SummaryTile icon={<FileSpreadsheet />} label={`Total ${catalogMeta[kind].label}`} value={String(rows.length)} />
-      <SummaryTile icon={<RefreshCw />} label="Active" value={String(rows.filter((row) => row.status === 'active').length)} />
-      <SummaryTile icon={<Archive />} label="Archived" value={String(rows.filter((row) => row.status === 'archived').length)} />
+      <SummaryTile icon={<FileSpreadsheet />} label={`Total ${catalogMeta[kind].label}`} value={String(totalRecords)} />
+      <SummaryTile icon={<RefreshCw />} label="Active" value={String(activeRecords)} />
+      <SummaryTile icon={<Archive />} label="Archived" value={String(archivedRecords)} />
       <SummaryTile icon={<BadgeDollarSign />} label="Catalog Value" value={money(total, currency)} />
-      <SummaryTile icon={<Tags />} label="Public" value={String(rows.filter((row) => row.is_public).length)} />
+      <SummaryTile icon={<Tags />} label="Public" value={String(publicRecords)} />
     </section>
   );
 }
@@ -1242,13 +1500,43 @@ function SummaryTile({ icon, label, value }: { icon: ReactNode; label: string; v
   return <article className="summary-card"><span>{icon}</span><p>{label}</p><strong>{value}</strong></article>;
 }
 
+const hiddenSubscriptionDetailKeys = new Set([
+  'id',
+  'uuid',
+  'tenant_id',
+  'tenant_uuid',
+  'plan_id',
+  'plan_uuid',
+  'last_platform_invoice_id',
+  'last_platform_payment_id',
+  'created_by',
+  'updated_by'
+]);
+
+function shouldShowSubscriptionDetail(key: string, value: unknown) {
+  if (hiddenSubscriptionDetailKeys.has(key)) return false;
+  if (typeof value === 'object' && value !== null) return false;
+  return true;
+}
+
+function subscriptionDetailLabel(key: string) {
+  const labels: Record<string, string> = { tenant_name: 'Tenant', tenant_slug: 'Workspace', plan_name: 'Plan', plan_code: 'Plan Code', subscription_number: 'Subscription', payable_amount: 'Payable', next_billing_at: 'Next Billing', auto_renew: 'Auto Renew' };
+  return labels[key] ?? labelize(key);
+}
+
+function displayDetailValue(value: unknown) {
+  if (value === null || value === undefined || value === '') return '-';
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  return String(value);
+}
+
 function RecordDetails({ record, moneyFields = [] }: { record: CatalogRecord; moneyFields?: string[] }) {
   return (
     <dl className="enterprise-summary-list">
-      {Object.entries(record).filter(([, value]) => typeof value !== 'object').map(([key, value]) => (
+      {Object.entries(record).filter(([key, value]) => shouldShowSubscriptionDetail(key, value)).map(([key, value]) => (
         <div key={key}>
-          <dt>{key}</dt>
-          <dd>{moneyFields.includes(key) ? money(value, record.currency) : String(value ?? '-')}</dd>
+          <dt>{subscriptionDetailLabel(key)}</dt>
+          <dd>{moneyFields.includes(key) ? money(value, record.currency) : displayDetailValue(value)}</dd>
         </div>
       ))}
     </dl>
@@ -1288,12 +1576,12 @@ function DetailTabs({ tabs }: { tabs: Array<{ id: string; label: string; content
 function fieldsFor(kind: CatalogKind) {
   if (kind === 'features') {
     return [
-      { name: 'module', label: 'Module' },
+      { name: 'module', label: 'Module', type: 'select' },
       { name: 'name', label: 'Name' },
       { name: 'code', label: 'Code' },
       { name: 'data_type', label: 'Data Type', type: 'select', options: ['integer', 'decimal', 'boolean', 'string', 'json'] },
       { name: 'unit', label: 'Unit' },
-      { name: 'status', label: 'Status', type: 'select', options: ['active', 'inactive', 'retired'] },
+      { name: 'status', label: 'Status', type: 'select', options: ['active', 'inactive'] },
       { name: 'description', label: 'Description', type: 'textarea' }
     ];
   }
@@ -1301,9 +1589,10 @@ function fieldsFor(kind: CatalogKind) {
     return [
       { name: 'name', label: 'Name' },
       { name: 'code', label: 'Code' },
-      { name: 'pricing_type', label: 'Pricing Type', type: 'select', options: ['recurring', 'one_time', 'usage_based', 'tiered'] },
+      { name: 'pricing_type', label: 'Pricing Type', type: 'select', options: ['recurring', 'one time', 'usage based', 'tiered'] },
       { name: 'price', label: 'Price', type: 'number' },
-      { name: 'currency', label: 'Currency' },
+      { name: 'currency', label: 'Currency', type: 'select', options: CURRENCY_OPTIONS },
+      { name: 'is_public', label: 'Public', type: 'checkbox' },
       { name: 'status', label: 'Status', type: 'select', options: ['active', 'inactive', 'archived'] }
     ];
   }
@@ -1333,7 +1622,7 @@ function FieldLabel({ children, required }: { children: ReactNode; required?: bo
 const catalogRequiredFields: Record<CatalogKind, Set<string>> = {
   plans: new Set(['name', 'code', 'billing_cycle', 'base_price']),
   features: new Set(['module', 'name', 'code', 'data_type']),
-  addons: new Set(['name', 'code', 'pricing_type', 'price'])
+  addons: new Set(['name', 'pricing_type', 'price'])
 };
 
 const subscriptionModalRequiredFields: Partial<Record<Exclude<SubscriptionModal, null>, Set<string>>> = {
@@ -1504,19 +1793,19 @@ function optionsForSubscriptionField(
   if (field.reference === 'tenants') {
     return refs.tenants.map((record) => ({
       value: idOf(record),
-      label: textOf(record, ['organization_name', 'name', 'company_name', 'tenant_name', 'uuid'])
+      label: textOf(record, ['organization_name', 'name', 'company_name', 'tenant_name'], 'Tenant')
     }));
   }
   if (field.reference === 'existingAddons') {
     return refs.existingAddons.map((record) => ({
       value: String(record.id ?? idOf(record)),
-      label: `${textOf(record, ['name', 'code', 'addon_plan_id'], `Add-on #${record.id ?? ''}`)} / ${textOf(record, ['status'])} / qty ${textOf(record, ['quantity'], '1')}`
+      label: `${textOf(record, ['name', 'code'], 'Add-on')} / ${textOf(record, ['status'])} / qty ${textOf(record, ['quantity'], '1')}`
     }));
   }
   if (field.reference === 'existingCoupons') {
     return refs.existingCoupons.map((record) => ({
       value: idOf(record),
-      label: `${textOf(record, ['code', 'name', 'coupon_uuid'], `Coupon #${record.id ?? ''}`)} / ${textOf(record, ['status', 'redeemed_at', 'created_at'])}`
+      label: `${textOf(record, ['code', 'name'], 'Coupon')} / ${textOf(record, ['status', 'redeemed_at', 'created_at'])}`
     }));
   }
   return [];
@@ -1539,8 +1828,9 @@ function defaultCatalogForm(kind: CatalogKind, record?: CatalogRecord): Record<s
       name: textOf(record, ['name'], ''),
       code: textOf(record, ['code'], ''),
       pricing_type: textOf(record, ['pricing_type'], 'recurring'),
-      price: textOf(record, ['price'], '0.00'),
+      price: textOf(record, ['price'], ''),
       currency: textOf(record, ['currency'], 'INR'),
+      is_public: record?.is_public === undefined ? true : Boolean(record.is_public),
       status: textOf(record, ['status'], 'active')
     };
   }
@@ -1564,7 +1854,7 @@ function saveCatalog(kind: CatalogKind, id: string, form: Record<string, string 
     return mode === 'create' ? platformSubscriptionsApi.features.create(payload) : platformSubscriptionsApi.features.update(id, payload);
   }
   if (kind === 'addons') {
-    const payload = form as AddonPayload;
+    const payload = Object.fromEntries(Object.entries(form).filter(([key, value]) => key !== 'code' || String(value).trim() !== '')) as AddonPayload;
     return mode === 'create' ? platformSubscriptionsApi.addons.create(payload) : platformSubscriptionsApi.addons.update(id, payload);
   }
   const payload = form as PlanPayload;

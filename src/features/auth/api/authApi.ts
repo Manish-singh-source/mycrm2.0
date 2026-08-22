@@ -7,6 +7,7 @@ import type {
   ForgotPasswordRequest,
   LoginResponse,
   LoginResult,
+  PublicPlan,
   ResetPasswordRequest,
   TenantRegistrationRequest,
   TenantRegistrationResponse,
@@ -191,6 +192,10 @@ function normalizeLoginResult(response: RawLoginResult): LoginResult {
 }
 
 export const authApi = {
+  publicPlans: async () => {
+    const response = await authClient.get<{ plans: PublicPlan[] }>('/tenants/plans');
+    return Array.isArray(response.data?.plans) ? response.data.plans : [];
+  },
   discoverAccounts: async (body: DiscoverAccountsRequest) => {
     const response = await authClient.post<
       { email: string; discovery_token: string | null; expires_in_seconds: number; accounts: RawAccount[] },

@@ -51,6 +51,8 @@ type DataTableProps<TRow> = {
   perPage?: number;
   total?: number;
   onPageChange?: (page: number) => void;
+  onPerPageChange?: (perPage: number) => void;
+  perPageOptions?: number[];
 };
 
 export function DataTable<TRow>({
@@ -78,7 +80,9 @@ export function DataTable<TRow>({
   page = 1,
   perPage = 25,
   total = data.length,
-  onPageChange
+  onPageChange,
+  onPerPageChange,
+  perPageOptions = [10, 25, 50, 100]
 }: DataTableProps<TRow>) {
   const [internalHiddenColumns, setInternalHiddenColumns] = useState<string[]>([]);
   const [sort, setSort] = useState<{ id: string; direction: 'asc' | 'desc' } | null>(null);
@@ -86,6 +90,7 @@ export function DataTable<TRow>({
   const selected = selectedRowIds ?? [];
   const hiddenColumns = hiddenColumnIds ?? internalHiddenColumns;
   const setHiddenColumns = onHiddenColumnIdsChange ?? setInternalHiddenColumns;
+  const pageSizeOptions = perPageOptions.includes(perPage) ? perPageOptions : [...perPageOptions, perPage].sort((a, b) => a - b);
   const pageCount = Math.max(1, Math.ceil(total / perPage));
   const startRecord = total === 0 ? 0 : (page - 1) * perPage + 1;
   const endRecord = Math.min(page * perPage, total);
@@ -344,8 +349,13 @@ export function DataTable<TRow>({
           >
             <ChevronRight aria-hidden="true" size={15} />
           </Button>
-          <select aria-label="Rows per page" value={perPage} disabled>
-            <option>{perPage} / page</option>
+          <select
+            aria-label="Rows per page"
+            value={perPage}
+            disabled={!onPerPageChange}
+            onChange={(event) => onPerPageChange?.(Number(event.target.value))}
+          >
+            {pageSizeOptions.map((option) => <option key={option} value={option}>{option} / page</option>)}
           </select>
         </div>
       </footer>

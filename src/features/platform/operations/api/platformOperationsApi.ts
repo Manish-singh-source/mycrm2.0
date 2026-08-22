@@ -61,6 +61,18 @@ async function detail(path: string, keys?: string[]): Promise<PlatformRecord> {
   const response = await platformClient.get<PlatformRecord | Record<string, unknown>>(path);
   return recordFromPayload(response.data, keys);
 }
+async function moduleDetail(id: string): Promise<PlatformRecord> {
+  const response = await platformClient.get<Record<string, unknown>>(`/modules/${encodeURIComponent(id)}`);
+  const payload = response.data ?? {};
+  const module = recordFromPayload(payload, ['module']);
+  return {
+    ...module,
+    features: arrayFromPayload(payload, ['features']),
+    tenant_overrides: arrayFromPayload(payload, ['tenant_overrides']),
+    activity: arrayFromPayload(payload, ['activity']),
+    enabled_tenant_count: (payload as Record<string, unknown>).enabled_tenant_count
+  };
+}
 
 function key(action: string, id?: string | number) {
   return `${action}-${id ?? 'new'}-${Date.now()}`;
@@ -69,14 +81,18 @@ function key(action: string, id?: string | number) {
 export const platformOperationsApi = {
   modules: {
     list: (query?: ApiQuery) => list('/modules', query),
-    detail: (id: string) => detail(`/modules/${encodeURIComponent(id)}`, ['module']),
+    detail: (id: string) => moduleDetail(id),
     create: (body: Record<string, unknown>) => platformClient.post('/modules', body, { idempotencyKey: key('module-create') }),
     update: (id: string, body: Record<string, unknown>) => platformClient.patch(`/modules/${encodeURIComponent(id)}`, body),
     enable: (id: string, body?: Record<string, unknown>) => platformClient.post(`/modules/${encodeURIComponent(id)}/enable`, body),
     disable: (id: string, body?: Record<string, unknown>) => platformClient.post(`/modules/${encodeURIComponent(id)}/disable`, body),
     features: (id: string) => platformClient.get(`/modules/${encodeURIComponent(id)}/features`),
     replaceFeatures: (id: string, feature_uuids: string[]) => platformClient.put(`/modules/${encodeURIComponent(id)}/features`, { feature_uuids }),
-    tenants: (id: string) => platformClient.get<{ tenants: PlatformRecord[] }>(`/modules/${encodeURIComponent(id)}/tenants`)
+    tenants: (id: string) => platformClient.get<{ tenants: PlatformRecord[] }>(`/modules/${encodeURIComponent(id)}/tenants`),
+    delete: (id: string) => platformClient.delete(`/modules/${encodeURIComponent(id)}`),
+    bulkDelete: (module_uuids: string[]) => platformClient.delete('/modules/bulk', { body: { module_uuids } }),
+    export: (body?: Record<string, unknown>) => platformClient.post('/modules/export', body),
+    import: (body?: Record<string, unknown>) => platformClient.post('/modules/import', body)
   },
   references: {
     features: (query?: ApiQuery) => list('/features', query),
