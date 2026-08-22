@@ -1,13 +1,15 @@
-import { useState, type FormEvent, type ReactNode } from 'react';
+﻿import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  ArrowLeft,
   Camera,
-  Copy,
   Download,
   Plus,
+  Edit3,
   RefreshCw,
   ShieldCheck,
+  Trash2,
   UserPlus,
   Users
 } from 'lucide-react';
@@ -22,6 +24,7 @@ import { DataTable, type DataTableColumn } from '@/shared/components/data-table'
 import { AppDrawer } from '@/shared/components/drawer';
 import { PageHeader, StatusBadge, Tabs } from '@/shared/components/layout';
 import { AppModal } from '@/shared/components/modal';
+import { ConfirmDialog } from '@/shared/components/workflows/ConfirmDialog';
 import { Button, PermissionButton } from '@/shared/components/ui';
 
 const tenantKey = 'current';
@@ -30,9 +33,11 @@ type ModalState =
   | null
   | 'create'
   | 'edit'
-  | 'cloneRole'
   | 'assignPermissions'
   | 'assignUsers'
+  | 'deleteRole'
+  | 'bulkDeleteRole'
+  | 'roleFilters'
   | 'addMember'
   | 'assignRecord'
   | 'settings'
@@ -47,35 +52,92 @@ type ModalState =
   | 'photo';
 
 export function TenantRolesListPage() {
+  const { tenantSlug } = useParams();
   const navigate = useNavigate();
-  const query = usePagedQuery('roles', tenantAccessApi.roles.list);
+  const queryClient = useQueryClient();
+  const [statusFilter, setStatusFilter] = useState('');
+  const query = usePagedQuery('roles', tenantAccessApi.roles.list, 10, statusFilter ? { status: statusFilter } : undefined);
   const [selected, setSelected] = useState<TenantAccessRecord | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [hiddenColumnIds, setHiddenColumnIds] = useState<string[]>(['guard_name']);
   const [modal, setModal] = useState<ModalState>(null);
+  const stats = (query.meta?.stats as Record<string, unknown> | undefined) ?? {};
+  const deleteMutation = useMutation({
+    mutationFn: ({ ids, reason }: { ids: string[]; reason?: string }) => ids.length === 1
+      ? tenantAccessApi.roles.delete(ids[0], { audit_reason: reason })
+      : tenantAccessApi.roles.bulkDelete(ids, reason),
+    onSuccess: async () => {
+      setSelected(null);
+      setSelectedIds([]);
+      setModal(null);
+      await queryClient.invalidateQueries({ queryKey: tenantQueryKeys.resource(tenantKey, 'roles') });
+    }
+  });
 
   return (
     <section className="enterprise-module-page">
       <PageHeader
         title="Roles"
         description="Tenant roles with permission assignment and user membership."
-        actions={<PermissionButton guard="tenant" permission="role.create" type="button" onClick={() => setModal('create')}><Plus size={16} aria-hidden />Role</PermissionButton>}
+        actions={<PermissionButton guard="tenant" permission="role.create" type="button" onClick={() => navigate('create')}><Plus size={16} aria-hidden />Role</PermissionButton>}
       />
+      <RoleSummaryCards stats={stats} fallbackTotal={query.total} rows={query.rows} />
       <DataTable
-        columns={roleColumns((row, action) => { setSelected(row); setModal(action); }, (row) => navigate(`${idOf(row)}`))}
+        columns={roleColumns(
+          (row, action) => { setSelected(row); setModal(action); },
+          (row) => navigate(`${idOf(row)}`),
+          (row) => navigate(`${idOf(row)}/edit`)
+        )}
         data={query.rows}
         getRowId={idOf}
         loading={query.isLoading}
         error={query.error}
         searchValue={query.search}
+        searchPlaceholder="Search roles..."
         onSearchChange={query.setSearch}
+        hiddenColumnIds={hiddenColumnIds}
+        onHiddenColumnIdsChange={setHiddenColumnIds}
+        onOpenFilters={() => setModal('roleFilters')}
+        selectedRowIds={selectedIds}
+        onSelectionChange={setSelectedIds}
+        bulkActions={<PermissionButton guard="tenant" permission="role.delete" type="button" variant="danger" size="sm" disabled={selectedIds.length === 0} onClick={() => setModal('bulkDeleteRole')}><Trash2 size={15} aria-hidden />Delete selected</PermissionButton>}
         page={query.page}
-        perPage={25}
+        perPage={query.perPage}
         total={query.total}
         onPageChange={query.setPage}
+        onPerPageChange={(value) => { query.setPerPage(value); query.setPage(1); setSelectedIds([]); }}
       />
-      <RoleModal open={modal === 'create' || modal === 'edit'} role={modal === 'edit' ? selected : null} onClose={() => setModal(null)} />
-      <CloneRoleModal open={modal === 'cloneRole'} role={selected} onClose={() => setModal(null)} />
+      <RoleFiltersModal open={modal === 'roleFilters'} status={statusFilter} onStatusChange={(value) => { setStatusFilter(value); query.setPage(1); }} onClose={() => setModal(null)} />
       <PermissionAssignDrawer open={modal === 'assignPermissions'} target="role" record={selected} onClose={() => setModal(null)} />
       <AssignUsersModal open={modal === 'assignUsers'} role={selected} onClose={() => setModal(null)} />
+      <ConfirmDialog
+        open={modal === 'deleteRole'}
+        onClose={() => setModal(null)}
+        title="Delete role?"
+        description={`This permanently deletes ${textOf(selected, ['display_name', 'name'], 'this role')} when it is not assigned to users.`}
+        confirmLabel="Delete"
+        confirmTone="danger"
+        typedConfirmation="delete"
+        guard="tenant"
+        permission="role.delete"
+        loading={deleteMutation.isPending}
+        error={deleteMutation.error ? errorMessage(deleteMutation.error) : null}
+        onConfirm={({ reason }) => selected && deleteMutation.mutate({ ids: [idOf(selected)], reason })}
+      />
+      <ConfirmDialog
+        open={modal === 'bulkDeleteRole'}
+        onClose={() => setModal(null)}
+        title="Delete selected roles?"
+        description={`This permanently deletes ${selectedIds.length} selected role${selectedIds.length === 1 ? '' : 's'} when they are not assigned to users.`}
+        confirmLabel="Delete selected"
+        confirmTone="danger"
+        typedConfirmation="delete"
+        guard="tenant"
+        permission="role.delete"
+        loading={deleteMutation.isPending}
+        error={deleteMutation.error ? errorMessage(deleteMutation.error) : null}
+        onConfirm={({ reason }) => deleteMutation.mutate({ ids: selectedIds, reason })}
+      />
     </section>
   );
 }
@@ -92,35 +154,73 @@ function RoleEditorPage({ mode }: { mode: 'create' | 'edit' }) {
   const { tenantSlug, id = '' } = useParams();
   const navigate = useNavigate();
   const query = useQuery({ queryKey: tenantQueryKeys.detail(tenantKey, 'roles', id), queryFn: () => tenantAccessApi.roles.detail(id), enabled: mode === 'edit' && Boolean(id) });
+  const backToRoles = () => navigate(TENANT_ROUTES.accessControl.roles(tenantSlug));
   return (
     <section className="enterprise-module-page">
-      <PageHeader title={mode === 'create' ? 'Create Role' : 'Edit Role'} />
+      <PageHeader
+        title={mode === 'create' ? 'Create Role' : 'Edit Role'}
+        actions={<Button type="button" variant="secondary" onClick={backToRoles}><ArrowLeft size={16} aria-hidden />Back</Button>}
+      />
+      {mode === 'edit' && query.isLoading ? <div className="surface-state">Loading role...</div> : null}
       <RoleForm
         role={query.data}
-        onSaved={() => navigate(TENANT_ROUTES.accessControl.roles(tenantSlug))}
+        onSaved={backToRoles}
+        onCancel={backToRoles}
       />
     </section>
   );
 }
 
 export function TenantRoleViewPage() {
-  const { id = '' } = useParams();
+  const { tenantSlug, id = '' } = useParams();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const query = useQuery({ queryKey: tenantQueryKeys.detail(tenantKey, 'roles', id), queryFn: () => tenantAccessApi.roles.detail(id) });
   const role = query.data;
   const [modal, setModal] = useState<ModalState>(null);
+  const [tab, setTab] = useState('overview');
+  const deleteMutation = useMutation({
+    mutationFn: (reason?: string) => tenantAccessApi.roles.delete(id, { audit_reason: reason }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: tenantQueryKeys.resource(tenantKey, 'roles') });
+      navigate(TENANT_ROUTES.accessControl.roles(tenantSlug));
+    }
+  });
+  const users = (role?.users as TenantAccessRecord[]) ?? [];
+  const permissions = (role?.permissions as GroupedPermissions) ?? {};
+
   return (
     <section className="enterprise-module-page">
       <PageHeader
         title={textOf(role, ['display_name', 'name'], 'Role')}
         description={textOf(role, ['description'], 'Tenant role details.')}
-        actions={<><Button type="button" variant="secondary" onClick={() => setModal('cloneRole')}><Copy size={16} aria-hidden />Clone</Button><PermissionButton guard="tenant" permission="role.assign_permissions" type="button" onClick={() => setModal('assignPermissions')}><ShieldCheck size={16} aria-hidden />Permissions</PermissionButton><Button type="button" variant="secondary" onClick={() => setModal('assignUsers')}><Users size={16} aria-hidden />Users</Button></>}
+        actions={<><Button type="button" variant="secondary" onClick={() => navigate(TENANT_ROUTES.accessControl.roles(tenantSlug))}><ArrowLeft size={16} aria-hidden />Back</Button><Link className="button button--secondary button--md" to="edit"><Edit3 size={16} aria-hidden />Edit</Link><PermissionButton guard="tenant" permission="role.assign_permissions" type="button" onClick={() => setModal('assignPermissions')}><ShieldCheck size={16} aria-hidden />Permissions</PermissionButton><Button type="button" variant="secondary" onClick={() => setModal('assignUsers')}><Users size={16} aria-hidden />Users</Button><PermissionButton guard="tenant" permission="role.delete" type="button" variant="danger" onClick={() => setModal('deleteRole')}><Trash2 size={16} aria-hidden />Delete</PermissionButton></>}
       />
-      <RecordDetails record={role} loading={query.isLoading} />
-      <PermissionGroups groups={(role?.permissions as GroupedPermissions) ?? {}} />
-      <RecordList title="Assigned Users" rows={(role?.users as TenantAccessRecord[]) ?? []} />
-      <CloneRoleModal open={modal === 'cloneRole'} role={role ?? null} onClose={() => setModal(null)} />
+      <div className="summary-grid">
+        <article className="summary-card"><span>Total permissions</span><strong>{String(role?.permissions_count ?? countGroupedPermissions(permissions))}</strong></article>
+        <article className="summary-card"><span>Total users</span><strong>{String(role?.users_count ?? users.length)}</strong></article>
+      </div>
+      <Tabs tabs={roleTabs} activeId={tab} onChange={setTab} ariaLabel="Role details tabs" />
+      {tab === 'overview' ? <RecordDetails record={role} loading={query.isLoading} /> : null}
+      {tab === 'permissions' ? <PermissionGroups groups={permissions} /> : null}
+      {tab === 'users' ? <RecordList title="Assigned Users" rows={users} /> : null}
+      {tab === 'activity' ? <RecordList title="Activity" rows={(role?.activity as TenantAccessRecord[]) ?? []} /> : null}
       <PermissionAssignDrawer open={modal === 'assignPermissions'} target="role" record={role ?? null} onClose={() => setModal(null)} />
       <AssignUsersModal open={modal === 'assignUsers'} role={role ?? null} onClose={() => setModal(null)} />
+      <ConfirmDialog
+        open={modal === 'deleteRole'}
+        onClose={() => setModal(null)}
+        title="Delete role?"
+        description={`This permanently deletes ${textOf(role, ['display_name', 'name'], 'this role')} when it is not assigned to users.`}
+        confirmLabel="Delete"
+        confirmTone="danger"
+        typedConfirmation="delete"
+        guard="tenant"
+        permission="role.delete"
+        loading={deleteMutation.isPending}
+        error={deleteMutation.error ? errorMessage(deleteMutation.error) : null}
+        onConfirm={({ reason }) => deleteMutation.mutate(reason)}
+      />
     </section>
   );
 }
@@ -376,27 +476,128 @@ export function TenantStaffViewPage() {
   );
 }
 
-function usePagedQuery(resource: string, queryFn: (query?: ApiQuery) => Promise<{ data: TenantAccessRecord[]; total: number }>) {
+function usePagedQuery(resource: string, queryFn: (query?: ApiQuery) => Promise<{ data: TenantAccessRecord[]; total: number; meta?: Record<string, unknown> }>, defaultPerPage = 25, filters?: Record<string, string>) {
   const [search, setSearchState] = useState('');
   const [page, setPage] = useState(1);
-  const queryParams = createListQuery({ page, per_page: 25, search: search || undefined });
+  const [perPage, setPerPage] = useState(defaultPerPage);
+  const cleanFilters = filters ? Object.fromEntries(Object.entries(filters).filter(([, value]) => value)) : undefined;
+  const queryParams = createListQuery({ page, per_page: perPage, search: search || undefined, filter: cleanFilters });
   const query = useQuery({ queryKey: tenantQueryKeys.list(tenantKey, resource, queryParams), queryFn: () => queryFn(queryParams) });
   const setSearch = (value: string) => { setSearchState(value); setPage(1); };
-  return { rows: query.data?.data ?? [], total: query.data?.total ?? 0, isLoading: query.isLoading, error: query.isError ? errorMessage(query.error) : undefined, page, setPage, search, setSearch };
+  return { rows: query.data?.data ?? [], total: query.data?.total ?? 0, meta: query.data?.meta, isLoading: query.isLoading, error: query.isError ? errorMessage(query.error) : undefined, page, setPage, perPage, setPerPage, search, setSearch };
 }
 
+function RoleSummaryCards({ stats, fallbackTotal, rows }: { stats: Record<string, unknown>; fallbackTotal: number; rows: TenantAccessRecord[] }) {
+  const total = Number(stats.total ?? fallbackTotal ?? rows.length);
+  const active = Number(stats.active ?? rows.filter((row) => row.status === 'active').length);
+  const inactive = Number(stats.inactive ?? rows.filter((row) => row.status === 'inactive').length);
+  return (
+    <div className="summary-grid">
+      <article className="summary-card"><span>Total Roles</span><strong>{total}</strong></article>
+      <article className="summary-card"><span>Active</span><strong>{active}</strong></article>
+      <article className="summary-card"><span>Inactive</span><strong>{inactive}</strong></article>
+    </div>
+  );
+}
+
+function RoleFiltersModal({ open, status, onStatusChange, onClose }: { open: boolean; status: string; onStatusChange: (value: string) => void; onClose: () => void }) {
+  return (
+    <AppModal open={open} onClose={onClose} title="Role Filters" footer={<><Button type="button" variant="secondary" onClick={() => onStatusChange('')}>Reset</Button><Button type="button" onClick={onClose}>Apply</Button></>}>
+      <label>
+        <span>Status</span>
+        <select value={status} onChange={(event) => onStatusChange(event.target.value)}>
+          <option value="">All statuses</option>
+          <option value="active">active</option>
+          <option value="inactive">inactive</option>
+        </select>
+      </label>
+    </AppModal>
+  );
+}
+
+function permissionIdsFromGroups(groups: GroupedPermissions) {
+  return Object.values(groups).flat().map(idOf).filter(Boolean);
+}
+
+function countGroupedPermissions(groups: GroupedPermissions) {
+  return Object.values(groups).reduce((total, rows) => total + rows.length, 0);
+}
+
+const roleTabs = [
+  ['overview', 'Overview'],
+  ['permissions', 'Permissions'],
+  ['users', 'Users'],
+  ['activity', 'Activity']
+].map(([id, labelText]) => ({ id, label: labelText }));
 function RoleModal({ open, role, onClose }: { open: boolean; role: TenantAccessRecord | null; onClose: () => void }) {
-  return <AppModal open={open} onClose={onClose} title={role ? 'Edit Role' : 'Create Role'} guard="tenant" permission={role ? 'role.edit' : 'role.create'} size="lg"><RoleForm role={role ?? undefined} onSaved={onClose} /></AppModal>;
+  return <AppModal open={open} onClose={onClose} title={role ? 'Edit Role' : 'Create Role'} guard="tenant" permission={role ? 'role.edit' : 'role.create'} size="lg"><RoleForm role={role ?? undefined} onSaved={onClose} onCancel={onClose} /></AppModal>;
 }
 
-function RoleForm({ role, onSaved }: { role?: TenantAccessRecord; onSaved: () => void }) {
+function RoleForm({ role, onSaved, onCancel }: { role?: TenantAccessRecord; onSaved: () => void; onCancel?: () => void }) {
   const queryClient = useQueryClient();
-  const [form, setForm] = useState(() => ({ name: textOf(role, ['name']), display_name: textOf(role, ['display_name']), description: textOf(role, ['description']), status: textOf(role, ['status'], 'active'), guard_name: textOf(role, ['guard_name'], 'tenant'), audit_reason: '' }));
+  const permissions = useQuery({ queryKey: tenantQueryKeys.resource(tenantKey, 'permissions-grouped'), queryFn: tenantAccessApi.permissions.grouped });
+  const [form, setForm] = useState(() => ({
+    name: textOf(role, ['name']),
+    display_name: textOf(role, ['display_name']),
+    description: textOf(role, ['description']),
+    status: textOf(role, ['status'], 'active'),
+    audit_reason: ''
+  }));
+  const [permissionIds, setPermissionIds] = useState<string[]>(() => permissionIdsFromGroups((role?.permissions as GroupedPermissions) ?? {}));
+
+  useEffect(() => {
+    setForm({
+      name: textOf(role, ['name']),
+      display_name: textOf(role, ['display_name']),
+      description: textOf(role, ['description']),
+      status: textOf(role, ['status'], 'active'),
+      audit_reason: ''
+    });
+    setPermissionIds(permissionIdsFromGroups((role?.permissions as GroupedPermissions) ?? {}));
+  }, [role?.uuid]);
+
   const mutation = useMutation({
-    mutationFn: () => role?.uuid ? tenantAccessApi.roles.update(role.uuid, form) : tenantAccessApi.roles.create(form),
+    mutationFn: () => {
+      const payload = { ...form, guard_name: 'tenant', permission_ids: permissionIds };
+      return role?.uuid ? tenantAccessApi.roles.update(role.uuid, payload) : tenantAccessApi.roles.create(payload);
+    },
     onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: tenantQueryKeys.resource(tenantKey, 'roles') }); onSaved(); }
   });
-  return <SimpleForm form={form} fields={['name', 'display_name', 'description', 'status', 'guard_name', 'audit_reason']} onChange={setForm} onSubmit={() => mutation.mutate()} loading={mutation.isPending} error={mutation.error} />;
+
+  return (
+    <form className="form-grid form-grid--two" onSubmit={(event) => { event.preventDefault(); mutation.mutate(); }}>
+      <SimpleInput label="Name" value={form.name} onChange={(name) => setForm({ ...form, name })} />
+      <SimpleInput label="Display Name" value={form.display_name} onChange={(display_name) => setForm({ ...form, display_name })} />
+      <label>
+        <span>Status</span>
+        <select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}>
+          <option value="active">active</option>
+          <option value="inactive">inactive</option>
+        </select>
+      </label>
+      <label>
+        <span>Guard Name</span>
+        <select value="tenant" disabled>
+          <option value="tenant">tenant</option>
+        </select>
+      </label>
+      <label className="form-span-2">
+        <span>Description</span>
+        <textarea rows={4} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} />
+      </label>
+      <label className="form-span-2">
+        <span>Audit Reason</span>
+        <textarea rows={3} value={form.audit_reason} onChange={(event) => setForm({ ...form, audit_reason: event.target.value })} />
+      </label>
+      <div className="form-span-2">
+        <h2>Permissions</h2>
+        {permissions.isLoading ? <div className="surface-state">Loading permissions...</div> : null}
+        <PermissionChecklist groups={permissions.data?.data.permissions ?? {}} selectedIds={permissionIds} onChange={setPermissionIds} />
+      </div>
+      {mutation.error ? <div className="surface-error form-span-2">{errorMessage(mutation.error)}</div> : null}
+      <div className="surface-footer form-span-2"><Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button><Button type="submit" disabled={mutation.isPending}>{mutation.isPending ? 'Saving...' : 'Save'}</Button></div>
+    </form>
+  );
 }
 
 function CloneRoleModal({ open, role, onClose }: { open: boolean; role: TenantAccessRecord | null; onClose: () => void }) {
@@ -726,8 +927,28 @@ function JobResult({ data }: { data: unknown }) {
   );
 }
 
-function roleColumns(onAction: (row: TenantAccessRecord, action: ModalState) => void, onOpen: (row: TenantAccessRecord) => void): DataTableColumn<TenantAccessRecord>[] {
-  return [...genericColumns(['display_name', 'name', 'guard_name', 'permissions_count', 'users_count', 'status']), actionColumn((row) => <><Button type="button" size="sm" variant="secondary" onClick={() => onOpen(row)}>View</Button><Button type="button" size="sm" variant="secondary" onClick={() => onAction(row, 'edit')}>Edit</Button><Button type="button" size="sm" variant="secondary" onClick={() => onAction(row, 'cloneRole')}>Clone</Button><Button type="button" size="sm" variant="secondary" onClick={() => onAction(row, 'assignPermissions')}>Permissions</Button><Button type="button" size="sm" variant="secondary" onClick={() => onAction(row, 'assignUsers')}>Users</Button></>)];
+function roleColumns(onAction: (row: TenantAccessRecord, action: ModalState) => void, onOpen: (row: TenantAccessRecord) => void, onEdit: (row: TenantAccessRecord) => void): DataTableColumn<TenantAccessRecord>[] {
+  return [...genericColumns(['display_name', 'name', 'permissions_count', 'users_count', 'status']), actionColumn((row) => (
+    <select
+      aria-label={`Actions for ${textOf(row, ['display_name', 'name'], 'role')}`}
+      value=""
+      onChange={(event) => {
+        const action = event.target.value;
+        if (action === 'view') onOpen(row);
+        if (action === 'edit') onEdit(row);
+        if (action === 'assignPermissions') onAction(row, 'assignPermissions');
+        if (action === 'assignUsers') onAction(row, 'assignUsers');
+        if (action === 'deleteRole') onAction(row, 'deleteRole');
+      }}
+    >
+      <option value="">Actions</option>
+      <option value="view">View</option>
+      <option value="edit">Edit</option>
+      <option value="assignPermissions">Assign/remove permissions</option>
+      <option value="assignUsers">Assign/remove users</option>
+      <option value="deleteRole">Delete role</option>
+    </select>
+  ))];
 }
 
 function teamColumns(onAction: (row: TenantAccessRecord, action: ModalState) => void, onOpen: (row: TenantAccessRecord) => void): DataTableColumn<TenantAccessRecord>[] {
@@ -838,3 +1059,5 @@ function errorMessage(error: unknown) {
   if (error instanceof Error) return error.message;
   return 'Request failed.';
 }
+
+

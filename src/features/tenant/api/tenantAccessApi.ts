@@ -1,4 +1,4 @@
-import { authStore } from '@/features/auth/store/authStore';
+﻿import { authStore } from '@/features/auth/store/authStore';
 import type { ApiQuery, NormalizedApiResponse } from '@/lib/api/apiTypes';
 import { createTenantClient } from '@/lib/api/tenantClient';
 
@@ -74,6 +74,8 @@ export const tenantAccessApi = {
       unwrap((await client().patch(`/access-control/roles/${encodeURIComponent(id)}`, body)).data, ['role']),
     delete: (id: string, body: Record<string, unknown>) =>
       client().delete(`/access-control/roles/${encodeURIComponent(id)}`, { body }),
+    bulkDelete: (role_uuids: string[], audit_reason?: string) =>
+      client().delete('/access-control/roles/bulk', { body: { role_uuids, audit_reason } }),
     clone: (id: string, body: Record<string, unknown>) =>
       client().post(`/access-control/roles/${encodeURIComponent(id)}/clone`, body),
     activate: (id: string, audit_reason: string) =>
