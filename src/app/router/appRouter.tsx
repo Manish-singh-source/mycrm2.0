@@ -100,6 +100,8 @@ import { TenantDashboardPage, TenantMyDashboardPage } from '@/features/tenant/pa
 import { TenantProfilePage } from '@/features/tenant/pages/TenantProfilePages';
 import {
   TenantActivityPage,
+  TenantNotificationDetailPage,
+  TenantNotificationsPage,
   TenantHelpArticlePage,
   TenantHelpCenterPage
 } from '@/features/tenant/pages/TenantWorkspacePages';
@@ -850,6 +852,22 @@ export const appRouter = createBrowserRouter([
         path: 'notifications',
         element: (
           <RequirePermission guard="tenant" anyOf={['notification.view']}>
+            <TenantNotificationsPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'notifications/:notificationId',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['notification.view']}>
+            <TenantNotificationDetailPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'notification-logs',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['setting.view']}>
             <TenantNotificationsCommunicationPage />
           </RequirePermission>
         )
@@ -1235,3 +1253,8 @@ export const appRouter = createBrowserRouter([
     element: <NotFoundPage />
   }
 ]);
+
+
+
+
+

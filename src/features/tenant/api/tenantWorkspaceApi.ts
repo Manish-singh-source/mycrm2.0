@@ -1,4 +1,4 @@
-﻿import { authStore } from '@/features/auth/store/authStore';
+import { authStore } from '@/features/auth/store/authStore';
 import type { ApiQuery } from '@/lib/api/apiTypes';
 import { createTenantClient } from '@/lib/api/tenantClient';
 
@@ -61,6 +61,7 @@ export const tenantWorkspaceApi = {
   },
   notifications: {
     list: (query?: ApiQuery) => list('/notifications', query),
+    detail: (id: string | number) => tenantClient().get<{ notification: TenantRecord }>(`/notifications/${id}`),
     unreadCount: () => tenantClient().get<{ unread_count: number }>('/notifications/unread-count'),
     read: (id: string | number) => tenantClient().post(`/notifications/${id}/read`),
     unread: (id: string | number) => tenantClient().post(`/notifications/${id}/unread`),
@@ -80,3 +81,5 @@ export const tenantWorkspaceApi = {
     contactSupport: (body: Record<string, unknown>) => tenantClient().post('/help/contact-support', body)
   }
 };
+
+

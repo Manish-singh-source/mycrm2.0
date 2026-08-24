@@ -1,4 +1,4 @@
-﻿import {
+import {
   Banknote,
   BellRing,
   BriefcaseBusiness,
@@ -127,9 +127,11 @@ export function buildTenantNavigation(tenantSlug: string, badges: TenantNavigati
       label: 'Workspace Tools',
       items: [
         { label: 'Notifications', to: TENANT_ROUTES.notifications(tenantSlug), icon: BellRing, permission: 'notification.view', badge: badges.unreadNotifications },
+        { label: 'Notification Logs', to: TENANT_ROUTES.notificationLogs(tenantSlug), icon: LayoutList, permission: 'setting.view' },
         { label: 'Recent Activity', to: TENANT_ROUTES.activity(tenantSlug), icon: LifeBuoy, permission: 'activity_log.view' },
         { label: 'Audit Logs', to: TENANT_ROUTES.audit(tenantSlug), icon: ShieldCheck, permission: 'audit_log.view' }
       ]
     }
   ];
 }
+

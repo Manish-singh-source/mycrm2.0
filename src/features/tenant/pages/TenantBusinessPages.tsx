@@ -1,6 +1,33 @@
-﻿import { useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Download, FileUp, Mail, Plus, Save, Trash2 } from 'lucide-react';
+import {
+  AlertTriangle,
+  Bell,
+  BriefcaseBusiness,
+  Building2,
+  CalendarClock,
+  Check,
+  CheckCircle2,
+  Cloud,
+  Copy,
+  DatabaseBackup,
+  Download,
+  FileUp,
+  Globe2,
+  GripVertical,
+  KeyRound,
+  LockKeyhole,
+  Mail,
+  Palette,
+  Plus,
+  RefreshCw,
+  RotateCcw,
+  Save,
+  ShieldCheck,
+  SlidersHorizontal,
+  Trash2,
+  Upload
+} from 'lucide-react';
 
 import { tenantBusinessApi, type BusinessRecord } from '@/features/tenant/api/tenantBusinessApi';
 import { tenantQueryKeys } from '@/features/tenant/api/tenantQueryKeys';
@@ -39,6 +66,9 @@ type Action =
   | 'replaceFile'
   | 'folderMove'
   | 'composer'
+  | 'sendSms'
+  | 'sendWhatsApp'
+  | 'sendPush'
   | 'retryCommunication'
   | 'template'
   | 'testTemplate'
@@ -124,19 +154,315 @@ export function TenantSettingsPage() {
   const [selected, setSelected] = useState<BusinessRecord | null>(null);
   const [action, setAction] = useState<Action>(null);
   const group = useQuery({ queryKey: tenantQueryKeys.resource(tenantKey, `settings-${tab}`), queryFn: () => tenantBusinessApi.settings.group(tab), enabled: settingsGroups.includes(tab) });
-  const lookups = useQuery({ queryKey: tenantQueryKeys.resource(tenantKey, 'settings-lookups'), queryFn: tenantBusinessApi.settings.lookups, enabled: tab === 'lookups' });
-  const templates = usePaged('notification-templates', tenantBusinessApi.settings.templates, tab === 'templates');
-  const backups = usePaged('backup-runs', tenantBusinessApi.settings.backups, tab === 'backups');
+  const lookups = useQuery({ queryKey: tenantQueryKeys.resource(tenantKey, 'settings-lookups'), queryFn: tenantBusinessApi.settings.lookups, enabled: tab === 'crm' });
+  const templates = usePaged('notification-templates', tenantBusinessApi.settings.templates, tab === 'communication');
+  const backups = usePaged('backup-runs', tenantBusinessApi.settings.backups, tab === 'storage');
   const integrations = usePaged('tenant-integrations-settings', tenantBusinessApi.integrations.list, tab === 'integrations');
-  const rows = tab === 'lookups' ? lookups.data?.data.lookups ?? [] : tab === 'templates' ? templates.rows : tab === 'backups' ? backups.rows : tab === 'integrations' ? integrations.rows : asRows(group.data?.data.settings);
+  const providers = usePaged('integration-providers-settings', tenantBusinessApi.integrations.providers, tab === 'integrations');
+  const webhooks = usePaged('integration-webhooks-settings', tenantBusinessApi.integrations.webhooks, tab === 'integrations');
+  const loginHistory = usePaged('settings-login-history', (query) => tenantBusinessApi.audit.list('login-history', query), tab === 'security');
+  const resourceError = group.error || lookups.error || templates.error || backups.error || integrations.error || providers.error || webhooks.error || loginHistory.error;
   return (
-    <BusinessShell title="Settings" description="General, company, branding, localization, offices, HR, CRM lookups, communication, security, integrations, storage, and backup settings." tabs={settingsTabs} activeTab={tab} onTabChange={setTab} actions={<SettingsActions tab={tab} onAction={setAction} />}>
-      <DataTable columns={[...columns(settingsColumns(tab, rows[0])), actionColumn((row) => <RowMenu items={settingsActions(row, tab, setSelected, setAction)} />)]} data={rows} getRowId={idOf} loading={group.isLoading || lookups.isLoading || templates.isLoading || backups.isLoading || integrations.isLoading} total={rows.length} />
+    <section className="enterprise-module-page tenant-settings-page">
+      <PageHeader
+        title="Tenant Settings"
+        description="Manage your organization's business preferences, branding, security, storage, communication, and integrations."
+        breadcrumbs={<div className="layout-breadcrumbs">Dashboard / Settings</div>}
+        meta={<SettingsHealthStrip />}
+      />
+      <div className="tenant-settings-layout">
+        <nav className="tenant-settings-navigation" aria-label="Tenant settings navigation">
+          <div className="tenant-settings-navigation__heading">Workspace settings</div>
+          {settingsTabs.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button type="button" key={item.id} className={tab === item.id ? 'tenant-settings-navigation__item is-active' : 'tenant-settings-navigation__item'} aria-current={tab === item.id ? 'page' : undefined} onClick={() => setTab(item.id)}>
+                <Icon size={16} aria-hidden />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+        <main className="tenant-settings-content">
+          {resourceError ? <div className="surface-error">{errorMessage(resourceError)}</div> : null}
+          {tab === 'integrations' ? (
+            <TenantSettingsIntegrationsPanel rows={integrations.rows} providers={providers.rows} webhooks={webhooks.rows} loading={integrations.isLoading || providers.isLoading || webhooks.isLoading} onAction={setAction} onSelect={setSelected} />
+          ) : (
+            <TenantSettingsGroupPanel
+              group={tab}
+              rows={asRows(group.data?.data.settings)}
+              loading={group.isLoading}
+              error={group.isError ? errorMessage(group.error) : ''}
+              lookups={lookups.data?.data.lookups ?? []}
+              templates={templates.rows}
+              backups={backups.rows}
+              loginHistory={loginHistory.rows}
+              relatedLoading={lookups.isLoading || templates.isLoading || backups.isLoading || loginHistory.isLoading}
+              onAction={setAction}
+              onSelect={setSelected}
+            />
+          )}
+        </main>
+      </div>
       <BusinessActionModal action={action} context={{ settingsGroup: tab }} record={selected} onClose={() => { setSelected(null); setAction(null); }} />
-    </BusinessShell>
+    </section>
   );
 }
 
+function TenantSettingsGroupPanel({ group, rows, loading, error, lookups = [], templates = [], backups = [], loginHistory = [], relatedLoading, onAction, onSelect }: { group: string; rows: BusinessRecord[]; loading?: boolean; error?: string; lookups?: BusinessRecord[]; templates?: BusinessRecord[]; backups?: BusinessRecord[]; loginHistory?: BusinessRecord[]; relatedLoading?: boolean; onAction: (action: Action) => void; onSelect: (row: BusinessRecord) => void }) {
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState<Record<string, string>>({});
+  const [savedForm, setSavedForm] = useState<Record<string, string>>({});
+  const [copied, setCopied] = useState(false);
+  const mutation = useMutation({
+    mutationFn: () => tenantBusinessApi.settings.saveGroup(group, { settings: form }),
+    onSuccess: async () => {
+      setSavedForm(form);
+      await queryClient.invalidateQueries({ queryKey: tenantQueryKeys.resource(tenantKey, `settings-${group}`) });
+    }
+  });
+  useEffect(() => {
+    const values = Object.fromEntries(rows.map((row) => [String(row.key ?? ''), stringValue(row.value_display ?? row.value)]).filter(([key]) => key));
+    const initial = { ...emptySettingsFor(group), ...values };
+    setForm(initial);
+    setSavedForm(initial);
+    setCopied(false);
+  }, [group, rows]);
+  const dirty = JSON.stringify(form) !== JSON.stringify(savedForm);
+  const slug = form.workspace_slug || form.slug || '';
+  if (loading) return <div className="surface-state">Loading {label(group).toLowerCase()} settings...</div>;
+  if (error) return <div className="surface-error">{error}</div>;
+  return (
+    <div className="tenant-settings-group">
+      <div className="tenant-settings-group__header">
+        <div>
+          <span className="tenant-settings-kicker">/settings/{group}</span>
+          <h2>{label(group)}</h2>
+          <p>{settingsDescriptions[group]}</p>
+        </div>
+        {dirty ? <span className="tenant-settings-unsaved"><AlertTriangle size={15} aria-hidden />Unsaved changes</span> : <span className="tenant-settings-saved"><CheckCircle2 size={15} aria-hidden />All changes saved</span>}
+      </div>
+
+      {group === 'general' ? <GeneralHighlights form={form} slug={slug} copied={copied} onCopy={() => { void navigator.clipboard?.writeText(slug); setCopied(true); }} /> : null}
+      {group === 'branding' ? <BrandPreview form={form} /> : null}
+      {group === 'localization' ? <LocalizationPreview form={form} /> : null}
+      {group === 'security' ? <SecurityCenter rows={loginHistory} loading={relatedLoading} form={form} onAction={onAction} /> : null}
+      {group === 'storage' ? <StorageOverview form={form} backups={backups} loading={relatedLoading} onAction={onAction} onSelect={onSelect} /> : null}
+      {group === 'crm' ? <CrmConfiguration lookups={lookups} loading={relatedLoading} onAction={onAction} onSelect={onSelect} /> : null}
+      {group === 'communication' ? <CommunicationChannelTests onAction={onAction} /> : null}
+      {group === 'communication' ? <CommunicationTemplates templates={templates} loading={relatedLoading} onAction={onAction} onSelect={onSelect} /> : null}
+
+      <section className="settings-panel tenant-settings-card">
+        <div className="tenant-settings-card__heading">
+          <div>
+            <h3>{settingsPrimaryCardTitle[group] ?? `${label(group)} Settings`}</h3>
+            <p>{settingsPrimaryCardDescription[group] ?? 'Configure tenant-wide defaults for this group.'}</p>
+          </div>
+          <StatusBadge tone="info">{`API /settings/${group}`}</StatusBadge>
+        </div>
+        <div className="tenant-settings-form-grid">
+          {(settingsFields[group] ?? []).map((field) => <TenantSettingField key={field} field={field} value={form[field] ?? ''} onChange={(value) => setForm((current) => ({ ...current, [field]: value }))} />)}
+        </div>
+        {mutation.error ? <div className="surface-error">{errorMessage(mutation.error)}</div> : null}
+        {mutation.isSuccess && !dirty ? <div className="surface-state">Settings saved successfully.</div> : null}
+        <div className="surface-footer tenant-settings-actions">
+          <Button type="button" variant="secondary" disabled={!dirty || mutation.isPending} onClick={() => setForm(savedForm)}><RotateCcw size={16} aria-hidden />Discard</Button>
+          <Button type="button" disabled={!dirty || mutation.isPending} onClick={() => mutation.mutate()}><Save size={16} aria-hidden />{mutation.isPending ? 'Saving...' : 'Save Changes'}</Button>
+        </div>
+      </section>
+
+      {dirty ? <div className="tenant-settings-floating-warning" role="status"><span>You have unsaved changes.</span><Button type="button" size="sm" onClick={() => mutation.mutate()}>Save</Button><Button type="button" size="sm" variant="secondary" onClick={() => setForm(savedForm)}>Discard</Button></div> : null}
+    </div>
+  );
+}
+
+function TenantSettingField({ field, value, onChange }: { field: string; value: string; onChange: (value: string) => void }) {
+  const options = settingsFieldOptions[field];
+  const description = settingsFieldHints[field];
+  if (settingsBooleanFields.has(field)) {
+    return (
+      <label className="settings-toggle tenant-settings-toggle">
+        <span>{label(field)}</span>
+        <input type="checkbox" checked={value === 'true'} onChange={(event) => onChange(String(event.target.checked))} />
+        <strong>{value === 'true' ? 'Enabled' : 'Disabled'}</strong>
+        {description ? <small>{description}</small> : null}
+      </label>
+    );
+  }
+  if (settingsTextAreaFields.has(field)) {
+    return <label className="tenant-settings-field tenant-settings-field--wide"><span>{label(field)}</span><textarea value={value} onChange={(event) => onChange(event.target.value)} />{description ? <small>{description}</small> : null}</label>;
+  }
+  return (
+    <label className="tenant-settings-field">
+      <span>{label(field)}</span>
+      {field.endsWith('_color') ? <input type="color" value={value || '#2563eb'} onChange={(event) => onChange(event.target.value)} /> : options ? <select value={value} onChange={(event) => onChange(event.target.value)}><option value="">Select {label(field).toLowerCase()}</option>{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select> : <input type={inputTypeForSetting(field)} value={value} onChange={(event) => onChange(event.target.value)} />}
+      {description ? <small>{description}</small> : null}
+    </label>
+  );
+}
+
+function SettingsHealthStrip() {
+  return (
+    <div className="tenant-settings-health">
+      <span><CheckCircle2 size={14} aria-hidden />Database backed</span>
+      <span><ShieldCheck size={14} aria-hidden />Tenant scoped</span>
+      <span><DatabaseBackup size={14} aria-hidden />API integrated</span>
+    </div>
+  );
+}
+
+function GeneralHighlights({ form, slug, copied, onCopy }: { form: Record<string, string>; slug: string; copied: boolean; onCopy: () => void }) {
+  return (
+    <div className="tenant-settings-summary-grid">
+      <article className="tenant-settings-mini-card"><Building2 size={19} aria-hidden /><span>Workspace</span><strong>{form.workspace_name || 'Not configured'}</strong><p>{form.workspace_description || 'Workspace description has not been configured.'}</p></article>
+      <article className="tenant-settings-mini-card"><Globe2 size={19} aria-hidden /><span>Workspace slug</span>{slug ? <div className="tenant-settings-code-row"><code>{slug}</code><Button type="button" size="sm" variant="secondary" onClick={onCopy}>{copied ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />}{copied ? 'Copied' : 'Copy'}</Button></div> : <p>Workspace slug has not been configured.</p>}</article>
+      <article className="tenant-settings-mini-card"><CheckCircle2 size={19} aria-hidden /><span>Status</span><div className="tenant-settings-badge-row"><StatusBadge tone={statusTone(form.status)}>{form.status || 'not_set'}</StatusBadge>{form.subscription_status ? <StatusBadge tone={statusTone(form.subscription_status)}>{form.subscription_status}</StatusBadge> : null}{form.billing_status ? <StatusBadge tone={statusTone(form.billing_status)}>{form.billing_status}</StatusBadge> : null}</div></article>
+      <article className="tenant-settings-mini-card"><Upload size={19} aria-hidden /><span>Workspace logo</span><p>{form.workspace_logo || form.light_logo || 'No logo file is attached yet.'}</p><div className="tenant-settings-upload-actions"><Button type="button" size="sm" variant="secondary"><Upload size={14} aria-hidden />Upload</Button><Button type="button" size="sm" variant="ghost">Replace</Button><Button type="button" size="sm" variant="ghost">Remove</Button></div></article>
+    </div>
+  );
+}
+
+function BrandPreview({ form }: { form: Record<string, string> }) {
+  const primary = form.primary_color || '#2563eb';
+  const secondary = form.secondary_color || '#006d77';
+  const accent = form.accent_color || '#16a34a';
+  return (
+    <section className="settings-panel tenant-settings-card">
+      <div className="tenant-settings-card__heading"><div><h3>Theme Preview</h3><p>Preview how tenant colors affect buttons, badges, links, and cards.</p></div><StatusBadge tone={statusTone(form.dns_status)}>{form.dns_status || 'not_configured'}</StatusBadge></div>
+      <div className="tenant-brand-preview" style={{ '--tenant-primary': primary, '--tenant-secondary': secondary, '--tenant-accent': accent } as CSSProperties}>
+        <div><strong>{form.tenant_name || form.custom_domain || 'Tenant brand'}</strong><span>{form.custom_domain || 'No custom domain'}</span></div>
+        <button type="button">Primary action</button>
+        <a href="#branding">Preview link</a>
+        <span>{form.dns_status || 'Pending'}</span>
+      </div>
+    </section>
+  );
+}
+
+function LocalizationPreview({ form }: { form: Record<string, string> }) {
+  return (
+    <section className="settings-panel tenant-settings-card tenant-settings-preview-row">
+      <CalendarClock size={20} aria-hidden />
+      <div><h3>Regional Preview</h3><p>Configured date format is <strong>{form.date_format || 'not set'}</strong>, time uses <strong>{form.time_format || 'not set'}</strong>, and currency defaults to <strong>{form.currency || 'not set'}</strong>.</p></div>
+    </section>
+  );
+}
+
+function SecurityCenter({ rows, loading, form, onAction }: { rows: BusinessRecord[]; loading?: boolean; form: Record<string, string>; onAction: (action: Action) => void }) {
+  const tableRows = rows.map((row) => [String(row.device ?? row.user_agent ?? row.event ?? 'Unknown device'), String(row.location ?? row.ip_address ?? '-'), String(row.created_at ?? row.time ?? '-'), String(row.status ?? row.severity ?? 'recorded')]);
+  return (
+    <section className="settings-panel tenant-settings-card">
+      <div className="tenant-settings-card__heading"><div><h3>Admin Security Center</h3><p>Authentication, session, and tenant-wide security controls.</p></div><div className="table-actions"><Button type="button" size="sm" variant="danger" onClick={() => onAction('securityPolicy')}><LockKeyhole size={14} aria-hidden />Force Logout</Button><Button type="button" size="sm" variant="secondary" onClick={() => onAction('rotateCredential')}><RefreshCw size={14} aria-hidden />Regenerate Tokens</Button></div></div>
+      <div className="tenant-settings-summary-grid tenant-settings-summary-grid--three">
+        <article className="tenant-settings-mini-card"><ShieldCheck size={19} aria-hidden /><span>Two-factor authentication</span><strong>{form.two_factor_required === 'true' ? 'Required' : 'Optional'}</strong></article>
+        <article className="tenant-settings-mini-card"><KeyRound size={19} aria-hidden /><span>Password policy</span><strong>{form.password_min_length ? `${form.password_min_length}+ characters` : 'Not configured'}</strong></article>
+        <article className="tenant-settings-mini-card"><CalendarClock size={19} aria-hidden /><span>Session timeout</span><strong>{form.session_timeout_minutes ? `${form.session_timeout_minutes} minutes` : 'Not configured'}</strong></article>
+      </div>
+      {loading ? <div className="surface-state">Loading login activity...</div> : tableRows.length ? <SimpleSettingsTable columns={['Device', 'Location', 'Time', 'Status']} rows={tableRows} highlightFirst /> : <div className="empty-state"><h2>No login activity</h2><p>Login history will appear after tenant users sign in.</p></div>}
+    </section>
+  );
+}
+
+function StorageOverview({ form, backups, loading, onAction, onSelect }: { form: Record<string, string>; backups: BusinessRecord[]; loading?: boolean; onAction: (action: Action) => void; onSelect: (row: BusinessRecord) => void }) {
+  const used = Number(form.storage_used_gb || 0);
+  const total = Number(form.storage_limit_gb || 0);
+  const lastBackup = backups[0];
+  return (
+    <section className="settings-panel tenant-settings-card">
+      <div className="tenant-settings-card__heading"><div><h3>Storage & Backup Management</h3><p>Storage usage, backup runs, restore workflow, and retention controls.</p></div><div className="table-actions"><Button type="button" size="sm" onClick={() => onAction('backup')}><DatabaseBackup size={14} aria-hidden />Run Backup Now</Button><Button type="button" size="sm" variant="secondary" disabled={!lastBackup} onClick={() => { if (lastBackup) { onSelect(lastBackup); onAction('restore'); } }}>Restore Backup</Button></div></div>
+      <div className="tenant-storage-meter"><div><strong>{used || 0} GB of {total || 0} GB</strong><span>Used storage</span></div><progress value={used} max={total || 1} aria-label="Storage used" /></div>
+      <div className="tenant-settings-summary-grid tenant-settings-summary-grid--three"><article className="tenant-settings-mini-card"><Cloud size={19} aria-hidden /><span>Last Backup</span><strong>{String(lastBackup?.started_at ?? 'No backups')}</strong></article><article className="tenant-settings-mini-card"><CalendarClock size={19} aria-hidden /><span>Frequency</span><strong>{form.backup_frequency || 'Not configured'}</strong></article><article className="tenant-settings-mini-card"><CheckCircle2 size={19} aria-hidden /><span>Backup Status</span><strong>{String(lastBackup?.status ?? 'Not started')}</strong></article></div>
+      {loading ? <div className="surface-state">Loading backup runs...</div> : <DataTable columns={[...columns(['backup_type', 'status', 'started_at', 'finished_at']), actionColumn((row) => <RowMenu items={[[ 'Download', () => onSelect(row) ], [ 'Restore', () => { onSelect(row); onAction('restore'); } ]]} />)]} data={backups} getRowId={idOf} total={backups.length} showToolbar={false} showPagination={false} emptyState={<div className="empty-state"><h2>No backups yet</h2><p>Run your first backup.</p></div>} />}
+    </section>
+  );
+}
+
+function CrmConfiguration({ lookups, loading, onAction, onSelect }: { lookups: BusinessRecord[]; loading?: boolean; onAction: (action: Action) => void; onSelect: (row: BusinessRecord) => void }) {
+  const stages = lookups.filter((lookup) => String(lookup.group) === 'lead_stage');
+  const lookupSummary = Object.values(lookups.reduce<Record<string, BusinessRecord>>((groups, lookup) => {
+    const key = String(lookup.group ?? 'other');
+    groups[key] = { group: key, type: 'CRM', count: Number(groups[key]?.count ?? 0) + 1 };
+    return groups;
+  }, {}));
+  return (
+    <section className="settings-panel tenant-settings-card">
+      <div className="tenant-settings-card__heading"><div><h3>CRM Behavior</h3><p>Default pipeline, lead stages, and lookup management backed by /settings/lookups.</p></div><Button type="button" size="sm" onClick={() => onAction('setting')}><Plus size={14} aria-hidden />Add Lookup</Button></div>
+      {stages.length ? <div className="tenant-stage-list" aria-label="Lead stage order">{stages.map((stage) => <div key={idOf(stage)}><GripVertical size={15} aria-hidden /><span>{String(stage.name ?? stage.code)}</span></div>)}</div> : <div className="empty-state"><h2>No lead stages configured</h2><p>Seed or create lead stage lookups to configure the pipeline.</p></div>}
+      {loading ? <div className="surface-state">Loading lookups...</div> : <DataTable columns={[...columns(['group', 'type', 'count']), actionColumn((row) => <RowMenu items={[[ 'Edit', () => { onSelect(row); onAction('setting'); } ], [ 'Delete', () => { onSelect(row); onAction('deleteLookup'); } ]]} />)]} data={lookupSummary} getRowId={idOf} total={lookupSummary.length} showToolbar={false} showPagination={false} emptyState={<div className="empty-state"><h2>No lookups configured</h2><p>Create CRM lookups for sources, customer types, industries, and priorities.</p></div>} />}
+    </section>
+  );
+}
+
+function CommunicationChannelTests({ onAction }: { onAction: (action: Action) => void }) {
+  return (
+    <section className="settings-panel tenant-settings-card">
+      <div className="tenant-settings-card__heading">
+        <div>
+          <h3>Test Notification Channels</h3>
+          <p>Send controlled test messages using the tenant notification preferences saved below.</p>
+        </div>
+        <StatusBadge tone="info">Preference-aware</StatusBadge>
+      </div>
+      <div className="tenant-settings-test-grid">
+        <article>
+          <strong>Email</strong>
+          <span>Sends through configured SMTP and writes a communication log.</span>
+          <Button type="button" size="sm" onClick={() => onAction('composer')}><Mail size={14} aria-hidden />Test Email</Button>
+        </article>
+        <article>
+          <strong>SMS</strong>
+          <span>Creates a queued provider-ready SMS log when SMS is enabled.</span>
+          <Button type="button" size="sm" variant="secondary" onClick={() => onAction('sendSms')}>Test SMS</Button>
+        </article>
+        <article>
+          <strong>WhatsApp</strong>
+          <span>Creates a queued provider-ready WhatsApp log when enabled.</span>
+          <Button type="button" size="sm" variant="secondary" onClick={() => onAction('sendWhatsApp')}>Test WhatsApp</Button>
+        </article>
+        <article>
+          <strong>Push</strong>
+          <span>Creates an in-app notification visible in the notification center.</span>
+          <Button type="button" size="sm" variant="secondary" onClick={() => onAction('sendPush')}><Bell size={14} aria-hidden />Test Push</Button>
+        </article>
+      </div>
+    </section>
+  );
+}
+function CommunicationTemplates({ templates, loading, onAction, onSelect }: { templates: BusinessRecord[]; loading?: boolean; onAction: (action: Action) => void; onSelect: (row: BusinessRecord) => void }) {
+  return (
+    <section className="settings-panel tenant-settings-card">
+      <div className="tenant-settings-card__heading"><div><h3>Notification Templates</h3><p>API-ready templates from /settings/notification-templates.</p></div><Button type="button" size="sm" onClick={() => onAction('template')}><Mail size={14} aria-hidden />New Template</Button></div>
+      {loading ? <div className="surface-state">Loading templates...</div> : <DataTable columns={[...columns(['code', 'subject', 'updated_at']), actionColumn((row) => <RowMenu items={[[ 'Edit', () => { onSelect(row); onAction('template'); } ], [ 'Test send', () => { onSelect(row); onAction('testTemplate'); } ]]} />)]} data={templates} getRowId={idOf} total={templates.length} showToolbar={false} showPagination={false} emptyState={<div className="empty-state"><h2>No notification templates</h2><p>Create templates for welcome, password reset, invoice, and HR messages.</p></div>} />}
+    </section>
+  );
+}
+
+function TenantSettingsIntegrationsPanel({ rows, providers, webhooks, loading, onAction, onSelect }: { rows: BusinessRecord[]; providers: BusinessRecord[]; webhooks: BusinessRecord[]; loading?: boolean; onAction: (action: Action) => void; onSelect: (row: BusinessRecord) => void }) {
+  return (
+    <div className="tenant-settings-group">
+      <div className="tenant-settings-group__header"><div><span className="tenant-settings-kicker">/settings/integrations</span><h2>Integrations</h2><p>Connected apps, webhooks, credentials, and disconnect workflows.</p></div><Button type="button" onClick={() => onAction('connectIntegration')}><Plus size={16} aria-hidden />Connect App</Button></div>
+      <section className="settings-panel tenant-settings-card"><div className="tenant-settings-card__heading"><div><h3>Connected Apps</h3><p>Connect tenant services and manage provider status.</p></div><StatusBadge tone="info">API-driven</StatusBadge></div><div className="tenant-integration-grid">{providers.map((provider) => { const connected = rows.find((row) => String(row.provider_code) === String(provider.code)); return <article key={idOf(provider)} className="tenant-integration-card"><PlugIcon /><div><strong>{String(provider.name ?? provider.code)}</strong><span>{connected ? String(connected.status ?? 'connected') : 'Not connected'}</span></div><Button type="button" size="sm" variant={connected ? 'danger' : 'secondary'} onClick={() => { onSelect(connected ?? provider); onAction(connected ? 'disconnectIntegration' : 'connectIntegration'); }}>{connected ? 'Disconnect' : 'Connect'}</Button></article>; })}</div>{loading ? <div className="surface-state">Loading integrations...</div> : rows.length ? <DataTable columns={[...columns(['name', 'provider_name', 'status', 'connected_at']), actionColumn((row) => <RowMenu items={settingsActions(row, 'integrations', onSelect, onAction)} />)]} data={rows} getRowId={idOf} total={rows.length} showToolbar={false} showPagination={false} /> : <div className="empty-state"><h2>No integrations connected</h2><p>Connect an application to extend your workspace.</p></div>}</section>
+      <section className="settings-panel tenant-settings-card"><div className="tenant-settings-card__heading"><div><h3>API Keys</h3><p>Tenant API keys are managed through the existing profile API-token endpoint.</p></div><Button type="button" size="sm" onClick={() => onAction('rotateCredential')}><KeyRound size={14} aria-hidden />Manage</Button></div><div className="empty-state"><h2>Use profile API tokens</h2><p>Open Profile / API Tokens to generate, rotate, copy, or revoke tenant tokens.</p></div></section>
+      <section className="settings-panel tenant-settings-card"><div className="tenant-settings-card__heading"><div><h3>Webhooks</h3><p>Send tenant events to external systems.</p></div><Button type="button" size="sm"><Plus size={14} aria-hidden />Add Webhook</Button></div>{webhooks.length ? <DataTable columns={[...columns(['event', 'status']), actionColumn((row) => <RowMenu items={[[ 'Edit', () => onSelect(row) ], [ 'Delete', () => onSelect(row) ]]} />)]} data={webhooks} getRowId={idOf} total={webhooks.length} showToolbar={false} showPagination={false} /> : <div className="empty-state"><h2>No webhooks configured</h2><p>Create a webhook to send tenant events to external systems.</p></div>}</section>
+    </div>
+  );
+}
+function SimpleSettingsTable({ columns: headers, rows, highlightFirst }: { columns: string[]; rows: string[][]; highlightFirst?: boolean }) {
+  return <div className="tenant-simple-table"><table><thead><tr>{headers.map((header) => <th key={header}>{header}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={`${row.join('-')}-${index}`} className={highlightFirst && index === 0 ? 'is-current' : undefined}>{row.map((cell, cellIndex) => <td key={`${cell}-${cellIndex}`}>{cell}</td>)}</tr>)}</tbody></table></div>;
+}
+
+function PlugIcon() {
+  return <SlidersHorizontal size={18} aria-hidden />;
+}
+
+function inputTypeForSetting(field: string) {
+  if (field.includes('date')) return 'date';
+  if (field.includes('time')) return 'time';
+  if (field.includes('email')) return 'email';
+  if (field.includes('website') || field.includes('domain')) return 'url';
+  if (field.includes('length') || field.includes('days') || field.includes('minutes') || field.includes('devices') || field.includes('gb')) return 'number';
+  return 'text';
+}
 export function TenantNotificationsCommunicationPage() {
   const [tab, setTab] = useState('notifications');
   const [selected, setSelected] = useState<BusinessRecord | null>(null);
@@ -144,9 +470,9 @@ export function TenantNotificationsCommunicationPage() {
   const logs = usePaged('communication-logs', tenantBusinessApi.communication.logs, tab === 'logs');
   const templates = usePaged('notification-templates-communication', tenantBusinessApi.settings.templates, tab === 'templates');
   return (
-    <BusinessShell title="Notifications & Communication" description="Notifications, communication logs, queues, templates, retry, preview, and test-send." tabs={communicationTabs} activeTab={tab} onTabChange={setTab} actions={<Button type="button" onClick={() => setAction(tab === 'templates' ? 'template' : 'composer')}><Mail size={16} aria-hidden />Compose</Button>}>
+    <BusinessShell title="Notifications & Communication" description="Notifications, communication logs, queues, templates, retry, preview, and test-send." tabs={communicationTabs} activeTab={tab} onTabChange={setTab} actions={<div className="surface-actions"><Button type="button" onClick={() => setAction(tab === 'templates' ? 'template' : 'composer')}><Mail size={16} aria-hidden />Email</Button><Button type="button" variant="secondary" onClick={() => setAction('sendSms')}>SMS</Button><Button type="button" variant="secondary" onClick={() => setAction('sendWhatsApp')}>WhatsApp</Button><Button type="button" variant="secondary" onClick={() => setAction('sendPush')}><Bell size={16} aria-hidden />Push</Button></div>}>
       {tab === 'notifications' ? <NotificationCenterShortcut /> : null}
-      {tab === 'logs' || tab === 'queues' ? <DataTable columns={[...columns(['channel', 'direction', 'subject', 'status', 'sent_at', 'created_at']), actionColumn((row) => <RowMenu items={[['Retry', () => { setSelected(row); setAction('retryCommunication'); }], ['Preview', () => { setSelected(row); setAction('reportDrill'); }]]} />)]} data={logs.rows} getRowId={idOf} loading={logs.isLoading} error={logs.error} total={logs.total} page={logs.page} perPage={25} searchValue={logs.search} onSearchChange={logs.setSearch} onPageChange={logs.setPage} /> : null}
+      {tab === 'logs' || tab === 'queues' ? <DataTable columns={[...columns(['channel', 'provider', 'subject', 'status', 'failed_reason', 'sent_at', 'created_at']), actionColumn((row) => <RowMenu items={[['Retry', () => { setSelected(row); setAction('retryCommunication'); }], ['Preview', () => { setSelected(row); setAction('reportDrill'); }]]} />)]} data={logs.rows} getRowId={idOf} loading={logs.isLoading} error={logs.error} total={logs.total} page={logs.page} perPage={25} searchValue={logs.search} onSearchChange={logs.setSearch} onPageChange={logs.setPage} /> : null}
       {tab === 'templates' ? <DataTable columns={[...columns(['code', 'channel', 'subject', 'status', 'updated_at']), actionColumn((row) => <RowMenu items={[['Edit', () => { setSelected(row); setAction('template'); }], ['Test send', () => { setSelected(row); setAction('testTemplate'); }], ['Preview', () => { setSelected(row); setAction('reportDrill'); }]]} />)]} data={templates.rows} getRowId={idOf} loading={templates.isLoading} total={templates.total} /> : null}
       <BusinessActionModal action={action} record={selected} context={{ communicationTab: tab }} onClose={() => { setSelected(null); setAction(null); }} />
       <RecordDrawer open={action === 'reportDrill'} title="Communication Detail" record={selected} onClose={() => setAction(null)} />
@@ -299,6 +625,18 @@ function DynamicForm({ fields, record, action, loading, onSubmit }: { fields: st
   const selectors = useSelectors();
   const [form, setForm] = useState<Record<string, string>>(() => initialForm(fields, record, action));
   const [file, setFile] = useState<File | null>(null);
+  const handleFieldChange = (field: string, value: string) => {
+    setForm((current) => {
+      const next = { ...current, [field]: value };
+      if (field === 'party_uuid') {
+        const party = partyRows(selectors).find((row) => String(row.uuid) === value);
+        const target = action === 'composer' ? party?.email : ['sendSms', 'sendWhatsApp'].includes(String(action)) ? party?.phone : undefined;
+        if (target) next.to = String(target);
+      }
+      return next;
+    });
+  };
+  const effectiveFields = integrationCredentialFields(fields, form, record, selectors, action);
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (action === 'uploadDocument' && file) {
@@ -314,20 +652,20 @@ function DynamicForm({ fields, record, action, loading, onSubmit }: { fields: st
     <form className="settings-panel" onSubmit={submit}>
       <div className="form-grid">
         {action === 'uploadDocument' ? <label><span>File</span><input type="file" onChange={(event) => setFile(event.target.files?.[0] ?? null)} required /></label> : null}
-        {fields.map((field) => (
+        {effectiveFields.map((field) => (
           <label key={field}>
             <span>{label(field)}</span>
             {selectOptions(field, selectors) || staticOptions(field) ? (
-              <select value={form[field] ?? ''} onChange={(event) => setForm((current) => ({ ...current, [field]: event.target.value }))}>
+              <select value={form[field] ?? ''} onChange={(event) => handleFieldChange(field, event.target.value)}>
                 <option value="">Select {label(field)}</option>
                 {(selectOptions(field, selectors) ?? staticOptions(field))?.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
-            ) : inputType(field) === 'textarea' ? (
-              <textarea rows={4} value={form[field] ?? ''} onChange={(event) => setForm((current) => ({ ...current, [field]: event.target.value }))} />
-            ) : inputType(field) === 'checkbox' ? (
-              <select value={form[field] ?? ''} onChange={(event) => setForm((current) => ({ ...current, [field]: event.target.value }))}><option value="">No</option><option value="true">Yes</option><option value="false">No</option></select>
+            ) : inputType(field, action) === 'textarea' ? (
+              <textarea rows={4} value={form[field] ?? ''} onChange={(event) => handleFieldChange(field, event.target.value)} />
+            ) : inputType(field, action) === 'checkbox' ? (
+              <select value={form[field] ?? ''} onChange={(event) => handleFieldChange(field, event.target.value)}><option value="">No</option><option value="true">Yes</option><option value="false">No</option></select>
             ) : (
-              <input type={inputType(field)} value={form[field] ?? ''} onChange={(event) => setForm((current) => ({ ...current, [field]: event.target.value }))} />
+              <input type={inputType(field, action)} value={form[field] ?? ''} onChange={(event) => handleFieldChange(field, event.target.value)} />
             )}
           </label>
         ))}
@@ -376,6 +714,9 @@ function runAction(action: Action, record: BusinessRecord | null | undefined, co
     return tenantBusinessApi.documents.upload(form);
   }
   if (action === 'composer') return tenantBusinessApi.communication.send(body);
+  if (action === 'sendSms') return tenantBusinessApi.communication.sendSms(body);
+  if (action === 'sendWhatsApp') return tenantBusinessApi.communication.sendWhatsApp(body);
+  if (action === 'sendPush') return tenantBusinessApi.communication.sendPush(body);
   if (action === 'retryCommunication') return tenantBusinessApi.communication.retry(id);
   if (action === 'template') return id ? tenantBusinessApi.settings.updateTemplate(id, body) : tenantBusinessApi.settings.createTemplate(body);
   if (action === 'testTemplate') return tenantBusinessApi.settings.testTemplate(id, body);
@@ -384,7 +725,7 @@ function runAction(action: Action, record: BusinessRecord | null | undefined, co
   if (action === 'lookupReorder') return tenantBusinessApi.settings.reorderLookups([]);
   if (action === 'deleteLookup') return tenantBusinessApi.settings.deleteLookup(id || String(body.lookup_uuid), body);
   if (action === 'connectIntegration') return tenantBusinessApi.integrations.connect({ provider_id: record?.id ?? record?.code, name: record?.name, ...body });
-  if (action === 'rotateCredential') return tenantBusinessApi.integrations.rotate(id, { credentials: body });
+  if (action === 'rotateCredential') return tenantBusinessApi.integrations.rotate(id, body);
   if (action === 'disconnectIntegration') return tenantBusinessApi.integrations.disconnect(id, body);
   if (action === 'backup') return tenantBusinessApi.settings.runBackup(body);
   if (action === 'restore') return tenantBusinessApi.settings.restoreBackup(body);
@@ -410,17 +751,62 @@ function documentQuery(tab: string, query?: ApiQuery): ApiQuery {
   return query ?? {};
 }
 
+function integrationCredentialFields(fields: string[], form: Record<string, string>, record: BusinessRecord | null | undefined, selectors: Record<string, BusinessRecord[]>, action: Action) {
+  if (action !== 'connectIntegration' && action !== 'rotateCredential') return fields;
+
+  const provider = integrationProviderFor(form, record, selectors);
+  const credentialFields = credentialFieldsForProvider(provider);
+
+  if (action === 'rotateCredential') return credentialFields;
+
+  return [...fields, ...credentialFields.filter((field) => !fields.includes(field))];
+}
+
+function integrationProviderFor(form: Record<string, string>, record: BusinessRecord | null | undefined, selectors: Record<string, BusinessRecord[]>) {
+  if (record?.provider_code || record?.metadata || record?.auth_type) return record;
+  const providerId = form.provider_id;
+
+  return selectors.providers?.find((provider) => String(provider.id) === providerId || String(provider.code) === providerId);
+}
+
+function credentialFieldsForProvider(provider?: BusinessRecord | null) {
+  const metadata = parseMetadata(provider?.metadata);
+  const template = metadata.credential_template;
+
+  if (template && typeof template === 'object' && !Array.isArray(template)) return Object.keys(template);
+
+  if (provider?.provider_code === 'twilio_sms' || provider?.code === 'twilio_sms') return ['account_sid', 'auth_token', 'from_number'];
+  if (provider?.provider_code === 'razorpay' || provider?.code === 'razorpay') return ['key_id', 'key_secret'];
+  if (provider?.provider_code === 'aws_s3' || provider?.code === 'aws_s3') return ['access_key_id', 'secret_access_key', 'region', 'bucket'];
+  if (provider?.provider_code === 'smtp_mail' || provider?.code === 'smtp_mail') return ['mail_host', 'mail_port', 'mail_encryption', 'mail_username', 'mail_password', 'mail_from_address', 'mail_from_name'];
+
+  return ['api_key', 'api_secret'];
+}
+
+function parseMetadata(value: unknown): Record<string, unknown> {
+  if (value && typeof value === 'object' && !Array.isArray(value)) return value as Record<string, unknown>;
+  if (typeof value !== 'string' || !value) return {};
+
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+  } catch {
+    return {};
+  }
+}
+
 function initialForm(fields: string[], record: BusinessRecord | null | undefined, action: Action) {
   return Object.fromEntries(fields.map((field) => {
     if (field === 'invoice_uuid' && action === 'recordPayment') return [field, stringValue(record?.uuid)];
     if (field === 'client_party_uuid') return [field, stringValue(record?.client_party_uuid)];
-    if (field === 'provider_id' && action === 'connectIntegration') return [field, stringValue(record?.id ?? record?.code)];
+    if (field === 'provider_id' && action === 'connectIntegration') return [field, stringValue(record?.id ?? record?.code ?? '')];
     if (field === 'name' && action === 'connectIntegration') return [field, stringValue(record?.name)];
     return [field, stringValue(record?.[field])];
   }));
 }
 
 function selectOptions(field: string, selectors: Record<string, BusinessRecord[]>) {
+  if (field === 'party_uuid') return partyOptions(selectors);
   if (field.includes('client_party_uuid')) return optionRows(selectors.clients, ['display_name', 'email']);
   if (field.includes('vendor_party_uuid')) return optionRows(selectors.vendors, ['display_name', 'email']);
   if (field.includes('invoice_uuid')) return optionRows(selectors.invoices, ['invoice_number', 'client_name', 'balance_amount']);
@@ -441,11 +827,22 @@ function staticOptions(field: string) {
     method: ['cash', 'bank_transfer', 'card', 'upi', 'cheque'],
     visibility: ['tenant', 'private', 'public'],
     owner_type: ['tenant', 'client', 'vendor', 'staff'],
-    channel: ['email', 'sms', 'whatsapp', 'in_app'],
+    channel: ['email', 'sms', 'whatsapp', 'push', 'in_app'],
     format: ['csv', 'xlsx', 'pdf'],
     backup_type: ['manual', 'full', 'files', 'database']
   };
   return values[field]?.map((value) => ({ value, label: label(value) })) ?? null;
+}
+
+function partyRows(selectors: Record<string, BusinessRecord[]>) {
+  return selectors.parties?.length ? selectors.parties : [...(selectors.clients ?? []), ...(selectors.vendors ?? [])];
+}
+
+function partyOptions(selectors: Record<string, BusinessRecord[]>) {
+  return partyRows(selectors).map((row) => {
+    const type = row.party_type ? label(String(row.party_type)) : selectors.vendors?.some((vendor) => vendor.uuid === row.uuid) ? 'Vendor' : 'Client';
+    return { value: String(row.uuid), label: [type, row.display_name, row.email || row.phone].filter(Boolean).map(String).join(' - ') };
+  });
 }
 
 function optionRows(rows: BusinessRecord[] = [], labels: string[], valueKey = 'uuid') {
@@ -563,9 +960,12 @@ function fieldsFor(action: Action): string[] {
     case 'bankAccount': return ['owner_type', 'owner_uuid', 'bank_name', 'account_number', 'routing_number', 'ifsc_code', 'is_primary'];
     case 'uploadDocument': return ['visibility'];
     case 'composer': return ['to', 'subject', 'body', 'party_uuid'];
+    case 'sendSms': return ['to', 'body', 'party_uuid'];
+    case 'sendWhatsApp': return ['to', 'body', 'party_uuid'];
+    case 'sendPush': return ['to', 'subject', 'body'];
     case 'template': return ['code', 'channel', 'subject', 'body', 'status'];
-    case 'connectIntegration': return ['provider_id', 'name', 'api_key', 'client_secret'];
-    case 'rotateCredential': return ['api_key', 'client_secret', 'refresh_token'];
+    case 'connectIntegration': return ['provider_id', 'name'];
+    case 'rotateCredential': return [];
     case 'backup': return ['backup_type'];
     case 'restore': return ['backup_uuid', 'reason'];
     case 'reportExport':
@@ -673,8 +1073,9 @@ function confirmSpec(action: Action, record?: BusinessRecord | null): ConfirmSpe
 function normalizeForm(form: Record<string, string>, action: Action): Record<string, unknown> {
   const body = Object.fromEntries(Object.entries(form).filter(([, value]) => value !== '').map(([key, value]) => [key, normalizeValue(key, value)]));
   if (action === 'connectIntegration' || action === 'rotateCredential') {
-    const { api_key, client_secret, refresh_token, ...rest } = body;
-    return { ...rest, credentials: Object.fromEntries(Object.entries({ api_key, client_secret, refresh_token }).filter(([, value]) => value)) };
+    const { provider_id, name, status, ...credentials } = body;
+    const payload = action === 'connectIntegration' ? { provider_id, name } : {};
+    return { ...payload, credentials: Object.fromEntries(Object.entries(credentials).filter(([, value]) => value)) };
   }
   if (action === 'setting' && typeof body.name === 'string') return { [body.name]: body.value ?? '' };
   return body;
@@ -688,12 +1089,13 @@ function normalizeValue(key: string, value: string) {
   return value;
 }
 
-function inputType(field: string) {
+function inputType(field: string, action?: Action) {
   if (['body', 'description', 'filters', 'remarks'].includes(field)) return 'textarea';
   if (field.includes('date') || field.endsWith('_at')) return field.endsWith('_at') ? 'datetime-local' : 'date';
   if (field.includes('amount') || field.includes('quantity') || field.includes('rate')) return 'number';
-  if (field.includes('email') || field === 'to') return 'email';
-  if (field.includes('secret') || field.includes('token') || field.includes('api_key') || field.includes('account_number')) return 'password';
+  if (field.includes('email') || (field === 'to' && !['sendSms', 'sendWhatsApp', 'sendPush'].includes(String(action)))) return 'email';
+  if (field === 'to' && ['sendSms', 'sendWhatsApp'].includes(String(action))) return 'tel';
+  if (field.includes('secret') || field.includes('token') || field.includes('api_key') || field.includes('api_secret') || field.includes('auth_token') || field.includes('password') || field.includes('secret_access_key') || field.includes('key_secret') || field.includes('account_number')) return 'password';
   if (field.startsWith('is_')) return 'checkbox';
   return 'text';
 }
@@ -788,7 +1190,7 @@ function statusTone(value: unknown): 'neutral' | 'success' | 'warning' | 'danger
   const normalized = String(value ?? '').toLowerCase();
   if (['active', 'paid', 'approved', 'sent', 'completed', 'success'].includes(normalized)) return 'success';
   if (['draft', 'pending', 'queued', 'retry_queued'].includes(normalized)) return 'warning';
-  if (['cancelled', 'void', 'rejected', 'failed', 'disconnected'].includes(normalized)) return 'danger';
+  if (['cancelled', 'void', 'rejected', 'failed', 'blocked', 'disconnected'].includes(normalized)) return 'danger';
   return 'neutral';
 }
 
@@ -885,12 +1287,99 @@ const communicationTabs = [
 
 const settingsGroups = ['general', 'company', 'branding', 'localization', 'communication', 'security', 'storage', 'hr', 'crm'];
 const settingsTabs = [
-  ...settingsGroups.map((id) => ({ id, label: label(id) })),
-  { id: 'lookups', label: 'Lookups' },
-  { id: 'templates', label: 'Templates' },
-  { id: 'integrations', label: 'Integrations' },
-  { id: 'backups', label: 'Backups' }
+  { id: 'general', label: 'General', icon: SlidersHorizontal },
+  { id: 'company', label: 'Company', icon: Building2 },
+  { id: 'branding', label: 'Branding', icon: Palette },
+  { id: 'localization', label: 'Localization', icon: Globe2 },
+  { id: 'communication', label: 'Communication', icon: Bell },
+  { id: 'security', label: 'Security', icon: LockKeyhole },
+  { id: 'storage', label: 'Storage', icon: Cloud },
+  { id: 'hr', label: 'HR', icon: BriefcaseBusiness },
+  { id: 'crm', label: 'CRM', icon: SlidersHorizontal },
+  { id: 'integrations', label: 'Integrations', icon: KeyRound }
 ];
+const settingsDescriptions: Record<string, string> = {
+  general: 'Workspace identity, status, logo, and primary organization details.',
+  company: 'Legal, tax, address, and business contact information.',
+  branding: 'White-label colors, logos, favicon, and custom domain settings.',
+  localization: 'Language, timezone, currency, date, time, and number formats.',
+  communication: 'Email sender details and tenant notification preferences.',
+  security: 'Authentication, password, session, and tenant security policies.',
+  storage: 'Storage limits, backup preferences, and retention controls.',
+  hr: 'Working hours, leave, attendance, and employee numbering defaults.',
+  crm: 'CRM pipelines, lead stages, and lookup behavior.'
+};
+
+const settingsFields: Record<string, string[]> = {
+  general: ['workspace_name', 'tenant_name', 'workspace_slug', 'workspace_description', 'website', 'status', 'subscription_status', 'billing_status'],
+  company: ['legal_company_name', 'trade_name', 'registration_number', 'gst_number', 'pan_number', 'tax_id', 'industry', 'company_size', 'business_type', 'founded_date', 'company_email', 'phone', 'alternate_phone', 'address_line_1', 'address_line_2', 'country', 'state', 'city', 'postal_code'],
+  branding: ['light_logo', 'dark_logo', 'favicon', 'primary_color', 'secondary_color', 'accent_color', 'custom_domain', 'dns_status'],
+  localization: ['language', 'timezone', 'currency', 'date_format', 'time_format', 'week_start', 'number_format'],
+  communication: ['sender_name', 'sender_email', 'reply_to_email', 'email_notifications', 'sms_notifications', 'whatsapp_notifications', 'push_notifications'],
+  security: ['two_factor_required', 'password_min_length', 'require_uppercase', 'require_number', 'require_special_character', 'password_expiry_days', 'session_timeout_minutes', 'remember_me_days', 'maximum_devices'],
+  storage: ['storage_limit_gb', 'storage_used_gb', 'retention_days', 'backup_enabled', 'backup_frequency'],
+  hr: ['work_start_time', 'work_end_time', 'working_days', 'annual_leave_days', 'sick_leave_days', 'casual_leave_days', 'late_mark_grace_minutes', 'overtime_enabled', 'employee_number_format'],
+  crm: ['default_lead_pipeline', 'lead_stages', 'lookup_management']
+};
+
+function emptySettingsFor(group: string): Record<string, string> {
+  return Object.fromEntries((settingsFields[group] ?? []).map((field) => [field, '']));
+}
+const settingsFieldOptions: Record<string, Array<{ value: string; label: string }>> = {
+  status: [{ value: 'active', label: 'Active' }, { value: 'trial', label: 'Trial' }, { value: 'paid', label: 'Paid' }, { value: 'suspended', label: 'Suspended' }],
+  industry: [{ value: 'technology', label: 'Technology' }, { value: 'professional_services', label: 'Professional services' }, { value: 'retail', label: 'Retail' }, { value: 'manufacturing', label: 'Manufacturing' }],
+  company_size: [{ value: '1-10', label: '1-10 employees' }, { value: '11-50', label: '11-50 employees' }, { value: '51-200', label: '51-200 employees' }, { value: '201+', label: '201+ employees' }],
+  business_type: [{ value: 'private', label: 'Private company' }, { value: 'public', label: 'Public company' }, { value: 'nonprofit', label: 'Non-profit' }],
+  dns_status: [{ value: 'verified', label: 'Verified' }, { value: 'pending', label: 'Pending' }, { value: 'not_configured', label: 'Not configured' }],
+  language: [{ value: 'en', label: 'English' }, { value: 'hi', label: 'Hindi' }],
+  timezone: [{ value: 'Asia/Kolkata', label: 'India Standard Time (UTC+05:30)' }, { value: 'UTC', label: 'UTC' }, { value: 'Europe/London', label: 'United Kingdom (UTC+00:00)' }, { value: 'America/New_York', label: 'Eastern Time (UTC-05:00)' }],
+  currency: [{ value: 'INR', label: 'Indian Rupee (INR)' }, { value: 'USD', label: 'US Dollar (USD)' }, { value: 'EUR', label: 'Euro (EUR)' }],
+  date_format: [{ value: 'DD MMM YYYY', label: 'DD MMM YYYY' }, { value: 'MM/DD/YYYY', label: 'MM/DD/YYYY' }, { value: 'YYYY-MM-DD', label: 'YYYY-MM-DD' }],
+  time_format: [{ value: '12-hour', label: '12-hour' }, { value: '24-hour', label: '24-hour' }],
+  week_start: [{ value: 'monday', label: 'Monday' }, { value: 'sunday', label: 'Sunday' }],
+  number_format: [{ value: '1,234.56', label: '1,234.56' }, { value: '1.234,56', label: '1.234,56' }],
+  backup_frequency: [{ value: 'daily', label: 'Daily' }, { value: 'weekly', label: 'Weekly' }, { value: 'monthly', label: 'Monthly' }],
+  working_days: [{ value: 'monday-friday', label: 'Monday-Friday' }, { value: 'monday-saturday', label: 'Monday-Saturday' }],
+  default_lead_pipeline: [{ value: 'default', label: 'Default pipeline' }, { value: 'sales', label: 'Sales pipeline' }]
+};
+
+const settingsBooleanFields = new Set(['email_notifications', 'sms_notifications', 'whatsapp_notifications', 'push_notifications', 'two_factor_required', 'require_uppercase', 'require_number', 'require_special_character', 'backup_enabled', 'overtime_enabled']);
+
+const settingsTextAreaFields = new Set(['workspace_description', 'lead_stages', 'lookup_management']);
+
+const settingsPrimaryCardTitle: Record<string, string> = {
+  general: 'Workspace Information',
+  company: 'Business Identity',
+  branding: 'Logo, Colors & Domain',
+  localization: 'Regional Defaults',
+  communication: 'Email & Notification Preferences',
+  security: 'Authentication & Session Policy',
+  storage: 'Storage Defaults',
+  hr: 'Employee Configuration',
+  crm: 'Pipeline Defaults'
+};
+
+const settingsPrimaryCardDescription: Record<string, string> = {
+  general: 'Workspace name, tenant name, slug, description, logo references, website, and lifecycle status.',
+  company: 'Legal, tax, address, and official contact details for invoices, contracts, and compliance.',
+  branding: 'White-label tenant identity with logo assets, favicon, live color preview, and custom domain DNS status.',
+  localization: 'Language, timezone, currency, date, time, week start, and number formatting preferences.',
+  communication: 'Sender identity plus email, SMS, WhatsApp, and push notification toggles.',
+  security: 'Two-factor, password complexity, expiry, device limits, and session duration controls.',
+  storage: 'Storage quota, retention, and scheduled backup preferences.',
+  hr: 'Working hours, leave balances, attendance grace, overtime, and employee number format.',
+  crm: 'Default lead pipeline, editable stage order, and lookup behavior.'
+};
+
+const settingsFieldHints: Record<string, string> = {
+  workspace_slug: 'Used in tenant URLs and workspace references.',
+  custom_domain: 'Example: crm.acme.com. DNS verification is shown separately.',
+  lead_stages: 'Comma-separated fallback until the drag ordering API persists stages.',
+  lookup_management: 'Lookup rows below are loaded from /settings/lookups.',
+  password_min_length: 'Minimum password length for tenant users.',
+  maximum_devices: 'Maximum active devices per user.',
+  employee_number_format: 'Example: EMP-00001.'
+};
 
 const integrationTabs = [
   { id: 'providers', label: 'Providers' },
@@ -905,4 +1394,22 @@ const auditTabs = [
   { id: 'system-api-logs', label: 'System/API Logs' },
   { id: 'data-changes', label: 'Data Changes' }
 ];
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 

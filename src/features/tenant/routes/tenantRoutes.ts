@@ -5,6 +5,8 @@ export const TENANT_ROUTES = {
   dashboard: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/dashboard`,
   myDashboard: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/my-dashboard`,
   notifications: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/notifications`,
+  notificationDetail: (tenantSlug: string | undefined, notificationId: string | number) => `${tenantBase(tenantSlug)}/notifications/${notificationId}`,
+  notificationLogs: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/notification-logs`,
   activity: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/activity`,
   accessControl: {
     roles: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/access-control/roles`,
@@ -53,3 +55,6 @@ export const TENANT_ROUTES = {
   helpCenter: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/help-center`,
   helpArticle: (tenantSlug: string | undefined, slug: string) => `${tenantBase(tenantSlug)}/help-center/articles/${slug}`
 } as const;
+
+
+

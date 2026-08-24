@@ -115,6 +115,9 @@ export const tenantBusinessApi = {
   communication: {
     logs: (query?: ApiQuery) => list('/communication/logs', query, ['logs', 'communication_logs']),
     send: (body: Record<string, unknown>) => client().post('/communication/email', body),
+    sendSms: (body: Record<string, unknown>) => client().post('/communication/sms', body),
+    sendWhatsApp: (body: Record<string, unknown>) => client().post('/communication/whatsapp', body),
+    sendPush: (body: Record<string, unknown>) => client().post('/communication/push', body),
     retry: (id: string) => client().post(`/communication/logs/${encodeURIComponent(id)}/retry`)
   },
   settings: {
