@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Archive, Bell, Copy, FileText, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
+import { Bell, FileText, Pencil, Trash2 } from 'lucide-react';
 import type { FieldValues } from 'react-hook-form';
 
 import { PageHeader, StatusBadge, Tabs } from '@/shared/components/layout';
+import { RowActionMenu } from '@/shared/components/data-table';
 import { Button, PermissionButton } from '@/shared/components/ui';
 import { FilesDrawer, NotesDrawer, ReminderModal } from '@/shared/components/workflows';
 import { EnterpriseModalActions } from '@/shared/module-pages/components/EnterpriseModalActions';
@@ -59,23 +60,15 @@ export function EnterpriseViewPage<TRow extends EnterpriseRecord, TForm extends 
       />
 
       <div className="enterprise-view-actions">
-        <Button type="button" variant="secondary" size="sm" onClick={() => setModal('assign')}>Assign</Button>
-        <Button type="button" variant="secondary" size="sm" onClick={() => setModal('status')}>Change status</Button>
-        <Button type="button" variant="secondary" size="sm" onClick={() => setModal('clone')}>
-          <Copy size={14} aria-hidden="true" />
-          Clone
-        </Button>
-        <Button type="button" variant="secondary" size="sm" onClick={() => setModal('archive')}>
-          <Archive size={14} aria-hidden="true" />
-          Archive
-        </Button>
-        <Button type="button" variant="danger" size="sm" onClick={() => setModal('delete')}>
-          <Trash2 size={14} aria-hidden="true" />
-          Delete
-        </Button>
-        <Button type="button" variant="ghost" size="sm" onClick={() => setModal('activity')} aria-label="Open action menu">
-          <MoreHorizontal size={16} aria-hidden="true" />
-        </Button>
+        <RowActionMenu
+          label={`Open actions for ${adapter.getTitle(record)}`}
+          items={[
+            { label: 'Assign', onClick: () => setModal('assign') },
+            { label: 'Change status', onClick: () => setModal('status') },
+            { label: 'Activity', onClick: () => setModal('activity') },
+            { label: 'Delete', icon: <Trash2 size={15} aria-hidden="true" />, danger: true, separatorBefore: true, onClick: () => setModal('delete') }
+          ]}
+        />
       </div>
 
       <article className="enterprise-view-panel">

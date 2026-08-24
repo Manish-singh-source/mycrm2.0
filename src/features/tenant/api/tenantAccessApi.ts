@@ -1,4 +1,4 @@
-﻿import { authStore } from '@/features/auth/store/authStore';
+import { authStore } from '@/features/auth/store/authStore';
 import type { ApiQuery, NormalizedApiResponse } from '@/lib/api/apiTypes';
 import { createTenantClient } from '@/lib/api/tenantClient';
 
@@ -89,6 +89,8 @@ export const tenantAccessApi = {
     users: (id: string) => client().get<{ users: TenantAccessRecord[] }>(`/access-control/roles/${encodeURIComponent(id)}/users`),
     assignUsers: (id: string, body: { user_ids: string[]; audit_reason?: string }) =>
       client().post(`/access-control/roles/${encodeURIComponent(id)}/users`, body),
+    replaceUsers: (id: string, body: { user_ids: string[]; audit_reason?: string }) =>
+      client().put(`/access-control/roles/${encodeURIComponent(id)}/users`, body),
     removeUser: (id: string, userId: string, audit_reason?: string) =>
       client().delete(`/access-control/roles/${encodeURIComponent(id)}/users/${encodeURIComponent(userId)}`, {
         body: { audit_reason }
@@ -106,14 +108,21 @@ export const tenantAccessApi = {
     update: async (id: string, body: Record<string, unknown>) =>
       unwrap((await client().patch(`/teams/${encodeURIComponent(id)}`, body)).data, ['team']),
     delete: (id: string) => client().delete(`/teams/${encodeURIComponent(id)}`),
+    bulkDelete: (team_uuids: string[], audit_reason?: string) =>
+      client().delete('/teams/bulk', { body: { team_uuids, audit_reason } }),
     members: (id: string) => client().get<{ members: TenantAccessRecord[] }>(`/teams/${encodeURIComponent(id)}/members`),
     addMembers: (id: string, body: Record<string, unknown>) => client().post(`/teams/${encodeURIComponent(id)}/members`, body),
+    removeMember: (id: string, memberId: string, body?: Record<string, unknown>) =>
+      client().delete(`/teams/${encodeURIComponent(id)}/members/${encodeURIComponent(memberId)}`, { body }),
     permissions: (id: string) => client().get<{ permissions: GroupedPermissions }>(`/teams/${encodeURIComponent(id)}/permissions`),
     replacePermissions: (id: string, body: { permission_ids: string[] }) =>
       client().put(`/teams/${encodeURIComponent(id)}/permissions`, body),
     settings: (id: string) => client().get<{ settings: TenantAccessRecord[] }>(`/teams/${encodeURIComponent(id)}/settings`),
     updateSettings: (id: string, body: Record<string, unknown>) => client().put(`/teams/${encodeURIComponent(id)}/settings`, body),
     assignments: (id: string) => client().get<{ assignments: TenantAccessRecord[] }>(`/teams/${encodeURIComponent(id)}/assignments`),
+    projects: (id: string) => client().get<{ projects: TenantAccessRecord[] }>(`/teams/${encodeURIComponent(id)}/projects`),
+    tasks: (id: string) => client().get<{ tasks: TenantAccessRecord[] }>(`/teams/${encodeURIComponent(id)}/tasks`),
+    activity: (id: string) => client().get<{ activity: TenantAccessRecord[] }>(`/teams/${encodeURIComponent(id)}/activity`),
     assignRecord: (id: string, body: Record<string, unknown>) => client().post(`/teams/${encodeURIComponent(id)}/assignments`, body),
     releaseAssignment: (id: string, assignmentId: string | number) =>
       client().delete(`/teams/${encodeURIComponent(id)}/assignments/${encodeURIComponent(String(assignmentId))}`),
@@ -133,7 +142,9 @@ export const tenantAccessApi = {
     replaceRoles: (id: string, role_ids: string[]) => client().put(`/users/${encodeURIComponent(id)}/roles`, { role_ids }),
     suspend: (id: string) => client().post(`/users/${encodeURIComponent(id)}/suspend`),
     activate: (id: string) => client().post(`/users/${encodeURIComponent(id)}/activate`),
-    resetPassword: (id: string) => client().post<{ temporary_password?: string }>(`/users/${encodeURIComponent(id)}/reset-password`)
+    resetPassword: (id: string) => client().post<{ temporary_password?: string }>(`/users/${encodeURIComponent(id)}/reset-password`),
+    forceLogout: (id: string) => client().post(`/users/${encodeURIComponent(id)}/force-logout`),
+    requireTwoFactor: (id: string, required = true) => client().post(`/users/${encodeURIComponent(id)}/require-2fa`, { required })
   },
   staff: {
     dashboard: () => client().get<Record<string, unknown>>('/staff/dashboard'),
@@ -144,10 +155,19 @@ export const tenantAccessApi = {
     update: async (id: string, body: Record<string, unknown>) =>
       unwrap((await client().patch(`/staff/${encodeURIComponent(id)}`, body)).data, ['staff']),
     delete: (id: string) => client().delete(`/staff/${encodeURIComponent(id)}`),
+    bulkDelete: (ids: string[], audit_reason?: string) => client().delete('/staff/bulk', { body: { ids, audit_reason } }),
     restore: (id: string) => client().post(`/staff/${encodeURIComponent(id)}/restore`),
     import: (body: Record<string, unknown>) => client().post('/staff/import', body),
     export: (body: Record<string, unknown>) => client().post('/staff/export', body),
     activity: (id: string) => client().get<{ activities: TenantAccessRecord[] }>(`/staff/${encodeURIComponent(id)}/activity`),
+    roles: (id: string) => client().get<{ roles: TenantAccessRecord[] }>(`/staff/${encodeURIComponent(id)}/roles`),
+    replaceRoles: (id: string, role_ids: string[]) => client().put(`/staff/${encodeURIComponent(id)}/roles`, { role_ids }),
+    teams: (id: string) => client().get<{ teams: TenantAccessRecord[] }>(`/staff/${encodeURIComponent(id)}/teams`),
+    replaceTeams: (id: string, team_ids: string[]) => client().put(`/staff/${encodeURIComponent(id)}/teams`, { team_ids }),
+    projects: (id: string) => client().get<{ projects: TenantAccessRecord[] }>(`/staff/${encodeURIComponent(id)}/projects`),
+    replaceProjects: (id: string, project_ids: string[]) => client().put(`/staff/${encodeURIComponent(id)}/projects`, { project_ids }),
+    tasks: (id: string) => client().get<{ tasks: TenantAccessRecord[] }>(`/staff/${encodeURIComponent(id)}/tasks`),
+    replaceTasks: (id: string, task_ids: string[]) => client().put(`/staff/${encodeURIComponent(id)}/tasks`, { task_ids }),
     tab: (id: string, tab: string) =>
       client().get<{ tab: string; data: TenantAccessRecord[] | Record<string, unknown> }>(
         `/staff/${encodeURIComponent(id)}/tabs/${encodeURIComponent(tab)}`
@@ -167,3 +187,5 @@ export const tenantAccessApi = {
 };
 
 export type TenantAccessResponse<T> = NormalizedApiResponse<T>;
+
+

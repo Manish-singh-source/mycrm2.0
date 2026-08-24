@@ -1,12 +1,12 @@
-import { useState, type FormEvent, type ReactNode } from 'react';
+﻿import { useState, type FormEvent, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Download, FileUp, Mail, MoreVertical, Plus, Save, Trash2 } from 'lucide-react';
+import { Download, FileUp, Mail, Plus, Save, Trash2 } from 'lucide-react';
 
 import { tenantBusinessApi, type BusinessRecord } from '@/features/tenant/api/tenantBusinessApi';
 import { tenantQueryKeys } from '@/features/tenant/api/tenantQueryKeys';
 import { ApiError } from '@/lib/api/apiError';
 import type { ApiQuery } from '@/lib/api/apiTypes';
-import { DataTable, type DataTableColumn } from '@/shared/components/data-table';
+import { DataTable, RowActionMenu, type DataTableColumn } from '@/shared/components/data-table';
 import { AppDrawer } from '@/shared/components/drawer';
 import { PageHeader, StatusBadge, Tabs } from '@/shared/components/layout';
 import { AppModal } from '@/shared/components/modal';
@@ -511,12 +511,7 @@ function DetailGrid({ record }: { record: BusinessRecord }) {
 }
 
 function RowMenu({ items }: { items: [string, () => void][] }) {
-  return (
-    <details className="row-actions-menu">
-      <summary aria-label="Open actions"><MoreVertical size={16} aria-hidden /></summary>
-      <div className="row-actions-menu__content">{items.map(([text, action]) => <button type="button" key={text} onClick={action}>{text}</button>)}</div>
-    </details>
-  );
+  return <RowActionMenu label="Open actions" items={items.map(([labelText, action]) => ({ label: labelText, onClick: action, danger: /delete|remove|void|cancel/i.test(labelText) }))} />;
 }
 
 function columns(keys: string[]): DataTableColumn<BusinessRecord>[] {
@@ -910,3 +905,4 @@ const auditTabs = [
   { id: 'system-api-logs', label: 'System/API Logs' },
   { id: 'data-changes', label: 'Data Changes' }
 ];
+

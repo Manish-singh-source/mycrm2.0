@@ -1,4 +1,4 @@
-:root {
+﻿:root {
   color-scheme: light;
   font-family:
     Inter,
@@ -4604,4 +4604,90 @@ textarea:focus-visible {
   .registration-stepper button {
     justify-content: flex-start;
   }
+}
+/* Normalize KPI cards to the Add-ons reference style. */
+.summary-grid,
+.platform-access-summary {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  min-width: 0;
+}
+
+.summary-card {
+  align-content: start;
+  border-color: var(--crm-line);
+  border-radius: 8px;
+  gap: 12px;
+  min-height: 136px;
+  min-width: 0;
+  padding: 20px;
+}
+
+.summary-card > span:has(svg) {
+  align-items: center;
+  background: var(--crm-primary-soft);
+  border-radius: 8px;
+  color: var(--crm-primary);
+  display: inline-flex;
+  height: 48px;
+  justify-content: center;
+  width: 48px;
+}
+
+.summary-card > span:not(:has(svg)),
+.summary-card__top > span {
+  background: transparent;
+  color: var(--crm-muted);
+  display: block;
+  font-size: 13px;
+  font-weight: 800;
+  height: auto;
+  line-height: 1.35;
+  text-transform: none;
+  width: auto;
+}
+
+.summary-card > span svg {
+  height: 22px;
+  padding: 0;
+  width: 22px;
+}
+
+.summary-card__top {
+  align-items: flex-start;
+  display: grid;
+  gap: 12px;
+  justify-content: start;
+}
+
+.summary-card__top > svg {
+  background: var(--crm-primary-soft);
+  border-radius: 8px;
+  color: var(--crm-primary);
+  height: 48px;
+  order: -1;
+  padding: 13px;
+  width: 48px;
+}
+
+.summary-card p {
+  color: var(--crm-muted);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.35;
+  margin: 0;
+}
+
+.summary-card strong {
+  color: #07152b;
+  font-size: 25px;
+  font-weight: 850;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.layout-page-chrome {
+  display: grid;
+  gap: 16px;
 }

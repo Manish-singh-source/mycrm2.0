@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
+﻿import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Banknote, Copy, Download, Mail, Merge, Plus, Star, Upload, UserCheck } from 'lucide-react';
@@ -9,7 +9,7 @@ import { tenantQueryKeys } from '@/features/tenant/api/tenantQueryKeys';
 import { tenantAccessApi } from '@/features/tenant/api/tenantAccessApi';
 import { tenantCrmApi, type CrmRecord } from '@/features/tenant/api/tenantCrmApi';
 import { TENANT_ROUTES } from '@/features/tenant/routes/tenantRoutes';
-import { DataTable, type DataTableColumn } from '@/shared/components/data-table';
+import { DataTable, RowActionMenu, type DataTableColumn } from '@/shared/components/data-table';
 import { AppDrawer } from '@/shared/components/drawer';
 import { PageHeader, StatusBadge, Tabs } from '@/shared/components/layout';
 import { AppModal } from '@/shared/components/modal';
@@ -162,7 +162,7 @@ function PartyListPage({ resource, mode }: { resource: Exclude<PartyResource, 'l
         <RecordGrid rows={query.rows} loading={query.isLoading} onOpen={open} />
       ) : (
         <DataTable
-          columns={[...partyColumns(resource, open, (row, action) => { setSelected(row); setModal(action); }), actionColumn((row) => <><Button type="button" size="sm" variant="secondary" onClick={() => open(row)}>View</Button><Button type="button" size="sm" variant="secondary" onClick={() => { setSelected(row); setModal('edit'); }}>Edit</Button><Button type="button" size="sm" variant="secondary" onClick={() => { setSelected(row); setModal('email'); }}>Email</Button></>)]}
+          columns={[...partyColumns(resource, open, (row, action) => { setSelected(row); setModal(action); }), actionColumn((row) => <RowActionMenu label={`Open actions for ${textOf(row, ['display_name', 'email'], partyTypeLabels[resource])}`} items={[{ label: 'View', onClick: () => open(row) }, { label: 'Edit', onClick: () => { setSelected(row); setModal('edit'); } }, { label: 'Email', onClick: () => { setSelected(row); setModal('email'); } }]} />)]}
           data={query.rows}
           getRowId={idOf}
           loading={query.isLoading}
@@ -200,7 +200,7 @@ function LeadListPage({ mode }: { mode: 'list' | 'grid' }) {
         <RecordGrid rows={query.rows} loading={query.isLoading} onOpen={open} />
       ) : (
         <DataTable
-          columns={[...genericColumns(['lead_number', 'display_name', 'email', 'expected_value', 'probability', 'expected_close_date']), actionColumn((row) => <><Button type="button" size="sm" variant="secondary" onClick={() => open(row)}>View</Button><Button type="button" size="sm" variant="secondary" onClick={() => { setSelected(row); setModal('owner'); }}>Owner</Button><Button type="button" size="sm" variant="secondary" onClick={() => { setSelected(row); setModal('stage'); }}>Stage</Button><Button type="button" size="sm" variant="secondary" onClick={() => { setSelected(row); setModal('convert'); }}>Won</Button><Button type="button" size="sm" variant="danger" onClick={() => { setSelected(row); setModal('lost'); }}>Lost</Button></>)]}
+          columns={[...genericColumns(['lead_number', 'display_name', 'email', 'expected_value', 'probability', 'expected_close_date']), actionColumn((row) => <RowActionMenu label={`Open actions for ${textOf(row, ['display_name', 'lead_number'], 'lead')}`} items={[{ label: 'View', onClick: () => open(row) }, { label: 'Owner', onClick: () => { setSelected(row); setModal('owner'); } }, { label: 'Stage', onClick: () => { setSelected(row); setModal('stage'); } }, { label: 'Won', onClick: () => { setSelected(row); setModal('convert'); } }, { label: 'Lost', danger: true, separatorBefore: true, onClick: () => { setSelected(row); setModal('lost'); } }]} />)]}
           data={query.rows}
           getRowId={idOf}
           loading={query.isLoading}
@@ -793,3 +793,4 @@ function errorMessage(error: unknown) {
   if (error instanceof Error) return error.message;
   return 'Request failed.';
 }
+

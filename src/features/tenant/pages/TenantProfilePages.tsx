@@ -7,21 +7,19 @@ import { AppModal } from '@/shared/components/modal';
 import { PageHeader, Tabs } from '@/shared/components/layout';
 import { Button } from '@/shared/components/ui';
 
-type ProfileTab = 'profile' | 'password' | 'security' | 'sessions' | 'api-tokens' | 'preferences';
+type ProfileTab = 'profile' | 'password' | 'preferences' | 'sessions';
 
 export function TenantProfilePage() {
   const [activeTab, setActiveTab] = useState<ProfileTab>('profile');
   return (
     <section className="enterprise-module-page">
-      <PageHeader title="My Profile" description="Profile, password, security, sessions, API tokens, and preferences." />
+      <PageHeader title="My Profile" description="Manage your profile, password, preferences, and active sessions." />
       <Tabs
         tabs={[
           { id: 'profile', label: 'My Profile' },
           { id: 'password', label: 'Change Password' },
-          { id: 'security', label: 'Security' },
-          { id: 'sessions', label: 'Sessions' },
-          { id: 'api-tokens', label: 'API Tokens' },
-          { id: 'preferences', label: 'Preferences' }
+          { id: 'preferences', label: 'Preferences' },
+          { id: 'sessions', label: 'Sessions' }
         ]}
         activeId={activeTab}
         ariaLabel="Profile sections"
@@ -29,10 +27,8 @@ export function TenantProfilePage() {
       />
       {activeTab === 'profile' ? <ProfileForm /> : null}
       {activeTab === 'password' ? <PasswordForm /> : null}
-      {activeTab === 'security' ? <SecurityPanel /> : null}
-      {activeTab === 'sessions' ? <SessionsPanel /> : null}
-      {activeTab === 'api-tokens' ? <ApiTokensPanel /> : null}
       {activeTab === 'preferences' ? <PreferencesPanel /> : null}
+      {activeTab === 'sessions' ? <SessionsPanel /> : null}
     </section>
   );
 }
@@ -93,8 +89,14 @@ function PreferencesPanel() {
   const [error, setError] = useState('');
   useEffect(() => {
     accountApi.preferences('tenant').then((response) => {
-      const preferences = (response.data.preferences ?? response.data) as Record<string, unknown>;
-      setForm((current) => ({ ...current, ...Object.fromEntries(Object.entries(preferences).map(([key, value]) => [key, preferenceValue(value)])) }));
+      const preferences = Array.isArray(response.data.preferences) ? response.data.preferences : [];
+      setForm((current) => ({
+        ...current,
+        ...Object.fromEntries(preferences.map((item) => {
+          const preference = item as Record<string, unknown>;
+          return [String(preference.key ?? ''), preferenceValue(preference.value)];
+        }).filter(([key]) => key)),
+      }));
     }).catch((err) => setError(errorMessage(err)));
   }, []);
   async function submit(event: FormEvent) {
@@ -102,7 +104,7 @@ function PreferencesPanel() {
     setError('');
     setMessage('');
     try {
-      await accountApi.updatePreferences('tenant', form);
+      await accountApi.updatePreferences('tenant', { preferences: { general: form } });
       setMessage('Preferences saved.');
     } catch (err) {
       setError(errorMessage(err));
@@ -171,7 +173,8 @@ function SessionsPanel() {
   async function load() {
     try {
       const response = await accountApi.sessions('tenant');
-      setSessions(Array.isArray(response.data) ? response.data as Array<Record<string, unknown>> : []);
+      const payload = response.data as unknown as { sessions?: Array<Record<string, unknown>> };
+      setSessions(payload.sessions ?? []);
     } catch (err) {
       setError(errorMessage(err));
     }
@@ -190,6 +193,7 @@ function SessionsPanel() {
     <div className="settings-panel">
       <h2>Sessions</h2>
       {error ? <div className="surface-error">{error}</div> : null}
+      {sessions.length === 0 ? <div className="empty-state">No active sessions found.</div> : null}
       <div className="record-list">
         {sessions.map((session) => (
           <article key={String(session.id)}>
@@ -276,13 +280,46 @@ function SettingsForm<T extends Record<string, string>>({ title, form, fields, e
       {error ? <div className="surface-error">{error}</div> : null}
       {message ? <div className="surface-state">{message}</div> : null}
       <div className="form-grid form-grid--two">
-        {fields.map((field) => <label key={field}><span>{label(field)}</span><input type={passwordFields ? 'password' : 'text'} value={form[field] ?? ''} onChange={(event) => onChange({ ...form, [field]: event.target.value })} /></label>)}
+        {fields.map((field) => {
+          const options = fieldOptions(field);
+          return (
+            <label key={field}>
+              <span>{label(field)}</span>
+              {options ? (
+                <select value={form[field] ?? ''} onChange={(event) => onChange({ ...form, [field]: event.target.value })}>
+                  {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+              ) : (
+                <input type={passwordFields ? 'password' : 'text'} value={form[field] ?? ''} onChange={(event) => onChange({ ...form, [field]: event.target.value })} />
+              )}
+            </label>
+          );
+        })}
       </div>
       <Button type="submit"><Save size={16} aria-hidden />Save</Button>
     </form>
   );
 }
 
+function fieldOptions(field: string) {
+  const options: Record<string, Array<{ value: string; label: string }>> = {
+    theme: [{ value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }, { value: 'system', label: 'System default' }],
+    timezone: [
+      { value: 'UTC', label: 'UTC' },
+      { value: 'Asia/Kolkata', label: 'India Standard Time (UTC+05:30)' },
+      { value: 'Asia/Dubai', label: 'Gulf Standard Time (UTC+04:00)' },
+      { value: 'Asia/Singapore', label: 'Singapore Time (UTC+08:00)' },
+      { value: 'Europe/London', label: 'United Kingdom Time (UTC+00:00)' },
+      { value: 'America/New_York', label: 'Eastern Time (UTC-05:00)' },
+      { value: 'America/Los_Angeles', label: 'Pacific Time (UTC-08:00)' },
+      { value: 'Australia/Sydney', label: 'Australian Eastern Time (UTC+10:00)' }
+    ],
+    locale: [{ value: 'en', label: 'English' }, { value: 'hi', label: 'Hindi' }],
+    date_format: [{ value: 'DD MMM YYYY', label: 'DD MMM YYYY' }, { value: 'MM/DD/YYYY', label: 'MM/DD/YYYY' }, { value: 'YYYY-MM-DD', label: 'YYYY-MM-DD' }],
+    table_density: [{ value: 'comfortable', label: 'Comfortable' }, { value: 'compact', label: 'Compact' }, { value: 'spacious', label: 'Spacious' }]
+  };
+  return options[field];
+}
 function csv(value: string) {
   return value.split(',').map((entry) => entry.trim()).filter(Boolean);
 }

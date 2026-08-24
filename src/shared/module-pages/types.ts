@@ -38,6 +38,7 @@ export type EnterpriseListState = {
   sort?: string;
   selectedIds: string[];
   setPage: (page: number) => void;
+  setPerPage: (perPage: number) => void;
   setSearch: (search: string) => void;
   setSort: (sort?: string) => void;
   setSelectedIds: (ids: string[]) => void;

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Archive, Copy, MoreHorizontal, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { Archive, Copy, Eye, MoreVertical, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react';
 
-import { DataTable } from '@/shared/components/data-table';
+import { DataTable, RowActionMenu } from '@/shared/components/data-table';
 import { PageHeader } from '@/shared/components/layout';
 import { Button, PermissionButton } from '@/shared/components/ui';
 import { BulkActionBar } from '@/shared/components/data-table';
@@ -49,30 +49,15 @@ export function EnterpriseListPage<TRow extends EnterpriseRecord, TForm extends 
         header: 'Actions',
         enableHiding: false,
         cell: (row: TRow) => (
-          <div className="row-action-menu">
-            <Button type="button" size="sm" variant="ghost" onClick={() => onView(row)}>
-              View
-            </Button>
-            <PermissionButton
-              guard={adapter.guard}
-              permission={adapter.permissions?.edit ?? ''}
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() => onEdit(row)}
-            >
-              Edit
-            </PermissionButton>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() => setModal('activity')}
-              aria-label="Open row action menu"
-            >
-              <MoreHorizontal size={16} aria-hidden="true" />
-            </Button>
-          </div>
+          <RowActionMenu
+            label={`Open actions for ${adapter.getTitle(row)}`}
+            items={[
+              { label: 'View', icon: <Eye size={15} aria-hidden="true" />, onClick: () => onView(row) },
+              { label: 'Edit', icon: <Pencil size={15} aria-hidden="true" />, onClick: () => onEdit(row) },
+              { label: 'Activity', icon: <MoreVertical size={15} aria-hidden="true" />, onClick: () => setModal('activity') },
+              { label: 'Delete', icon: <Trash2 size={15} aria-hidden="true" />, danger: true, separatorBefore: true, onClick: () => setModal('delete') }
+            ]}
+          />
         )
       }
     ],
@@ -95,7 +80,7 @@ export function EnterpriseListPage<TRow extends EnterpriseRecord, TForm extends 
 
   useEffect(() => {
     void loadRecords();
-  }, [listState.page, listState.search, listState.sort]);
+  }, [listState.page, listState.perPage, listState.search, listState.sort]);
 
   async function handleDelete() {
     if (!adapter.remove || listState.selectedIds.length === 0) return;
@@ -180,6 +165,7 @@ export function EnterpriseListPage<TRow extends EnterpriseRecord, TForm extends 
         perPage={listState.perPage}
         total={total}
         onPageChange={listState.setPage}
+        onPerPageChange={(value) => { listState.setPerPage(value); listState.setPage(1); listState.clearSelection(); }}
       />
 
       <AdvancedFiltersDrawer

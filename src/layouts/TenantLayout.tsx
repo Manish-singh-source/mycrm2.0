@@ -1,4 +1,4 @@
-import { Outlet, useNavigate, useParams } from 'react-router-dom';
+﻿import { Outlet, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { BellPlus, CalendarPlus2, Plus, ReceiptText } from 'lucide-react';
 
@@ -10,9 +10,7 @@ import { tenantWorkspaceApi } from '@/features/tenant/api/tenantWorkspaceApi';
 import { buildTenantNavigation } from '@/features/tenant/navigation/tenantNavigation';
 import {
   AppShell,
-  AppTopbar,
-  LayoutBreadcrumbs,
-  LayoutRouteTitle
+  AppTopbar
 } from '@/shared/components/layout';
 import { AppSidebar } from '@/shared/components/navigation/AppSidebar';
 import { PermissionButton } from '@/shared/components/ui';
@@ -92,14 +90,6 @@ export function TenantLayout() {
       )}
     >
       <div className="layout-page-chrome">
-        <LayoutBreadcrumbs
-          rootLabel={tenant?.organizationName ?? 'Tenant'}
-          rootTo={`/t/${tenantSlug}/dashboard`}
-          groups={tenantNavigation}
-        />
-        <div className="layout-page-title">
-          <LayoutRouteTitle fallback="Tenant Workspace" groups={tenantNavigation} />
-        </div>
         <Outlet />
       </div>
     </AppShell>
@@ -110,3 +100,8 @@ function numberValue(value: unknown, fallback = 0) {
   const numeric = Number(value ?? fallback);
   return Number.isFinite(numeric) ? numeric : fallback;
 }
+
+
+
+
+

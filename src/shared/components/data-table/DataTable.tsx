@@ -1,4 +1,4 @@
-﻿import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import {
   ArrowDown,
   ArrowUpDown,
@@ -80,7 +80,7 @@ export function DataTable<TRow>({
   sortValue,
   onSortChange,
   page = 1,
-  perPage = 25,
+  perPage = 10,
   total = data.length,
   onPageChange,
   onPerPageChange,

@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
+﻿import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -7,7 +7,6 @@ import {
   Download,
   Eye,
   Mail,
-  MoreVertical,
   Pencil,
   Plus,
   RefreshCw,
@@ -20,7 +19,7 @@ import type { ApiQuery } from '@/lib/api/apiTypes';
 import { tenantHrmsApi, type HrmsRecord } from '@/features/tenant/api/tenantHrmsApi';
 import { tenantQueryKeys } from '@/features/tenant/api/tenantQueryKeys';
 import { TENANT_ROUTES } from '@/features/tenant/routes/tenantRoutes';
-import { DataTable, type DataTableColumn } from '@/shared/components/data-table';
+import { DataTable, RowActionMenu, type DataTableColumn } from '@/shared/components/data-table';
 import { AppDrawer } from '@/shared/components/drawer';
 import { PageHeader, StatusBadge, Tabs } from '@/shared/components/layout';
 import { AppModal } from '@/shared/components/modal';
@@ -642,12 +641,7 @@ function SectionActions({ children }: { children: ReactNode }) {
 }
 
 function RowMenu({ items }: { items: [string, () => void][] }) {
-  return (
-    <details className="row-actions-menu">
-      <summary aria-label="Open actions"><MoreVertical size={16} aria-hidden /></summary>
-      <div className="row-actions-menu__content">{items.map(([labelText, action]) => <button type="button" key={labelText} onClick={action}>{labelText}</button>)}</div>
-    </details>
-  );
+  return <RowActionMenu label="Open actions" items={items.map(([labelText, action]) => ({ label: labelText, onClick: action, danger: /delete|remove|reject|cancel|lock/i.test(labelText) }))} />;
 }
 
 function ModalFooter({ onClose, onSubmit, loading, submitLabel }: { onClose: () => void; onSubmit: () => void; loading?: boolean; submitLabel: string }) {
@@ -744,7 +738,7 @@ function recordTitle(row?: HrmsRecord | null) {
 }
 
 function recordSubtitle(row?: HrmsRecord | null) {
-  return [row?.employee_code, row?.status, row?.status_name, row?.holiday_date, row?.start_date].filter(Boolean).map(String).join(' · ') || 'Live database record';
+  return [row?.employee_code, row?.status, row?.status_name, row?.holiday_date, row?.start_date].filter(Boolean).map(String).join(' Â· ') || 'Live database record';
 }
 
 function text(value: unknown) {
@@ -855,3 +849,4 @@ export function TenantHrmsLandingLinks() {
     </div>
   );
 }
+

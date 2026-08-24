@@ -1131,7 +1131,7 @@ export const appRouter = createBrowserRouter([
         path: 'access-control/users',
         element: (
           <RequirePermission guard="tenant" anyOf={['staff.view']}>
-            <TenantUsersPage />
+            <TenantStaffListPage />
           </RequirePermission>
         )
       },

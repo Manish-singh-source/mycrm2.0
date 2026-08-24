@@ -76,10 +76,10 @@ export function TenantHelpCenterPage() {
         ariaLabel="Help sections"
         onChange={setActiveTab}
       />
-      {activeTab === 'articles' ? <RecordList rows={articles.data?.data ?? []} loading={articles.isLoading} articleLinks /> : null}
-      {activeTab === 'faqs' ? <RecordList rows={extract(faqs.data?.data, 'faqs')} loading={faqs.isLoading} /> : null}
-      {activeTab === 'release-notes' ? <RecordList rows={extract(releaseNotes.data?.data, 'release_notes')} loading={releaseNotes.isLoading} /> : null}
-      {activeTab === 'status' ? <div className="settings-panel"><StatusBadge tone={String(status.data?.data.status) === 'operational' ? 'success' : 'warning'}>{String(status.data?.data.status ?? 'unknown')}</StatusBadge><p>Open alerts: {String(status.data?.data.open_alerts ?? 0)}</p></div> : null}
+      {activeTab === 'articles' ? <RecordList rows={articles.data?.data ?? []} loading={articles.isLoading} error={articles.isError ? errorMessage(articles.error) : ''} articleLinks /> : null}
+      {activeTab === 'faqs' ? <RecordList rows={extract(faqs.data?.data, 'faqs')} loading={faqs.isLoading} error={faqs.isError ? errorMessage(faqs.error) : ''} /> : null}
+      {activeTab === 'release-notes' ? <RecordList rows={extract(releaseNotes.data?.data, 'release_notes')} loading={releaseNotes.isLoading} error={releaseNotes.isError ? errorMessage(releaseNotes.error) : ''} /> : null}
+      {activeTab === 'status' ? (status.isError ? <div className="surface-error">{errorMessage(status.error)}</div> : <div className="settings-panel"><h2>System Status</h2><StatusBadge tone={String(status.data?.data.status) === 'operational' ? 'success' : 'warning'}>{String(status.data?.data.status ?? 'unknown')}</StatusBadge><p>Open alerts: {String(status.data?.data.open_alerts ?? 0)}</p></div>) : null}
       {activeTab === 'contact' ? (
         <form className="settings-panel" onSubmit={(event: FormEvent) => { event.preventDefault(); contact.mutate(); }}>
           {contact.error ? <div className="surface-error">{errorMessage(contact.error)}</div> : null}
@@ -135,14 +135,15 @@ export function TenantPlaceholderModulePage({ title }: { title: string }) {
   );
 }
 
-function RecordList({ articleLinks, rows, loading }: { articleLinks?: boolean; rows: TenantRecord[]; loading?: boolean }) {
+function RecordList({ articleLinks, rows, loading, error }: { articleLinks?: boolean; rows: TenantRecord[]; loading?: boolean; error?: string }) {
   if (loading) return <div className="surface-state">Loading...</div>;
+  if (error) return <div className="surface-error">{error}</div>;
   if (rows.length === 0) return <div className="empty-state">No records returned.</div>;
   return (
     <div className="record-list">
       {rows.map((row) => {
-        const title = String(row.title ?? row.question ?? row.name ?? row.slug ?? 'Record');
-        const summary = String(row.answer ?? row.body ?? row.content ?? row.description ?? row.status ?? '-').slice(0, 220);
+        const title = String(row.title ?? row.question ?? row.name ?? row.version ?? row.slug ?? 'Record');
+        const summary = String(row.answer ?? row.summary ?? row.body ?? row.content ?? row.description ?? row.status ?? '-').slice(0, 220);
         return (
           <article key={idOf(row)}>
             {articleLinks && row.slug ? <Link className="link-button" to={`articles/${row.slug}`}>{title}</Link> : <strong>{title}</strong>}
