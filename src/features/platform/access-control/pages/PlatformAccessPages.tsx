@@ -24,6 +24,7 @@ import {
   platformAccessApi,
   type GroupedPermissions,
   type PermissionPayload,
+  type PlatformListKpis,
   type PlatformRecord,
   type RolePayload,
   type TeamPayload,
@@ -197,9 +198,9 @@ function displayText(record: PlatformRecord | null | undefined, keys: string[], 
   return toTitleCase(textOf(record, keys, fallback));
 }
 
-function activityRows(record: PlatformRecord) {
+function activityRows(record: PlatformRecord, kind: ResourceKind) {
   const rows = (record.activity as PlatformRecord[] | undefined) ?? [];
-  return rows.length > 0 ? rows : [record];
+  return rows.length > 0 ? rows : kind === 'permissions' ? [] : [record];
 }
 
 function roleDisplayDetails(record: Record<string, unknown>, kind: ResourceKind) {
@@ -217,6 +218,10 @@ function roleDisplayDetails(record: Record<string, unknown>, kind: ResourceKind)
       'lead_uuid',
       'assistant_lead_uuid'
     ]);
+    return Object.fromEntries(Object.entries(record).filter(([key]) => !hidden.has(key)));
+  }
+  if (kind === 'permissions') {
+    const hidden = new Set(['uuid', 'id', 'roles', 'roleAssignments', 'modelAssignments', 'permissions', 'created_at', 'updated_at']);
     return Object.fromEntries(Object.entries(record).filter(([key]) => !hidden.has(key)));
   }
   if (kind !== 'roles') return record;
@@ -493,6 +498,7 @@ function ResourceList({ kind }: { kind: ResourceKind }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(10);
   const [sort, setSort] = useState<ListSort>(null);
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
@@ -506,7 +512,7 @@ function ResourceList({ kind }: { kind: ResourceKind }) {
   const [customSavedViews, setCustomSavedViews] = useState<AccessSavedView[]>([]);
   const queryParams = createListQuery({
     page,
-    per_page: 25,
+    per_page: perPage,
     search,
     sort: sort?.id,
     direction: sort?.direction,
@@ -545,6 +551,7 @@ function ResourceList({ kind }: { kind: ResourceKind }) {
   });
 
   const rows = listQuery.data?.data ?? [];
+  const kpis = listQuery.data?.kpis;
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource(meta.resourceKey) });
   const actionMutation = useMutation({
@@ -682,7 +689,7 @@ function ResourceList({ kind }: { kind: ResourceKind }) {
 
   const header = (
     <PageHeader
-      breadcrumbs={<AdminBreadcrumbs items={['Access Control', meta.label]} />}
+      breadcrumbs={kind === 'permissions' ? undefined : <AdminBreadcrumbs items={['Access Control', meta.label]} />}
       title={meta.label}
       description={descriptionFor(kind)}
       actions={
@@ -740,8 +747,13 @@ function ResourceList({ kind }: { kind: ResourceKind }) {
       selectedRowIds={selectedIds}
       onSelectionChange={setSelectedIds}
       page={page}
+      perPage={perPage}
       total={totalFromQuery(listQuery.data)}
-      onPageChange={setPage}
+      onPageChange={(nextPage) => setPage(Math.max(1, nextPage))}
+      onPerPageChange={(nextPerPage) => {
+        setPerPage(nextPerPage);
+        setPage(1);
+      }}
       bulkActions={
         <div className="table-actions">
           {kind === 'roles' ? (
@@ -789,7 +801,7 @@ function ResourceList({ kind }: { kind: ResourceKind }) {
     return (
       <section className="enterprise-module-page platform-access-page admin-master-page">
         {header}
-        <ResourceStats kind={kind} rows={rows} />
+        <ResourceStats kind={kind} rows={rows} kpis={kpis} />
         <div className="admin-master-grid">
           <div className="admin-master-main">{table}</div>
           <AuditRail rows={rows} />
@@ -833,7 +845,7 @@ function ResourceList({ kind }: { kind: ResourceKind }) {
   return (
     <section className="enterprise-module-page platform-access-page">
       {header}
-      <ResourceStats kind={kind} rows={rows} />
+      <ResourceStats kind={kind} rows={rows} kpis={kpis} />
       {table}
 
       <StandardListControls
@@ -1852,7 +1864,7 @@ function ResourceView({ kind, record }: { kind: ResourceKind; record: PlatformRe
   const permissionGroups = groupedPermissionsForDisplay(record.permissions);
   const tabs = [
     { id: 'details', label: 'Details' },
-    ...(kind !== 'teams' ? [{ id: 'permissions', label: 'Permissions' }] : []),
+    ...(kind === 'roles' || kind === 'teamRoles' ? [{ id: 'permissions', label: 'Permissions' }] : []),
     ...(kind === 'roles' ? [{ id: 'users', label: 'Assigned Users' }] : []),
     ...(kind === 'teams'
       ? [
@@ -1970,7 +1982,7 @@ function ResourceView({ kind, record }: { kind: ResourceKind; record: PlatformRe
       />
 
       <div className="platform-access-summary">
-        {kind !== 'teams' ? (
+        {kind === 'roles' || kind === 'teamRoles' ? (
           <SummaryTile
             icon={<ShieldCheck />}
             label="Permissions"
@@ -1985,8 +1997,8 @@ function ResourceView({ kind, record }: { kind: ResourceKind; record: PlatformRe
         ) : null}
         <SummaryTile
           icon={<Users />}
-          label={kind === 'teams' ? 'Members' : 'Assigned Users'}
-          value={textOf(record, ['users_count', 'members_count'], '0')}
+          label={kind === 'permissions' ? 'Assigned Roles' : kind === 'teams' ? 'Members' : 'Assigned Users'}
+          value={textOf(record, kind === 'permissions' ? ['roles_count'] : ['users_count', 'members_count'], '0')}
         />
         {kind !== 'roles' ? (
           <>
@@ -2025,7 +2037,7 @@ function ResourceView({ kind, record }: { kind: ResourceKind; record: PlatformRe
         {activeTab === 'assignments' && kind === 'teams' ? (
           <TeamAssignmentsPanel team={record} />
         ) : null}
-        {activeTab === 'activity' ? <AuditRail rows={activityRows(record)} compact /> : null}
+        {activeTab === 'activity' ? <AuditRail rows={activityRows(record, kind)} compact record={record} kind={kind} /> : null}
       </article>
 
       <StandardListControls
@@ -2271,7 +2283,7 @@ function StandardListControls({
         guard="platform"
         permission={`${resourceMeta[kind].permission}.view`}
       >
-        <AuditRail rows={selectedRecord ? activityRows(selectedRecord) : []} compact />
+        <AuditRail rows={selectedRecord ? activityRows(selectedRecord, kind) : []} compact record={selectedRecord ?? undefined} kind={kind} />
       </AppModal>
       <CloneRoleModal open={modal === 'cloneRole'} role={selectedRecord} onClose={onClose} />
       <DeleteRoleDialog
@@ -4142,10 +4154,11 @@ function SummaryTile({ icon, label, value }: { icon: ReactNode; label: string; v
   );
 }
 
-function ResourceStats({ kind, rows }: { kind: ResourceKind; rows: PlatformRecord[] }) {
+function ResourceStats({ kind, rows, kpis }: { kind: ResourceKind; rows: PlatformRecord[]; kpis?: PlatformListKpis }) {
   const permissions = rows.reduce((sum, row) => sum + Number(row.permissions_count ?? 0), 0);
   const assigned = rows.reduce(
-    (sum, row) => sum + Number(row.users_count ?? row.members_count ?? 0),
+    (sum, row) =>
+      sum + Number(kind === 'permissions' ? row.roles_count ?? 0 : row.users_count ?? row.members_count ?? 0),
     0
   );
 
@@ -4154,22 +4167,22 @@ function ResourceStats({ kind, rows }: { kind: ResourceKind; rows: PlatformRecor
       <SummaryTile
         icon={<ShieldCheck />}
         label={`Total ${resourceMeta[kind].label}`}
-        value={String(rows.length)}
+        value={String(kpis?.total ?? rows.length)}
       />
       <SummaryTile
         icon={<CheckCircle2 />}
         label="Active"
-        value={String(rows.filter((row) => row.status === 'active').length)}
+        value={String(kpis?.active ?? rows.filter((row) => row.status === 'active').length)}
       />
       <SummaryTile
         icon={<KeyRound />}
         label="System"
-        value={String(rows.filter((row) => row.is_system).length)}
+        value={String(kpis?.system ?? rows.filter((row) => row.is_system).length)}
       />
       <SummaryTile
         icon={<Users />}
         label={kind === 'roles' ? 'Assigned Users' : 'Assignments'}
-        value={String(assigned)}
+        value={String(kpis?.assignments ?? assigned)}
       />
       {kind === 'roles' ? (
         <SummaryTile icon={<ShieldCheck />} label="Total Permissions" value={String(permissions)} />
@@ -4178,13 +4191,14 @@ function ResourceStats({ kind, rows }: { kind: ResourceKind; rows: PlatformRecor
   );
 }
 
-function AuditRail({ rows, compact = false }: { rows: PlatformRecord[]; compact?: boolean }) {
+function AuditRail({ rows, compact = false, record, kind }: { rows: PlatformRecord[]; compact?: boolean; record?: PlatformRecord; kind?: ResourceKind }) {
   const [visible, setVisible] = useState(true);
   const [activeTab, setActiveTab] = useState<'activity' | 'details'>('activity');
   const [showFull, setShowFull] = useState(false);
   const auditQuery = useQuery({
-    queryKey: platformQueryKeys.list('platform-audit-logs-access-control', { per_page: showFull ? 25 : 6 }),
-    queryFn: () => platformAccessApi.audit.list({ per_page: showFull ? 25 : 6, sort: 'created_at', direction: 'desc' })
+    queryKey: platformQueryKeys.list('platform-audit-logs-access-control', { per_page: showFull ? 25 : 6, subject_type: kind === 'permissions' ? 'App\\Models\\PlatformPermission' : undefined, subject_id: kind === 'permissions' ? record?.id : undefined }),
+    enabled: kind !== 'permissions' || Boolean(record?.id),
+    queryFn: () => platformAccessApi.audit.list({ per_page: showFull ? 25 : 6, sort: 'created_at', direction: 'desc', ...(kind === 'permissions' ? { subject_type: 'App\\Models\\PlatformPermission', subject_id: record?.id } : {}) })
   });
   const exportMutation = useMutation({
     mutationFn: (delivery: 'job' | 'download') =>

@@ -30,9 +30,20 @@ export type PlatformRecord = {
   [key: string]: unknown;
 };
 
+export type PlatformListKpis = {
+  total?: number;
+  active?: number;
+  inactive?: number;
+  system?: number;
+  custom?: number;
+  assignments?: number;
+  [key: string]: unknown;
+};
+
 export type PlatformListResult<TRecord extends PlatformRecord> = {
   data: TRecord[];
   total: number;
+  kpis?: PlatformListKpis;
 };
 
 export type GroupedPermissions = Record<string, PlatformRecord[]>;
@@ -119,6 +130,7 @@ type ListPayload<TRecord> =
       data?: TRecord[];
       items?: TRecord[];
       permissions?: TRecord[];
+      kpis?: PlatformListKpis;
     };
 
 function listRows<TRecord extends PlatformRecord>(payload: ListPayload<TRecord> | undefined): TRecord[] {
@@ -135,7 +147,9 @@ async function list<TRecord extends PlatformRecord>(path: string, query?: ApiQue
   const rows = listRows(response.data);
   return {
     data: rows,
-    total: paginationTotal(response.meta, rows.length)
+    total: paginationTotal(response.meta, rows.length),
+    kpis: ((response.meta?.kpis ?? response.meta?.kpi) as PlatformListKpis | undefined) ??
+      (!Array.isArray(response.data) && response.data ? response.data.kpis : undefined)
   };
 }
 

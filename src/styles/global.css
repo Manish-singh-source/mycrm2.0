@@ -2174,6 +2174,18 @@ textarea:disabled {
   width: 100%;
 }
 
+.platform-access-page .enterprise-form__footer {
+  gap: 12px;
+  margin-top: 0;
+  padding: 16px 0 0;
+}
+
+.platform-access-page .enterprise-form__footer .button {
+  min-height: 40px;
+  min-width: 112px;
+  padding: 10px 18px;
+}
+
 .rbac-toolbar {
   display: grid;
   gap: 10px;
@@ -4046,7 +4058,10 @@ textarea:focus-visible {
   .dashboard-grid--tables,
   .platform-access-summary,
   .rbac-form-shell,
-  .permission-groups section > div,
+  .permission-groups section > div {
+    gap: 12px;
+  }
+
   .rbac-toolbar {
     grid-template-columns: 1fr;
   }
