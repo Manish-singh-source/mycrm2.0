@@ -1,7 +1,20 @@
 import type { AuthGuard, AuthState, Permission } from '@/features/auth/types/authTypes';
 
+function normalizePermissionNames(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (typeof item === 'string') return [item];
+    if (item && typeof item === 'object') {
+      const entry = item as { name?: unknown; code?: unknown };
+      const name = entry.name ?? entry.code;
+      return typeof name === 'string' ? [name] : [];
+    }
+    return [];
+  });
+}
+
 export function getGuardPermissions(authState: AuthState, guard: AuthGuard): Permission[] {
-  return guard === 'platform' ? authState.platform.permissions : authState.tenant.permissions;
+  return normalizePermissionNames(guard === 'platform' ? authState.platform.permissions : authState.tenant.permissions);
 }
 
 export function hasPermission(
@@ -9,6 +22,10 @@ export function hasPermission(
   guard: AuthGuard,
   permission: Permission
 ): boolean {
+  const session = guard === 'platform' ? authState.platform : authState.tenant;
+  const roles = normalizePermissionNames(session.roles);
+  if (guard === 'platform' && roles.includes('super_admin')) return true;
+
   const permissions = getGuardPermissions(authState, guard);
   return permissions.includes('*') || permissions.includes(permission);
 }

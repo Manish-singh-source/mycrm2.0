@@ -4,6 +4,7 @@ import { BellPlus, CalendarPlus2, Plus, ReceiptText } from 'lucide-react';
 
 import { useAuth } from '@/features/auth/hooks/useAuth';
 import { useSessionPreferences } from '@/features/auth/hooks/useSessionPreferences';
+import { useProfileSession } from '@/features/auth/hooks/useProfileSession';
 import { useTenantContext } from '@/features/auth/hooks/useTenantContext';
 import { tenantQueryKeys } from '@/features/tenant/api/tenantQueryKeys';
 import { tenantWorkspaceApi } from '@/features/tenant/api/tenantWorkspaceApi';
@@ -21,6 +22,7 @@ export function TenantLayout() {
   const queryClient = useQueryClient();
   const { tenantSlug = ':tenantSlug' } = useParams();
   const { user, logout } = useAuth('tenant');
+  useProfileSession('tenant');
   const { locale, timezone } = useSessionPreferences('tenant');
   const { tenant } = useTenantContext();
   const navigationQuery = useQuery({

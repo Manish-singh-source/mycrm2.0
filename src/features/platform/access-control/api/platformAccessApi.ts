@@ -113,11 +113,29 @@ function unwrapRecord<TRecord extends PlatformRecord>(
   return data as TRecord;
 }
 
+type ListPayload<TRecord> =
+  | TRecord[]
+  | {
+      data?: TRecord[];
+      items?: TRecord[];
+      permissions?: TRecord[];
+    };
+
+function listRows<TRecord extends PlatformRecord>(payload: ListPayload<TRecord> | undefined): TRecord[] {
+  if (Array.isArray(payload)) return payload;
+  if (!payload || typeof payload !== 'object') return [];
+  if (Array.isArray(payload.data)) return payload.data;
+  if (Array.isArray(payload.items)) return payload.items;
+  if (Array.isArray(payload.permissions)) return payload.permissions;
+  return [];
+}
+
 async function list<TRecord extends PlatformRecord>(path: string, query?: ApiQuery): Promise<PlatformListResult<TRecord>> {
-  const response = await platformClient.get<TRecord[]>(path, { query });
+  const response = await platformClient.get<ListPayload<TRecord>>(path, { query });
+  const rows = listRows(response.data);
   return {
-    data: Array.isArray(response.data) ? response.data : [],
-    total: paginationTotal(response.meta, Array.isArray(response.data) ? response.data.length : 0)
+    data: rows,
+    total: paginationTotal(response.meta, rows.length)
   };
 }
 
@@ -155,14 +173,33 @@ export const platformAccessApi = {
     export: (body: AccessExportPayload) => platformClient.post('/access-control/roles/export', body)
   },
   permissions: {
-    list: (query?: ApiQuery) => list<PlatformRecord>('/access-control/permissions', query),
-    grouped: () => platformClient.get<{ permissions: GroupedPermissions }>('/access-control/permissions/grouped'),
-    detail: (id: string) => detail<PlatformRecord>(`/access-control/permissions/${encodeURIComponent(id)}`),
-    create: async (body: PermissionPayload) => unwrapRecord(await platformClient.post('/access-control/permissions', body)),
+    list: (query?: ApiQuery) => list<PlatformRecord>('/permissions', query),
+    grouped: async (): Promise<NormalizedApiResponse<{ permissions: GroupedPermissions }>> => {
+      const response = await platformClient.get<GroupedPermissions | { permissions: GroupedPermissions }>('/permissions/grouped');
+      const groups: GroupedPermissions = response.data && !Array.isArray(response.data)
+        ? ('permissions' in response.data ? response.data.permissions : response.data) as GroupedPermissions
+        : {}; 
+      return { ...response, data: { permissions: groups ?? {} } }; 
+    },
+    detail: (id: string) => detail<PlatformRecord>('/permissions/' + encodeURIComponent(id)),
+    create: async (body: PermissionPayload) => unwrapRecord(await platformClient.post('/permissions', body)),
     update: async (id: string, body: Partial<PermissionPayload>) =>
-      unwrapRecord(await platformClient.patch(`/access-control/permissions/${encodeURIComponent(id)}`, body)),
-    delete: (id: string) => platformClient.delete(`/access-control/permissions/${encodeURIComponent(id)}`),
-    export: (body: AccessExportPayload) => platformClient.post('/access-control/permissions/export', body)
+      unwrapRecord(await platformClient.patch('/permissions/' + encodeURIComponent(id), body)),
+    delete: (id: string) => platformClient.delete('/permissions/' + encodeURIComponent(id)),
+    export: async (body: AccessExportPayload) => {
+      const response = body.delivery === 'download'
+        ? await platformClient.post<Blob>('/permissions/export', body, { responseType: 'blob' })
+        : await platformClient.post('/permissions/export', body);
+      if (body.delivery === 'download' && response.data instanceof Blob && typeof document !== 'undefined') {
+        const url = URL.createObjectURL(response.data);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'platform-permissions.csv';
+        link.click();
+        URL.revokeObjectURL(url);
+      }
+      return response;
+    }
   },
   teams: {
     list: (query?: ApiQuery) => list<PlatformRecord>('/platform-teams', query),

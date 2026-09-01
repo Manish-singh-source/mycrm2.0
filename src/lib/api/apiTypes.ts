@@ -33,6 +33,8 @@ export type PaginatedEnvelope<TData> = {
 
 export type NormalizedApiResponse<TData> = {
   data: TData;
+  success?: boolean;
+  message?: string;
   meta?: Record<string, unknown>;
   links?: ApiLinks;
 };
@@ -77,4 +79,5 @@ export type ApiRequestOptions = Omit<RequestInit, 'body' | 'method'> &
     query?: ApiQuery;
     body?: unknown;
     retry?: boolean | number;
+    responseType?: 'blob';
   };

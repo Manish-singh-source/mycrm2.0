@@ -28,7 +28,7 @@ export function ForgotPasswordPage() {
 
     try {
       const response = await authApi.forgotPassword({ email });
-      setMessage(response.data.message);
+      setMessage(response.message ?? 'If an account exists, password reset instructions have been sent.');
       setResetToken(response.data.reset_token ?? '');
     } catch (err) {
       setError(errorMessage(err));

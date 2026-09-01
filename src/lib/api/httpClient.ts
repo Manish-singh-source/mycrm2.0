@@ -113,6 +113,8 @@ function normalizeEnvelope<TData>(payload: unknown): NormalizedApiResponse<TData
     const envelope = payload as NormalizedApiResponse<TData>;
     return {
       data: envelope.data,
+      success: (payload as { success?: boolean }).success,
+      message: (payload as { message?: string }).message,
       meta: envelope.meta,
       links: envelope.links
     };
@@ -144,7 +146,9 @@ function sleep(ms: number) {
   return new Promise((resolve) => globalThis.setTimeout(resolve, ms));
 }
 
-async function parsePayload(response: Response) {
+async function parsePayload(response: Response, responseType?: 'blob') {
+  if (responseType === 'blob') return response.blob().catch(() => undefined);
+
   const contentType = response.headers.get('content-type') ?? '';
   if (contentType.includes('application/json')) {
     return response.json().catch(() => undefined);
@@ -170,7 +174,7 @@ function errorDetails(payload: unknown) {
 }
 
 async function runRequest<TData>(url: string, options: RequestOptions) {
-  const { guard, tenant, query, body, retry, idempotencyKey, timezone, locale, impersonationReason, office, ...init } =
+  const { guard, tenant, query, body, retry, responseType, idempotencyKey, timezone, locale, impersonationReason, office, ...init } =
     options;
   const normalizedBody = normalizeBody(body);
   const headers = normalizeHeaders(options, body);
@@ -205,7 +209,7 @@ async function runRequest<TData>(url: string, options: RequestOptions) {
     return { data: undefined as TData };
   }
 
-  const payload = await parsePayload(response);
+  const payload = await parsePayload(response, responseType);
 
   if (!response.ok) {
     const errorPayload: ApiErrorResponse =
@@ -215,6 +219,7 @@ async function runRequest<TData>(url: string, options: RequestOptions) {
               (payload as { message?: string }).message ?? 'Request failed.',
             error_code:
               (payload as { error_code?: string }).error_code ??
+              ((payload as { code?: string }).code) ??
               ((payload as { errors?: { code?: string } }).errors?.code),
             errors: errorDetails(payload),
             request_id:

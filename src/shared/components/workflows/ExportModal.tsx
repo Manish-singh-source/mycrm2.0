@@ -72,8 +72,6 @@ export function ExportModal({ columns, selectedCount = 0, onExport, ...props }: 
           Format
           <select value={format} onChange={(event) => setFormat(event.target.value)}>
             <option>CSV</option>
-            <option>XLSX</option>
-            <option>PDF</option>
           </select>
         </label>
         <label>

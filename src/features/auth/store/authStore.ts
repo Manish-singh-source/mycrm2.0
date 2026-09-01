@@ -29,6 +29,19 @@ const emptyAuthState: AuthState = {
   tenant: emptyTenantSession
 };
 
+function normalizeNames(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.flatMap((item) => {
+    if (typeof item === 'string') return [item];
+    if (item && typeof item === 'object') {
+      const named = item as { name?: unknown; code?: unknown };
+      const name = named.name ?? named.code;
+      return typeof name === 'string' ? [name] : [];
+    }
+    return [];
+  }))];
+}
+
 function readStoredState(): AuthState {
   if (typeof localStorage === 'undefined') return emptyAuthState;
 
@@ -36,8 +49,8 @@ function readStoredState(): AuthState {
     const stored = localStorage.getItem(storageKey);
     if (!stored) return emptyAuthState;
     const parsed = JSON.parse(stored) as Partial<AuthState>;
-    const platform = { ...emptyGuardSession, ...parsed.platform };
-    const tenant = { ...emptyTenantSession, ...parsed.tenant };
+    const platform = { ...emptyGuardSession, ...parsed.platform, permissions: normalizeNames(parsed.platform?.permissions), roles: normalizeNames(parsed.platform?.roles) };
+    const tenant = { ...emptyTenantSession, ...parsed.tenant, permissions: normalizeNames(parsed.tenant?.permissions), roles: normalizeNames(parsed.tenant?.roles) };
     return {
       platform: {
         ...platform,
@@ -79,6 +92,8 @@ export const authStore = {
       platform: {
         ...authState.platform,
         ...session,
+        roles: session.roles === undefined ? authState.platform.roles : normalizeNames(session.roles),
+        permissions: session.permissions === undefined ? authState.platform.permissions : normalizeNames(session.permissions),
         status: session.accessToken ?? authState.platform.accessToken ? 'authenticated' : 'anonymous'
       }
     };
@@ -90,6 +105,8 @@ export const authStore = {
       tenant: {
         ...authState.tenant,
         ...session,
+        roles: session.roles === undefined ? authState.tenant.roles : normalizeNames(session.roles),
+        permissions: session.permissions === undefined ? authState.tenant.permissions : normalizeNames(session.permissions),
         status: session.accessToken ?? authState.tenant.accessToken ? 'authenticated' : 'anonymous'
       }
     };

@@ -1,6 +1,7 @@
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/features/auth/hooks/useAuth';
 import { useSessionPreferences } from '@/features/auth/hooks/useSessionPreferences';
+import { useProfileSession } from '@/features/auth/hooks/useProfileSession';
 import { platformNavigation } from '@/features/platform/navigation/platformNavigation';
 import {
   AppShell,
@@ -11,6 +12,7 @@ import { AppSidebar } from '@/shared/components/navigation/AppSidebar';
 export function PlatformLayout() {
   const navigate = useNavigate();
   const { user, logout } = useAuth('platform');
+  useProfileSession('platform');
   const { locale, timezone } = useSessionPreferences('platform');
 
   async function handleLogout() {

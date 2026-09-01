@@ -12,14 +12,14 @@ import type {
   TenantRegistrationRequest,
   TenantRegistrationResponse,
   TenantContext,
+  AuthSurface,
   TwoFactorChallenge,
   UnifiedLoginRequest,
   UnifiedLoginResponse,
   VerifyLoginTwoFactorRequest
 } from '@/features/auth/types/authTypes';
 import { authClient } from '@/lib/api/authClient';
-import { platformClient } from '@/lib/api/platformClient';
-import { createTenantClient } from '@/lib/api/tenantClient';
+import type { ApiRequestOptions } from '@/lib/api/apiTypes';
 
 type RawTenantContext = {
   uuid?: string;
@@ -37,6 +37,21 @@ type RawTenantContext = {
   defaultTimezone?: string;
 };
 
+type RawPermission = string | { name?: string; code?: string };
+
+function normalizeNames(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.flatMap((item) => {
+    if (typeof item === 'string') return [item];
+    if (item && typeof item === 'object') {
+      const named = item as { name?: unknown; code?: unknown };
+      const name = named.name ?? named.code;
+      return typeof name === 'string' ? [name] : [];
+    }
+    return [];
+  }))];
+}
+
 type RawAccount = {
   account_ref?: string;
   accountRef?: string;
@@ -46,18 +61,24 @@ type RawAccount = {
   authGuard?: AuthGuard;
   label?: string;
   display_name?: string;
+  display_label?: string;
+  name?: string;
+  first_name?: string;
+  last_name?: string;
   displayName?: string;
   email?: string;
   avatar_url?: string | null;
   avatarUrl?: string | null;
   organization?: string | null;
   tenant?: RawTenantContext | null;
-  roles?: string[];
+  roles?: RawPermission[];
   status?: string;
   last_login_at?: string | null;
   lastLoginAt?: string | null;
   uuid?: string;
-  permissions?: string[];
+  id?: string | number;
+  tenant_id?: string | number | null;
+  permissions?: RawPermission[];
   two_factor_enabled?: boolean;
   twoFactorEnabled?: boolean;
 };
@@ -66,6 +87,9 @@ type RawLoginResponse = Omit<UnifiedLoginResponse, 'user' | 'tenant'> & {
   account?: RawAccount;
   user?: RawAccount;
   tenant?: RawTenantContext | null;
+  account_type?: string;
+  tenant_id?: string | number | null;
+  surface?: AuthSurface;
 };
 
 type RawLoginResult = RawLoginResponse | TwoFactorChallenge;
@@ -86,12 +110,13 @@ function normalizeTenant(raw?: RawTenantContext | null, modules: string[] = []):
 }
 
 function normalizeAccount(raw: RawAccount): DiscoveredAccount {
+  const displayName = raw.displayName ?? raw.display_name ?? raw.name ?? ([raw.first_name, raw.last_name].filter(Boolean).join(' ') || raw.email || 'User');
   return {
     accountRef: raw.accountRef ?? raw.account_ref ?? '',
     accountType: raw.accountType ?? raw.account_type ?? 'tenant',
     authGuard: raw.authGuard ?? raw.auth_guard ?? 'tenant',
-    label: raw.label ?? raw.displayName ?? raw.display_name ?? raw.email ?? 'Account',
-    displayName: raw.displayName ?? raw.display_name ?? raw.email ?? 'User',
+    label: raw.label ?? raw.display_label ?? displayName,
+    displayName,
     email: raw.email ?? '',
     avatarUrl: raw.avatarUrl ?? raw.avatar_url ?? null,
     organization: raw.organization ?? null,
@@ -101,8 +126,8 @@ function normalizeAccount(raw: RawAccount): DiscoveredAccount {
           slug: raw.tenant.slug ?? raw.tenant.uuid ?? '',
           status: raw.tenant.status
         }
-      : null,
-    roles: raw.roles ?? [],
+      : raw.tenant_id != null ? { uuid: String(raw.tenant_id), slug: String(raw.tenant_id) } : null,
+    roles: normalizeNames(raw.roles),
     status: raw.status ?? 'active',
     lastLoginAt: raw.lastLoginAt ?? raw.last_login_at ?? null
   };
@@ -115,27 +140,31 @@ function normalizeLoginResponse(response: RawLoginResponse): UnifiedLoginRespons
   }
 
   const modules = response.modules ?? [];
-  const tenant = normalizeTenant(response.tenant, modules);
+  const surface = response.surface ?? (response.account_type === 'platform' ? 'platform' : 'tenant');
+  const tenant = normalizeTenant(response.tenant, modules) ?? (surface === 'tenant' && response.tenant_id != null
+    ? { uuid: String(response.tenant_id), slug: String(response.tenant_id), organizationName: 'Tenant', enabledModules: modules }
+    : null);
   const preferences = response.preferences ?? {};
 
   return {
     ...response,
     user: {
-      uuid: rawUser.uuid ?? '',
-      displayName: rawUser.displayName ?? rawUser.display_name ?? rawUser.email ?? 'User',
+      uuid: rawUser.uuid ?? (rawUser.id != null ? String(rawUser.id) : ''),
+      displayName: rawUser.displayName ?? rawUser.display_name ?? rawUser.name ?? ([rawUser.first_name, rawUser.last_name].filter(Boolean).join(' ') || rawUser.email || 'User'),
       email: rawUser.email ?? '',
       avatarUrl: rawUser.avatarUrl ?? rawUser.avatar_url ?? null,
-      roles: rawUser.roles ?? [],
-      permissions: rawUser.permissions ?? [],
+      roles: normalizeNames(rawUser.roles),
+      permissions: normalizeNames(rawUser.permissions),
       locale: preferences.locale,
       timezone: preferences.timezone,
       twoFactorEnabled: rawUser.twoFactorEnabled ?? rawUser.two_factor_enabled
     },
-    roles: response.roles ?? rawUser.roles ?? [],
-    permissions: response.permissions ?? rawUser.permissions ?? [],
+    roles: normalizeNames(response.roles ?? rawUser.roles),
+    permissions: normalizeNames(response.permissions ?? rawUser.permissions),
     locale: response.locale ?? preferences.locale,
     timezone: response.timezone ?? preferences.timezone,
-    tenant: tenant ?? undefined
+    tenant: tenant ?? undefined,
+    surface
   };
 }
 
@@ -177,6 +206,12 @@ function applyUnifiedSession(response: RawLoginResponse) {
 
   applyTenantSession(normalized);
   return normalized;
+}
+
+function authenticatedAuthOptions(guard: AuthGuard): ApiRequestOptions {
+  const session = guard === 'platform' ? authStore.getSnapshot().platform : authStore.getSnapshot().tenant;
+  if (!session.accessToken) throw new Error('An authenticated session is required.');
+  return { headers: { Authorization: 'Bearer ' + session.accessToken } };
 }
 
 function isTwoFactorChallenge(response: RawLoginResult): response is TwoFactorChallenge {
@@ -231,7 +266,7 @@ export const authApi = {
     };
   },
   forgotPassword: (body: ForgotPasswordRequest) =>
-    authClient.post<{ sent: boolean; message: string; reset_token?: string }, ForgotPasswordRequest>(
+    authClient.post<{ email: string; reset_token?: string }, ForgotPasswordRequest>(
       '/password/forgot',
       body
     ),
@@ -286,40 +321,41 @@ export const authApi = {
   },
   logout: async (guard: AuthGuard) => {
     try {
-      if (guard === 'platform') {
-        await platformClient.post('/auth/logout');
-      } else {
-        const tenant = authStore.getSnapshot().tenant.tenant;
-        if (tenant) {
-          await createTenantClient(tenant.slug ?? tenant.uuid).post('/auth/logout');
-        }
-      }
+      await authClient.post('/logout', undefined, authenticatedAuthOptions(guard));
     } finally {
       authStore.clear(guard);
     }
   },
   refresh: async (guard: AuthGuard) => {
-    if (guard === 'platform') {
-      const response = await platformClient.post<LoginResponse>('/auth/refresh');
-      applyPlatformSession(response.data);
-      return response;
-    }
-
-    const tenant = authStore.getSnapshot().tenant.tenant;
-    if (!tenant) throw new Error('Cannot refresh tenant session without tenant context.');
-    const response = await createTenantClient(tenant.slug ?? tenant.uuid).post<LoginResponse>('/auth/refresh');
-    applyTenantSession(response.data);
-    return response;
+    const response = await authClient.post<{ access_token: string; token_type?: string }>('/refresh', undefined, authenticatedAuthOptions(guard));
+    const session = guard === 'platform' ? authStore.getSnapshot().platform : authStore.getSnapshot().tenant;
+    if (guard === 'platform') authStore.setPlatformSession({ accessToken: response.data.access_token, expiresAt: null });
+    else authStore.setTenantSession({ accessToken: response.data.access_token, expiresAt: null });
+    return { ...response, data: { ...session, accessToken: response.data.access_token, expiresAt: null } };
   },
   me: async (guard: AuthGuard) => {
+    const response = await authClient.get<RawLoginResponse>('/me', authenticatedAuthOptions(guard));
+    const normalized = normalizeLoginResponse(response.data);
+    const session = guard === 'platform' ? authStore.getSnapshot().platform : authStore.getSnapshot().tenant;
+    const tenantSession = authStore.getSnapshot().tenant;
+    const rawUser = response.data.user ?? response.data.account;
+    const roles: string[] = Array.isArray(rawUser?.roles) || Array.isArray(response.data.roles)
+      ? normalized.roles ?? []
+      : session.roles;
+    const permissions: string[] = Array.isArray(rawUser?.permissions) || Array.isArray(response.data.permissions)
+      ? normalized.permissions ?? []
+      : session.permissions;
+    const hydrated = {
+      ...normalized,
+      roles,
+      permissions,
+      user: { ...normalized.user, roles, permissions }
+    };
     if (guard === 'platform') {
-      const response = await platformClient.get<RawLoginResponse>('/auth/me');
-      return { ...response, data: normalizeLoginResponse(response.data) };
+      authStore.setPlatformSession({ user: hydrated.user, roles, permissions });
+    } else {
+      authStore.setTenantSession({ user: hydrated.user, roles, permissions, tenant: normalized.tenant ?? tenantSession.tenant });
     }
-
-    const tenant = authStore.getSnapshot().tenant.tenant;
-    if (!tenant) throw new Error('Cannot load tenant profile without tenant context.');
-    const response = await createTenantClient(tenant.slug ?? tenant.uuid).get<RawLoginResponse>('/auth/me');
-    return { ...response, data: normalizeLoginResponse(response.data) };
+    return { ...response, data: hydrated };
   }
 };

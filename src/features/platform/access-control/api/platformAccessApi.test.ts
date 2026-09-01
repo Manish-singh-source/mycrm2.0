@@ -61,7 +61,7 @@ describe('platformAccessApi', () => {
       filter: { module: 'billing', guard_name: 'platform', status: 'active' }
     });
 
-    expect(mockedGet).toHaveBeenCalledWith('/access-control/permissions', {
+    expect(mockedGet).toHaveBeenCalledWith('/permissions', {
       query: {
         search: 'invoice',
         sort: 'module',
@@ -90,7 +90,7 @@ describe('platformAccessApi', () => {
     await platformAccessApi.permissions.export({ ...payload, selected_ids: ['permission-1'] });
 
     expect(mockedPost).toHaveBeenNthCalledWith(1, '/access-control/roles/export', payload);
-    expect(mockedPost).toHaveBeenNthCalledWith(2, '/access-control/permissions/export', {
+    expect(mockedPost).toHaveBeenNthCalledWith(2, '/permissions/export', {
       ...payload,
       selected_ids: ['permission-1']
     });

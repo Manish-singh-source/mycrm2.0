@@ -45,6 +45,20 @@ describe('permission helpers', () => {
     expect(hasAllPermissions(auth, 'tenant', ['client.view', 'missing'])).toBe(false);
   });
 
+  it('supports backend permission objects and the platform super admin role', () => {
+    const backendShapedAuth = {
+      ...auth,
+      platform: {
+        ...auth.platform,
+        roles: [{ name: 'super_admin' }] as unknown as string[],
+        permissions: [{ name: 'platform_user.view' }] as unknown as string[]
+      }
+    };
+
+    expect(hasPermission(backendShapedAuth, 'platform', 'platform_permission.delete')).toBe(true);
+    expect(hasPermission(backendShapedAuth, 'platform', 'platform_user.view')).toBe(true);
+  });
+
   it('supports wildcard permissions and enabled modules', () => {
     expect(hasPermission({ ...auth, platform: { ...auth.platform, permissions: ['*'] } }, 'platform', 'anything')).toBe(true);
     expect(isModuleEnabled(auth, 'crm')).toBe(true);
