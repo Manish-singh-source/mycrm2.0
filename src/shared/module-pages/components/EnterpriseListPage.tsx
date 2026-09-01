@@ -235,3 +235,4 @@ export function EnterpriseListPage<TRow extends EnterpriseRecord, TForm extends 
     </section>
   );
 }
+

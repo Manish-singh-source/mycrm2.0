@@ -9,9 +9,9 @@ import {
   Download,
   Filter,
   FolderOpen,
-  Loader2,
   Search,
-  Upload
+  Upload,
+  X
 } from 'lucide-react';
 
 import { Button } from '@/shared/components/ui';
@@ -42,6 +42,7 @@ type DataTableProps<TRow> = {
   onOpenSavedViews?: () => void;
   onOpenExport?: () => void;
   onOpenImport?: () => void;
+  onRetry?: () => void;
   selectedRowIds?: string[];
   onSelectionChange?: (ids: string[]) => void;
   bulkActions?: ReactNode;
@@ -74,6 +75,7 @@ export function DataTable<TRow>({
   onOpenSavedViews,
   onOpenExport,
   onOpenImport,
+  onRetry,
   selectedRowIds,
   onSelectionChange,
   bulkActions,
@@ -118,14 +120,11 @@ export function DataTable<TRow>({
     });
   }, [activeSort, columns, data, onSortChange]);
 
-  const allVisibleSelected =
-    sortedData.length > 0 && sortedData.every((row) => selected.includes(getRowId(row)));
+  const allVisibleSelected = sortedData.length > 0 && sortedData.every((row) => selected.includes(getRowId(row)));
 
   function toggleRow(id: string) {
     if (!onSelectionChange) return;
-    onSelectionChange(
-      selected.includes(id) ? selected.filter((rowId) => rowId !== id) : [...selected, id]
-    );
+    onSelectionChange(selected.includes(id) ? selected.filter((rowId) => rowId !== id) : [...selected, id]);
   }
 
   function toggleAll() {
@@ -150,14 +149,7 @@ export function DataTable<TRow>({
   function renderSortIcon(column: DataTableColumn<TRow>) {
     if (!column.enableSorting) return null;
     if (activeSort?.id !== column.id) {
-      return (
-        <ArrowUpDown
-          aria-hidden="true"
-          className="table-sort-indicator"
-          size={14}
-          strokeWidth={2.2}
-        />
-      );
+      return <ArrowUpDown aria-hidden="true" className="table-sort-indicator" size={14} strokeWidth={2.2} />;
     }
     return activeSort.direction === 'asc' ? (
       <ArrowUp aria-hidden="true" size={14} strokeWidth={2.4} />
@@ -168,84 +160,40 @@ export function DataTable<TRow>({
 
   function toggleColumn(column: DataTableColumn<TRow>) {
     if (column.enableHiding === false) return;
-    setHiddenColumns(
-      hiddenColumns.includes(column.id)
-        ? hiddenColumns.filter((id) => id !== column.id)
-        : [...hiddenColumns, column.id]
-    );
+    setHiddenColumns(hiddenColumns.includes(column.id) ? hiddenColumns.filter((id) => id !== column.id) : [...hiddenColumns, column.id]);
   }
 
   return (
     <section className="data-table-shell" aria-busy={loading}>
       {showToolbar ? (
-      <div className="data-table-toolbar">
-        <div className="table-toolbar-primary">
-          <label className="table-search">
-            <Search aria-hidden="true" size={17} />
-            <span className="sr-only">Search records</span>
-            <input
-              type="search"
-              value={searchValue ?? ''}
-              placeholder={searchPlaceholder}
-              onChange={(event) => onSearchChange?.(event.target.value)}
-              disabled={loading}
-            />
-          </label>
-          <span className="table-result-pill">{total} records</span>
+        <div className="data-table-toolbar">
+          <div className="table-toolbar-primary">
+            <label className="table-search">
+              <Search aria-hidden="true" size={17} />
+              <span className="sr-only">Search records</span>
+              <input
+                type="search"
+                value={searchValue ?? ''}
+                placeholder={searchPlaceholder}
+                onChange={(event) => onSearchChange?.(event.target.value)}
+                disabled={loading}
+              />
+              {searchValue ? (
+                <button type="button" className="table-search-clear" aria-label="Clear search" onClick={() => onSearchChange?.('')} disabled={loading}>
+                  <X aria-hidden="true" size={14} />
+                </button>
+              ) : null}
+            </label>
+            <span className="table-result-pill">{total} records</span>
+          </div>
+          <div className="table-actions">
+            {onOpenSavedViews ? <Button type="button" variant="secondary" size="sm" onClick={onOpenSavedViews}><FolderOpen aria-hidden="true" size={15} />Views</Button> : null}
+            {onOpenFilters ? <Button type="button" variant="secondary" size="sm" onClick={onOpenFilters}><Filter aria-hidden="true" size={15} />Filters</Button> : null}
+            {onOpenColumns ? <Button type="button" variant="secondary" size="sm" onClick={onOpenColumns}><Columns3 aria-hidden="true" size={15} />Columns</Button> : null}
+            {onOpenExport ? <Button type="button" variant="secondary" size="sm" onClick={onOpenExport}><Download aria-hidden="true" size={15} />Export</Button> : null}
+            {onOpenImport ? <Button type="button" variant="secondary" size="sm" onClick={onOpenImport}><Upload aria-hidden="true" size={15} />Import</Button> : null}
+          </div>
         </div>
-        <div className="table-actions">
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={onOpenSavedViews}
-            disabled={!onOpenSavedViews}
-          >
-            <FolderOpen aria-hidden="true" size={15} />
-            Views
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={onOpenFilters}
-            disabled={!onOpenFilters}
-          >
-            <Filter aria-hidden="true" size={15} />
-            Filters
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={onOpenColumns}
-            disabled={!onOpenColumns}
-          >
-            <Columns3 aria-hidden="true" size={15} />
-            Columns
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={onOpenExport}
-            disabled={!onOpenExport}
-          >
-            <Download aria-hidden="true" size={15} />
-            Export
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={onOpenImport}
-            disabled={!onOpenImport}
-          >
-            <Upload aria-hidden="true" size={15} />
-            Import
-          </Button>
-        </div>
-      </div>
       ) : null}
 
       {selected.length > 0 ? (
@@ -256,44 +204,31 @@ export function DataTable<TRow>({
       ) : null}
 
       {error ? (
-        <div className="surface-error" role="alert">
-          {error}
-        </div>
-      ) : null}
-      {loading ? (
-        <div className="surface-state table-loading-state" role="status">
-          <Loader2 aria-hidden="true" className="table-spinner" size={18} />
-          Loading records...
+        <div className="surface-error table-error-state" role="alert">
+          <span>{error}</span>
+          {onRetry ? <Button type="button" size="sm" variant="secondary" onClick={onRetry}>Retry</Button> : null}
         </div>
       ) : null}
 
-      {!loading && sortedData.length === 0 ? (
-        <>{emptyState ?? <div className="empty-state">No records found.</div>}</>
+      {loading ? <TableSkeleton columnCount={visibleColumns.length + (onSelectionChange ? 1 : 0)} /> : null}
+
+      {!loading && !error && sortedData.length === 0 ? (
+        <>{emptyState ?? <div className="empty-state"><h2>No records found</h2><p>No data is available for this view.</p></div>}</>
       ) : null}
 
-      {!loading && sortedData.length > 0 ? (
+      {!loading && !error && sortedData.length > 0 ? (
         <div className="data-table" role="region" tabIndex={0}>
           <table>
             <thead>
               <tr>
                 {onSelectionChange ? (
                   <th className="selection-cell">
-                    <input
-                      type="checkbox"
-                      aria-label="Select all rows"
-                      checked={allVisibleSelected}
-                      onChange={toggleAll}
-                    />
+                    <input type="checkbox" aria-label="Select all rows on this page" checked={allVisibleSelected} onChange={toggleAll} />
                   </th>
                 ) : null}
                 {visibleColumns.map((column) => (
                   <th key={column.id}>
-                    <button
-                      type="button"
-                      className="table-heading-button"
-                      disabled={!column.enableSorting}
-                      onClick={() => toggleSort(column)}
-                    >
+                    <button type="button" className="table-heading-button" disabled={!column.enableSorting} onClick={() => toggleSort(column)}>
                       <span>{column.header}</span>
                       {renderSortIcon(column)}
                     </button>
@@ -305,20 +240,13 @@ export function DataTable<TRow>({
               {sortedData.map((row) => {
                 const rowId = getRowId(row);
                 return (
-                  <tr key={rowId}>
+                  <tr key={rowId} className={selected.includes(rowId) ? 'is-selected' : undefined}>
                     {onSelectionChange ? (
                       <td className="selection-cell">
-                        <input
-                          type="checkbox"
-                          aria-label={`Select row ${rowId}`}
-                          checked={selected.includes(rowId)}
-                          onChange={() => toggleRow(rowId)}
-                        />
+                        <input type="checkbox" aria-label={`Select row ${rowId}`} checked={selected.includes(rowId)} onChange={() => toggleRow(rowId)} />
                       </td>
                     ) : null}
-                    {visibleColumns.map((column) => (
-                      <td key={column.id}>{column.cell(row)}</td>
-                    ))}
+                    {visibleColumns.map((column) => <td key={column.id}>{column.cell(row)}</td>)}
                   </tr>
                 );
               })}
@@ -328,59 +256,52 @@ export function DataTable<TRow>({
       ) : null}
 
       {showPagination ? (
-      <footer className="table-pagination">
-        <span>
-          Showing {startRecord} to {endRecord} of {total} results
-        </span>
-        <div className="table-pagination-controls">
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={() => onPageChange?.(page - 1)}
-            disabled={!onPageChange || page <= 1}
-            aria-label="Previous page"
-          >
-            <ChevronLeft aria-hidden="true" size={15} />
-          </Button>
-          <span className="table-page-current">
-            Page {page} of {pageCount}
-          </span>
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={() => onPageChange?.(page + 1)}
-            disabled={!onPageChange || page >= pageCount}
-            aria-label="Next page"
-          >
-            <ChevronRight aria-hidden="true" size={15} />
-          </Button>
-          <select
-            aria-label="Rows per page"
-            value={perPage}
-            disabled={!onPerPageChange}
-            onChange={(event) => onPerPageChange?.(Number(event.target.value))}
-          >
-            {pageSizeOptions.map((option) => <option key={option} value={option}>{option} / page</option>)}
-          </select>
-        </div>
-      </footer>
+        <footer className="table-pagination">
+          <span>Showing {startRecord} to {endRecord} of {total} results</span>
+          <div className="table-pagination-controls">
+            <Button type="button" variant="secondary" size="sm" onClick={() => onPageChange?.(page - 1)} disabled={!onPageChange || page <= 1} aria-label="Previous page">
+              <ChevronLeft aria-hidden="true" size={15} />
+            </Button>
+            <span className="table-page-current">Page {page} of {pageCount}</span>
+            <Button type="button" variant="secondary" size="sm" onClick={() => onPageChange?.(page + 1)} disabled={!onPageChange || page >= pageCount} aria-label="Next page">
+              <ChevronRight aria-hidden="true" size={15} />
+            </Button>
+            <select aria-label="Rows per page" value={perPage} disabled={!onPerPageChange} onChange={(event) => onPerPageChange?.(Number(event.target.value))}>
+              {pageSizeOptions.map((option) => <option key={option} value={option}>{option} / page</option>)}
+            </select>
+          </div>
+        </footer>
       ) : null}
 
       <div className="column-visibility-inline" hidden>
         {columns.map((column) => (
           <label key={column.id}>
-            <input
-              type="checkbox"
-              checked={!hiddenColumns.includes(column.id)}
-              disabled={column.enableHiding === false}
-              onChange={() => toggleColumn(column)}
-            />
+            <input type="checkbox" checked={!hiddenColumns.includes(column.id)} disabled={column.enableHiding === false} onChange={() => toggleColumn(column)} />
             {column.header}
           </label>
         ))}
       </div>
     </section>
+  );
+}
+
+function TableSkeleton({ columnCount }: { columnCount: number }) {
+  const columns = Array.from({ length: Math.max(1, columnCount) });
+  const rows = Array.from({ length: 8 });
+
+  return (
+    <div className="data-table table-skeleton" role="status" aria-label="Loading records">
+      <table>
+        <tbody>
+          {rows.map((_, rowIndex) => (
+            <tr key={rowIndex}>
+              {columns.map((__, columnIndex) => (
+                <td key={columnIndex}><span className="skeleton-line" /></td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }

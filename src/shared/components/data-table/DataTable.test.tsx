@@ -53,10 +53,11 @@ describe('DataTable', () => {
 
   it('announces loading, errors, and empty states', () => {
     const { rerender } = render(<DataTable columns={columns} data={[]} getRowId={(row) => row.id} loading />);
-    expect(screen.getByRole('status')).toHaveTextContent('Loading records');
+    expect(screen.getByRole('status', { name: 'Loading records' })).toBeInTheDocument();
 
     rerender(<DataTable columns={columns} data={[]} getRowId={(row) => row.id} error="Could not load" />);
     expect(screen.getByRole('alert')).toHaveTextContent('Could not load');
-    expect(screen.getByText('No records found.')).toBeInTheDocument();
+    expect(screen.queryByText('No records found')).not.toBeInTheDocument();
   });
 });
+

@@ -1,6 +1,6 @@
 import { FormEvent, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { ArrowRight, Building2, CheckCircle2, Eye, KeyRound, LogIn, Mail, Search, ShieldCheck } from 'lucide-react';
+import { ArrowRight, Building2, CheckCircle2, Eye, EyeOff, KeyRound, LogIn, Mail, Search, ShieldCheck } from 'lucide-react';
 
 import { authApi } from '@/features/auth/api/authApi';
 import type { AccountDiscovery, AuthGuard, DiscoveredAccount, LoginResult } from '@/features/auth/types/authTypes';
@@ -41,6 +41,7 @@ export function AuthLoginPage() {
   const requestedGuard = (location.state as { guard?: AuthGuard } | null)?.guard;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(true);
   const [discovery, setDiscovery] = useState<AccountDiscovery | null>(null);
   const [selectedRef, setSelectedRef] = useState('');
@@ -288,10 +289,17 @@ export function AuthLoginPage() {
                     name="password"
                     onChange={(event) => setPassword(event.target.value)}
                     required
-                    type="password"
+                    type={showPassword ? 'text' : 'password'}
                     value={password}
                   />
-                  <Eye size={18} aria-hidden="true" />
+                  <button
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    className="auth-input__toggle"
+                    onClick={() => setShowPassword((visible) => !visible)}
+                    type="button"
+                  >
+                    {showPassword ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
+                  </button>
                 </span>
               </label>
 

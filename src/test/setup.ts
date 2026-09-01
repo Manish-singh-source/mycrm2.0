@@ -10,7 +10,8 @@ beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 afterEach(() => {
   server.resetHandlers();
   authStore.clear();
-  localStorage.clear();
+  globalThis.localStorage?.clear?.();
 });
 
 afterAll(() => server.close());
+
