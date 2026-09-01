@@ -33,6 +33,16 @@ import {
 } from '@/features/platform/access-control/pages/PlatformAccessPages';
 import { PlatformDashboardPage } from '@/features/platform/dashboard/pages/PlatformDashboardPage';
 import {
+  PlatformDepartmentsListPage,
+  PlatformDepartmentCreatePage,
+  PlatformDepartmentEditPage,
+  PlatformDepartmentViewPage,
+  PlatformDesignationsListPage,
+  PlatformDesignationCreatePage,
+  PlatformDesignationEditPage,
+  PlatformDesignationViewPage
+} from '@/features/platform/organization/pages/PlatformOrganizationPages';
+import {
   PlatformStaffCreatePage,
   PlatformStaffEditPage,
   PlatformStaffListPage,
@@ -305,6 +315,69 @@ export const appRouter = createBrowserRouter([
         )
       },
       {
+        path: 'staff/departments',
+        element: (
+          <RequirePermission guard="platform" anyOf={['platform_department.view']}>
+            <PlatformDepartmentsListPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'staff/departments/create',
+        element: (
+          <RequirePermission guard="platform" anyOf={['platform_department.create']}>
+            <PlatformDepartmentCreatePage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'staff/departments/:id',
+        element: (
+          <RequirePermission guard="platform" anyOf={['platform_department.view']}>
+            <PlatformDepartmentViewPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'staff/departments/:id/edit',
+        element: (
+          <RequirePermission guard="platform" anyOf={['platform_department.edit']}>
+            <PlatformDepartmentEditPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'staff/designations',
+        element: (
+          <RequirePermission guard="platform" anyOf={['platform_designation.view']}>
+            <PlatformDesignationsListPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'staff/designations/create',
+        element: (
+          <RequirePermission guard="platform" anyOf={['platform_designation.create']}>
+            <PlatformDesignationCreatePage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'staff/designations/:id',
+        element: (
+          <RequirePermission guard="platform" anyOf={['platform_designation.view']}>
+            <PlatformDesignationViewPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'staff/designations/:id/edit',
+        element: (
+          <RequirePermission guard="platform" anyOf={['platform_designation.edit']}>
+            <PlatformDesignationEditPage />
+          </RequirePermission>
+        )
+      },      {
         path: 'staff/:id',
         element: (
           <RequirePermission guard="platform" anyOf={['platform_user.view']}>

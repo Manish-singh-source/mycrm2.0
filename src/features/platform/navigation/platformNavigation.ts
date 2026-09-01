@@ -1,4 +1,4 @@
-﻿import {
+import {
   Activity,
   BadgeDollarSign,
   Bell,
@@ -56,7 +56,11 @@ export const platformNavigation: NavGroup[] = [
   {
     id: 'staff',
     label: 'Platform Staffs',
-    items: [{ label: 'Staffs', to: PLATFORM_ROUTES.staff, icon: UserRoundCog, permission: 'platform_user.view' }]
+    items: [
+      { label: 'Staffs', to: PLATFORM_ROUTES.staff, icon: UserRoundCog, permission: 'platform_user.view' },
+      { label: 'Departments', to: PLATFORM_ROUTES.organization.departments, icon: Building2, permission: 'platform_department.view' },
+      { label: 'Designations', to: PLATFORM_ROUTES.organization.designations, icon: FileBadge2, permission: 'platform_designation.view' }
+    ]
   },
   {
     id: 'tenants',

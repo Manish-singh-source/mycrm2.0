@@ -160,31 +160,40 @@ async function detail<TRecord extends PlatformRecord>(path: string) {
 
 export const platformAccessApi = {
   roles: {
-    list: (query?: ApiQuery) => list<PlatformRecord>('/access-control/roles', query),
-    detail: (id: string) => detail<PlatformRecord>(`/access-control/roles/${encodeURIComponent(id)}`),
-    create: async (body: RolePayload) => unwrapRecord(await platformClient.post('/access-control/roles', body)),
+    list: (query?: ApiQuery) => list<PlatformRecord>('/roles', query),
+    detail: (id: string) => detail<PlatformRecord>(`/roles/${encodeURIComponent(id)}`),
+    create: async (body: RolePayload) => unwrapRecord(await platformClient.post('/roles', body)),
     update: async (id: string, body: Partial<RolePayload>) =>
-      unwrapRecord(await platformClient.patch(`/access-control/roles/${encodeURIComponent(id)}`, body)),
+      unwrapRecord(await platformClient.patch(`/roles/${encodeURIComponent(id)}`, body)),
     delete: (id: string, body: { audit_reason: string }) =>
-      platformClient.delete(`/access-control/roles/${encodeURIComponent(id)}`, { body }),
+      platformClient.delete(`/roles/${encodeURIComponent(id)}`, { body }),
     clone: (id: string, body: Record<string, unknown>) =>
-      platformClient.post(`/access-control/roles/${encodeURIComponent(id)}/clone`, body),
+      platformClient.post(`/roles/${encodeURIComponent(id)}/clone`, body),
     activate: (id: string, audit_reason: string) =>
-      platformClient.post(`/access-control/roles/${encodeURIComponent(id)}/activate`, { audit_reason }),
+      platformClient.post(`/roles/${encodeURIComponent(id)}/activate`, { audit_reason }),
     deactivate: (id: string, audit_reason: string) =>
-      platformClient.post(`/access-control/roles/${encodeURIComponent(id)}/deactivate`, { audit_reason }),
-    permissions: (id: string) =>
-      platformClient.get<{ permissions: GroupedPermissions }>(`/access-control/roles/${encodeURIComponent(id)}/permissions`),
+      platformClient.post(`/roles/${encodeURIComponent(id)}/deactivate`, { audit_reason }),
+    permissions: async (id: string): Promise<NormalizedApiResponse<{ permissions: GroupedPermissions }>> => {
+      const response = await platformClient.get<GroupedPermissions | { permissions: GroupedPermissions }>(`/roles/${encodeURIComponent(id)}/permissions`);
+      const groups = response.data && !Array.isArray(response.data)
+        ? ('permissions' in response.data ? response.data.permissions : response.data) as GroupedPermissions
+        : {};
+      return { ...response, data: { permissions: groups ?? {} } };
+    },
     replacePermissions: (id: string, body: { permission_ids: string[]; audit_reason: string }) =>
-      platformClient.put(`/access-control/roles/${encodeURIComponent(id)}/permissions`, body),
-    users: (id: string) => platformClient.get<{ users: PlatformRecord[] }>(`/access-control/roles/${encodeURIComponent(id)}/users`),
+      platformClient.put(`/roles/${encodeURIComponent(id)}/permissions`, body),
+    users: async (id: string): Promise<NormalizedApiResponse<{ users: PlatformRecord[] }>> => {
+      const response = await platformClient.get<PlatformRecord[] | { users: PlatformRecord[] }>(`/roles/${encodeURIComponent(id)}/users`);
+      const users = Array.isArray(response.data) ? response.data : response.data?.users ?? [];
+      return { ...response, data: { users } };
+    },
     assignUsers: (id: string, body: { platform_user_ids: string[]; audit_reason: string; effective_date?: string; notify_users?: boolean }) =>
-      platformClient.post(`/access-control/roles/${encodeURIComponent(id)}/users`, body),
+      platformClient.post(`/roles/${encodeURIComponent(id)}/users`, body),
     removeUser: (id: string, userId: string, audit_reason: string) =>
-      platformClient.delete(`/access-control/roles/${encodeURIComponent(id)}/users/${encodeURIComponent(userId)}`, {
+      platformClient.delete(`/roles/${encodeURIComponent(id)}/users/${encodeURIComponent(userId)}`, {
         body: { audit_reason }
       }),
-    export: (body: AccessExportPayload) => platformClient.post('/access-control/roles/export', body)
+    export: (body: AccessExportPayload) => platformClient.post('/roles/export', body)
   },
   permissions: {
     list: (query?: ApiQuery) => list<PlatformRecord>('/permissions', query),

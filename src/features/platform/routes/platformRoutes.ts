@@ -9,6 +9,10 @@ export const PLATFORM_ROUTES = {
   teams: `${platformBase}/teams`,
   teamRoles: `${platformBase}/team-roles`,
   staff: `${platformBase}/staff`,
+  organization: {
+    departments: `${platformBase}/staff/departments`,
+    designations: `${platformBase}/staff/designations`
+  },
   tenants: `${platformBase}/tenants`,
   subscriptions: `${platformBase}/subscriptions`,
   catalog: {

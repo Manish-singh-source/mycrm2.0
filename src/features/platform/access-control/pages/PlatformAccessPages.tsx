@@ -200,7 +200,7 @@ function displayText(record: PlatformRecord | null | undefined, keys: string[], 
 
 function activityRows(record: PlatformRecord, kind: ResourceKind) {
   const rows = (record.activity as PlatformRecord[] | undefined) ?? [];
-  return rows.length > 0 ? rows : kind === 'permissions' ? [] : [record];
+  return rows;
 }
 
 function roleDisplayDetails(record: Record<string, unknown>, kind: ResourceKind) {
@@ -233,7 +233,11 @@ function roleDisplayDetails(record: Record<string, unknown>, kind: ResourceKind)
     'permissions_count',
     'users_count',
     'permissions',
-    'users'
+    'users',
+    'roleAssignments',
+    'modelAssignments',
+    'created_at',
+    'updated_at'
   ]);
   return Object.fromEntries(Object.entries(record).filter(([key]) => !hidden.has(key)));
 }
@@ -689,7 +693,7 @@ function ResourceList({ kind }: { kind: ResourceKind }) {
 
   const header = (
     <PageHeader
-      breadcrumbs={kind === 'permissions' ? undefined : <AdminBreadcrumbs items={['Access Control', meta.label]} />}
+      breadcrumbs={kind === 'roles' || kind === 'permissions' ? undefined : <AdminBreadcrumbs items={['Access Control', meta.label]} />}
       title={meta.label}
       description={descriptionFor(kind)}
       actions={
@@ -799,13 +803,10 @@ function ResourceList({ kind }: { kind: ResourceKind }) {
 
   if (kind === 'roles') {
     return (
-      <section className="enterprise-module-page platform-access-page admin-master-page">
+      <section className="enterprise-module-page platform-access-page">
         {header}
         <ResourceStats kind={kind} rows={rows} kpis={kpis} />
-        <div className="admin-master-grid">
-          <div className="admin-master-main">{table}</div>
-          <AuditRail rows={rows} />
-        </div>
+        {table}
 
         <StandardListControls
           kind={kind}
@@ -1235,38 +1236,42 @@ function RoleActionsMenu({
           <hr />
           <PermissionButton
             guard="platform"
-            permission="platform_role.view"
+            permission="platform_role.edit"
             type="button"
             role="menuitem"
             variant="ghost"
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => run(() => handlers.onAction('assignUsers', row))}
           >
-            <Users size={15} aria-hidden="true" /> View Assigned Users
+            <Users size={15} aria-hidden="true" /> Manage Assigned Users
           </PermissionButton>
           <PermissionButton
             guard="platform"
-            permission="platform_role.view"
+            permission="platform_role.edit"
             type="button"
             role="menuitem"
             variant="ghost"
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => run(() => handlers.onDrawer('assignPermissions', row))}
           >
-            <ShieldCheck size={15} aria-hidden="true" /> View Permissions
+            <ShieldCheck size={15} aria-hidden="true" /> Manage Permissions
           </PermissionButton>
-          <button
+          <PermissionButton
+            guard="platform"
+            permission="audit_log.view"
             type="button"
             role="menuitem"
+            variant="ghost"
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => run(() => handlers.onAction('auditHistory', row))}
           >
             <KeyRound size={15} aria-hidden="true" /> Audit History
-          </button>
+          </PermissionButton>
           <hr />
           <PermissionButton
             guard="platform"
             permission="platform_role.delete"
+            disabled={Boolean(row.is_system)}
             type="button"
             role="menuitem"
             variant="ghost"
@@ -1597,7 +1602,7 @@ function RoleFormPage({ record, title }: { record?: PlatformRecord; title?: stri
         <SelectField form={form} name="guard_name" label="Guard name" options={['platform']} formatOption={titleCaseOption} />
         <InputField form={form} name="description" label="Description" type="textarea" />
         <SelectField form={form} name="status" label="Status" options={['active', 'inactive']} />
-        <CheckboxField form={form} name="is_system" label="System role" />
+        <CheckboxField form={form} name="is_system" label="System role" disabled={Boolean(record)} />
         {record ? <InputField form={form} name="audit_reason" label="Audit reason" /> : null}
       </FormGrid>
       <RolePermissionSelector
@@ -2024,7 +2029,7 @@ function ResourceView({ kind, record }: { kind: ResourceKind; record: PlatformRe
           <PermissionGroups groups={permissionGroups} />
         ) : null}
         {activeTab === 'users' && kind === 'teams' ? <TeamMembersPanel team={record} /> : null}
-        {activeTab === 'users' && kind !== 'teams' ? (
+        {activeTab === 'users' && kind === 'roles' ? (
           <RecordList
             rows={
               (record.users as PlatformRecord[] | undefined) ??
@@ -3796,13 +3801,14 @@ function generateTeamCode(name: string) {
   return code || 'TEAM';
 }
 
-function CheckboxField({ form, name, label }: { form: any; name: string; label: ReactNode }) {
+function CheckboxField({ form, name, label, disabled = false }: { form: any; name: string; label: ReactNode; disabled?: boolean }) {
   const error = form.formState.errors[name]?.message;
   const errorId = `${name}-error`;
   return (
     <label className={`check-row${error ? ' form-field-invalid' : ''}`}>
       <input
         type="checkbox"
+        disabled={disabled}
         aria-invalid={Boolean(error)}
         aria-describedby={error ? errorId : undefined}
         {...form.register(name)}
@@ -4155,7 +4161,6 @@ function SummaryTile({ icon, label, value }: { icon: ReactNode; label: string; v
 }
 
 function ResourceStats({ kind, rows, kpis }: { kind: ResourceKind; rows: PlatformRecord[]; kpis?: PlatformListKpis }) {
-  const permissions = rows.reduce((sum, row) => sum + Number(row.permissions_count ?? 0), 0);
   const assigned = rows.reduce(
     (sum, row) =>
       sum + Number(kind === 'permissions' ? row.roles_count ?? 0 : row.users_count ?? row.members_count ?? 0),
@@ -4184,9 +4189,6 @@ function ResourceStats({ kind, rows, kpis }: { kind: ResourceKind; rows: Platfor
         label={kind === 'roles' ? 'Assigned Users' : 'Assignments'}
         value={String(kpis?.assignments ?? assigned)}
       />
-      {kind === 'roles' ? (
-        <SummaryTile icon={<ShieldCheck />} label="Total Permissions" value={String(permissions)} />
-      ) : null}
     </section>
   );
 }
@@ -4195,10 +4197,25 @@ function AuditRail({ rows, compact = false, record, kind }: { rows: PlatformReco
   const [visible, setVisible] = useState(true);
   const [activeTab, setActiveTab] = useState<'activity' | 'details'>('activity');
   const [showFull, setShowFull] = useState(false);
+  const auditSubjectType = kind === 'permissions'
+    ? 'App\Models\PlatformPermission'
+    : kind === 'roles'
+      ? 'App\Models\PlatformRole'
+      : undefined;
+  const auditSubjectId = kind === 'permissions' || kind === 'roles' ? record?.id : undefined;
   const auditQuery = useQuery({
-    queryKey: platformQueryKeys.list('platform-audit-logs-access-control', { per_page: showFull ? 25 : 6, subject_type: kind === 'permissions' ? 'App\\Models\\PlatformPermission' : undefined, subject_id: kind === 'permissions' ? record?.id : undefined }),
-    enabled: kind !== 'permissions' || Boolean(record?.id),
-    queryFn: () => platformAccessApi.audit.list({ per_page: showFull ? 25 : 6, sort: 'created_at', direction: 'desc', ...(kind === 'permissions' ? { subject_type: 'App\\Models\\PlatformPermission', subject_id: record?.id } : {}) })
+    queryKey: platformQueryKeys.list('platform-audit-logs-access-control', {
+      per_page: showFull ? 25 : 6,
+      subject_type: auditSubjectType,
+      subject_id: auditSubjectId
+    }),
+    enabled: !auditSubjectType || Boolean(auditSubjectId),
+    queryFn: () => platformAccessApi.audit.list({
+      per_page: showFull ? 25 : 6,
+      sort: 'created_at',
+      direction: 'desc',
+      ...(auditSubjectType ? { subject_type: auditSubjectType, subject_id: auditSubjectId } : {})
+    })
   });
   const exportMutation = useMutation({
     mutationFn: (delivery: 'job' | 'download') =>

@@ -5346,3 +5346,69 @@ textarea:focus-visible {
   0% { background-position: 100% 0; }
   100% { background-position: -100% 0; }
 }
+
+/* Directory forms do not use the optional RBAC side panel. Keep the form full width. */
+.organization-form-shell {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.organization-form-shell .enterprise-form {
+  grid-column: 1 / -1;
+}
+
+
+.organization-form-actions {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 0;
+  padding: 16px 20px;
+  width: 100%;
+}
+
+.organization-form-actions .button {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+  min-height: 42px;
+  min-width: 120px;
+  padding: 10px 20px;
+}
+
+@media (max-width: 640px) {
+  .organization-form-actions {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .organization-form-actions .button {
+    width: 100%;
+  }
+}
+
+
+/* Keep organization form actions visually attached to the form card. */
+.organization-form-shell {
+  gap: 0;
+}
+
+.organization-form-shell .enterprise-form {
+  border-radius: 10px 10px 0 0;
+}
+
+.organization-form-shell .organization-form-actions {
+  border-radius: 0 0 10px 10px;
+  margin-top: 0;
+}
+
+
+.organization-form-shell .organization-form-actions {
+  padding-bottom: 28px;
+}
+
+
+.organization-form-shell .organization-form-actions {
+  padding-right: 28px;
+}
+

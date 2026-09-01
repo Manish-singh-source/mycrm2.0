@@ -39,7 +39,7 @@ describe('platformAccessApi', () => {
       filter: { status: 'active', type: 'custom', guard_name: 'platform' }
     });
 
-    expect(mockedGet).toHaveBeenCalledWith('/access-control/roles', {
+    expect(mockedGet).toHaveBeenCalledWith('/roles', {
       query: {
         search: 'admin',
         page: 2,
@@ -89,7 +89,7 @@ describe('platformAccessApi', () => {
     await platformAccessApi.roles.export(payload);
     await platformAccessApi.permissions.export({ ...payload, selected_ids: ['permission-1'] });
 
-    expect(mockedPost).toHaveBeenNthCalledWith(1, '/access-control/roles/export', payload);
+    expect(mockedPost).toHaveBeenNthCalledWith(1, '/roles/export', payload);
     expect(mockedPost).toHaveBeenNthCalledWith(2, '/permissions/export', {
       ...payload,
       selected_ids: ['permission-1']

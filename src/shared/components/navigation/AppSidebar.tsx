@@ -5,6 +5,7 @@ import { hasPermission, isModuleEnabled } from '@/features/auth/permissions/perm
 import { useAuthStore } from '@/features/auth/store/authStore';
 import type { AuthGuard } from '@/features/auth/types/authTypes';
 import type { NavGroup, NavItem } from '@/shared/components/navigation/navigationTypes';
+import { flattenNavigation } from '@/shared/components/navigation/navigationUtils';
 
 type AppSidebarProps = {
   guard: AuthGuard;
@@ -59,6 +60,7 @@ export function AppSidebar({ guard, title, groups, isCollapsed = false, onToggle
                 return (
                   <NavLink
                     className="nav-link"
+                    end={flattenNavigation(groups).some((candidate) => candidate.to !== item.to && candidate.to.startsWith(`${item.to}/`))}
                     to={item.to}
                     key={item.to}
                     title={item.moduleCode ? `${item.label} requires the ${item.moduleCode} module to be enabled.` : item.label}
