@@ -69,7 +69,7 @@ type ModalKind =
   | 'auditHistory'
   | null;
 
-type DrawerKind = 'assignPermissions' | 'permissionDetail' | 'filters' | null;
+type DrawerKind = 'assignPermissions' | 'filters' | null;
 type ListSort = { id: string; direction: 'asc' | 'desc' } | null;
 type AccessSavedView = SavedView & {
   filters: Record<string, string>;
@@ -1336,15 +1336,6 @@ function ResourceActionsMenu({
 
           {kind === 'permissions' ? (
             <>
-              <hr />
-              <button
-                type="button"
-                role="menuitem"
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => run(() => handlers.onDrawer('permissionDetail', row))}
-              >
-                <ShieldCheck size={15} aria-hidden="true" /> Permission Detail
-              </button>
               {!row.is_system ? (
                 <>
                   <hr />
@@ -2251,11 +2242,6 @@ function StandardListControls({
         onClose={onClose}
         onSaved={onClose}
       />
-      <PermissionDetailDrawer
-        open={drawer === 'permissionDetail'}
-        record={selectedRecord}
-        onClose={onClose}
-      />
       <AssignUsersModal open={modal === 'assignUsers'} role={selectedRecord} onClose={onClose} />
       <AppModal
         open={modal === 'auditHistory'}
@@ -2673,7 +2659,6 @@ function AssignUsersModal({
   const [effectiveDate, setEffectiveDate] = useState('');
   const [notifyUsers, setNotifyUsers] = useState(true);
   const [auditReason, setAuditReason] = useState('Role assignment update');
-  const [removeAuditReason, setRemoveAuditReason] = useState('User moved teams');
   const usersQuery = useQuery({
     queryKey: platformQueryKeys.related(resourceMeta.roles.resourceKey, idOf(role), 'users'),
     queryFn: () => platformAccessApi.roles.users(idOf(role)),
@@ -2704,7 +2689,7 @@ function AssignUsersModal({
   });
   const removeMutation = useMutation({
     mutationFn: (userId: string) =>
-      platformAccessApi.roles.removeUser(idOf(role), userId, removeAuditReason),
+      platformAccessApi.roles.removeUser(idOf(role), userId, auditReason),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
         queryKey: platformQueryKeys.resource(resourceMeta.roles.resourceKey)
@@ -2838,13 +2823,6 @@ function AssignUsersModal({
         <label>
           Audit reason
           <textarea value={auditReason} onChange={(event) => setAuditReason(event.target.value)} />
-        </label>
-        <label>
-          Remove audit reason
-          <textarea
-            value={removeAuditReason}
-            onChange={(event) => setRemoveAuditReason(event.target.value)}
-          />
         </label>
       </div>
     </AppModal>
@@ -3492,27 +3470,6 @@ function TeamRoleEditorModal({
   );
 }
 
-function PermissionDetailDrawer({
-  open,
-  record,
-  onClose
-}: {
-  open: boolean;
-  record?: PlatformRecord | null;
-  onClose: () => void;
-}) {
-  return (
-    <AppDrawer
-      open={open}
-      onClose={onClose}
-      title="Permission detail"
-      guard="platform"
-      permission="platform_permission.view"
-    >
-      <RecordDetails record={record ?? {}} />
-    </AppDrawer>
-  );
-}
 
 function FormShell({
   backTo,

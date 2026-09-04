@@ -98,6 +98,12 @@ export type UnifiedLoginResponse = LoginResponse & {
   };
 };
 
+export type TwoFactorSetupRequired = {
+  requires_2fa_setup: true;
+  account_type: string;
+  surface: AuthSurface;
+};
+
 export type TwoFactorChallenge = {
   requires_2fa: true;
   challenge_token: string;
@@ -108,7 +114,8 @@ export type TwoFactorChallenge = {
 
 export type LoginResult =
   | { type: 'logged_in'; session: UnifiedLoginResponse }
-  | { type: '2fa_required'; challenge: TwoFactorChallenge };
+  | { type: '2fa_required'; challenge: TwoFactorChallenge }
+  | { type: '2fa_setup_required'; setup: TwoFactorSetupRequired };
 
 export type DiscoverAccountsRequest = {
   email: string;
@@ -239,4 +246,8 @@ export type TenantRegistrationResponse = {
   auto_login?: boolean;
   message?: string;
 };
+
+
+
+
 

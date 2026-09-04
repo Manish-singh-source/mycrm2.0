@@ -14,11 +14,13 @@ import type {
   TenantContext,
   AuthSurface,
   TwoFactorChallenge,
+  TwoFactorSetupRequired,
   UnifiedLoginRequest,
   UnifiedLoginResponse,
   VerifyLoginTwoFactorRequest
 } from '@/features/auth/types/authTypes';
 import { authClient } from '@/lib/api/authClient';
+import { platformClient } from '@/lib/api/platformClient';
 import type { ApiRequestOptions } from '@/lib/api/apiTypes';
 
 type RawTenantContext = {
@@ -92,7 +94,7 @@ type RawLoginResponse = Omit<UnifiedLoginResponse, 'user' | 'tenant'> & {
   surface?: AuthSurface;
 };
 
-type RawLoginResult = RawLoginResponse | TwoFactorChallenge;
+type RawLoginResult = RawLoginResponse | TwoFactorChallenge | TwoFactorSetupRequired;
 
 function normalizeTenant(raw?: RawTenantContext | null, modules: string[] = []): TenantContext | null {
   if (!raw?.uuid && !raw?.slug) return null;
@@ -218,7 +220,15 @@ function isTwoFactorChallenge(response: RawLoginResult): response is TwoFactorCh
   return 'requires_2fa' in response && response.requires_2fa === true;
 }
 
+function isTwoFactorSetupRequired(response: RawLoginResult): response is TwoFactorSetupRequired {
+  return 'requires_2fa_setup' in response && response.requires_2fa_setup === true;
+}
+
 function normalizeLoginResult(response: RawLoginResult): LoginResult {
+  if (isTwoFactorSetupRequired(response)) {
+    return { type: '2fa_setup_required', setup: response };
+  }
+
   if (isTwoFactorChallenge(response)) {
     return { type: '2fa_required', challenge: response };
   }
@@ -258,6 +268,8 @@ export const authApi = {
       data: normalizeLoginResult(response.data)
     };
   },
+  enableRequiredTwoFactor: (email: string, password: string) => platformClient.post<{ setup_token: string; secret: string; provisioning_uri: string }, { email: string; password: string }>('/2fa/enable', { email, password }),
+  confirmRequiredTwoFactor: (setupToken: string, code: string) => platformClient.post<Record<string, unknown>, { setup_token: string; code: string }>('/2fa/confirm', { setup_token: setupToken, code }),
   verifyLoginTwoFactor: async (body: VerifyLoginTwoFactorRequest) => {
     const response = await authClient.post<RawLoginResponse, VerifyLoginTwoFactorRequest>('/accounts/login/2fa', body);
     return {
@@ -315,7 +327,7 @@ export const authApi = {
       '/accounts/login',
       body
     );
-    if ('requires_2fa' in response.data) return response;
+    if ('requires_2fa' in response.data || 'requires_2fa_setup' in response.data) return response;
     applyUnifiedSession(response.data);
     return response;
   },
@@ -359,3 +371,6 @@ export const authApi = {
     return { ...response, data: hydrated };
   }
 };
+
+
+

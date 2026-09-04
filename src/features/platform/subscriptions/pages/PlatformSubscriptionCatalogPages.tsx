@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -427,7 +427,15 @@ function CatalogList({ kind }: { kind: CatalogKind }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
+  const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setSearch(searchInput.trim());
+      setPage(1);
+    }, 350);
+    return () => window.clearTimeout(timer);
+  }, [searchInput]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selectedRecord, setSelectedRecord] = useState<CatalogRecord | null>(null);
   const [planModal, setPlanModal] = useState<PlanModal>(null);
@@ -564,9 +572,9 @@ function CatalogList({ kind }: { kind: CatalogKind }) {
         getRowId={idOf}
         loading={query.isLoading}
         error={query.isError ? errorMessage(query.error) : ''}
-        searchValue={search}
+        searchValue={searchInput}
         searchPlaceholder={`Search ${meta.label.toLowerCase()}...`}
-        onSearchChange={(value) => { setSearch(value); setPage(1); }}
+        onSearchChange={setSearchInput}
         hiddenColumnIds={hiddenColumnIds}
         onHiddenColumnIdsChange={setHiddenColumnIds}
         onOpenSavedViews={() => setViewsOpen(true)}
@@ -704,8 +712,8 @@ function CatalogForm({ kind, mode }: { kind: CatalogKind; mode: 'create' | 'edit
     enabled: mode === 'edit'
   });
   const moduleOptionsQuery = useQuery({
-    queryKey: platformQueryKeys.list('modules', { per_page: 200 }),
-    queryFn: () => platformSubscriptionsApi.references.modules({ per_page: 200 }),
+    queryKey: platformQueryKeys.list('modules', { per_page: 100 }),
+    queryFn: () => platformSubscriptionsApi.references.modules({ per_page: 100 }),
     enabled: kind === 'features'
   });
   const moduleOptions = moduleOptionsQuery.data?.data ?? [];
@@ -1520,7 +1528,7 @@ function shouldShowSubscriptionDetail(key: string, value: unknown) {
 }
 
 function subscriptionDetailLabel(key: string) {
-  const labels: Record<string, string> = { tenant_name: 'Tenant', tenant_slug: 'Workspace', plan_name: 'Plan', plan_code: 'Plan Code', subscription_number: 'Subscription', payable_amount: 'Payable', next_billing_at: 'Next Billing', auto_renew: 'Auto Renew' };
+  const labels: Record<string, string> = { tenant_name: 'Tenant', tenant_slug: 'Workspace', plan_name: 'Plan', plan_code: 'Plan Code', subscription_number: 'Subscription', payable_amount: 'Payable', next_billing_at: 'Next Billing', auto_renew: 'Auto Renew', module_name: 'Module' };
   return labels[key] ?? labelize(key);
 }
 
@@ -1533,7 +1541,7 @@ function displayDetailValue(value: unknown) {
 function RecordDetails({ record, moneyFields = [] }: { record: CatalogRecord; moneyFields?: string[] }) {
   return (
     <dl className="enterprise-summary-list">
-      {Object.entries(record).filter(([key, value]) => shouldShowSubscriptionDetail(key, value)).map(([key, value]) => (
+      {Object.entries(record).filter(([key, value]) => shouldShowSubscriptionDetail(key, value) && !(key === 'module' && record.module_name)).map(([key, value]) => (
         <div key={key}>
           <dt>{subscriptionDetailLabel(key)}</dt>
           <dd>{moneyFields.includes(key) ? money(value, record.currency) : displayDetailValue(value)}</dd>
@@ -1578,7 +1586,6 @@ function fieldsFor(kind: CatalogKind) {
     return [
       { name: 'module', label: 'Module', type: 'select' },
       { name: 'name', label: 'Name' },
-      { name: 'code', label: 'Code' },
       { name: 'data_type', label: 'Data Type', type: 'select', options: ['integer', 'decimal', 'boolean', 'string', 'json'] },
       { name: 'unit', label: 'Unit' },
       { name: 'status', label: 'Status', type: 'select', options: ['active', 'inactive'] },
@@ -1621,7 +1628,7 @@ function FieldLabel({ children, required }: { children: ReactNode; required?: bo
 
 const catalogRequiredFields: Record<CatalogKind, Set<string>> = {
   plans: new Set(['name', 'code', 'billing_cycle', 'base_price']),
-  features: new Set(['module', 'name', 'code', 'data_type']),
+  features: new Set(['module', 'name', 'data_type']),
   addons: new Set(['name', 'pricing_type', 'price'])
 };
 
@@ -1816,7 +1823,6 @@ function defaultCatalogForm(kind: CatalogKind, record?: CatalogRecord): Record<s
     return {
       module: textOf(record, ['module'], ''),
       name: textOf(record, ['name'], ''),
-      code: textOf(record, ['code'], ''),
       data_type: textOf(record, ['data_type'], 'integer'),
       unit: textOf(record, ['unit'], ''),
       description: textOf(record, ['description'], ''),

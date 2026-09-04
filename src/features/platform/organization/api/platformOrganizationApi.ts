@@ -8,8 +8,8 @@ export type OrganizationRecord = {
   users_count?: number; children_count?: number; teams_count?: number; [key: string]: unknown;
 };
 export type OrganizationListResult = { data: OrganizationRecord[]; total: number };
-export type DepartmentPayload = { name: string; code: string; parent_uuid?: string | null; manager_platform_user_uuid?: string | null; status: string };
-export type DesignationPayload = { name: string; code?: string; description?: string; level?: number | null; status: string };
+export type DepartmentPayload = { name: string; parent_uuid?: string | null; manager_platform_user_uuid?: string | null; status: string };
+export type DesignationPayload = { name: string; description?: string; level?: number | null; status: string };
 
 async function list(path: string, query?: ApiQuery): Promise<OrganizationListResult> {
   const response = await platformClient.get<OrganizationRecord[]>(path, { query });

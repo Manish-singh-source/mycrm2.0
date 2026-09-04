@@ -47,6 +47,8 @@ export function AuthLoginPage() {
   const [selectedRef, setSelectedRef] = useState('');
   const [accountSearch, setAccountSearch] = useState('');
   const [challengeToken, setChallengeToken] = useState('');
+  const [setupToken, setSetupToken] = useState('');
+  const [twoFactorSecret, setTwoFactorSecret] = useState('');
   const [twoFactorCode, setTwoFactorCode] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState('');
@@ -69,7 +71,7 @@ export function AuthLoginPage() {
   const selectedAccount: DiscoveredAccount | undefined = (discovery?.accounts ?? []).find(
     (account) => account.accountRef === selectedRef
   );
-  const phase = challengeToken ? '2fa' : selectedAccount ? 'password' : discovery ? 'accounts' : 'email';
+  const phase = challengeToken ? '2fa' : twoFactorSecret ? '2fa_setup' : selectedAccount ? 'password' : discovery ? 'accounts' : 'email';
 
   async function handleDiscover(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -112,6 +114,14 @@ export function AuthLoginPage() {
         device_name: deviceName()
       });
 
+      if (response.data.type === '2fa_setup_required') {
+        const setup = await authApi.enableRequiredTwoFactor(discovery.email, password);
+        setSetupToken(setup.data.setup_token);
+        setTwoFactorSecret(setup.data.secret);
+        setMessage('Two-factor authentication is required. Scan the secret and enter the authenticator code.');
+        return;
+      }
+
       if (response.data.type === '2fa_required') {
         setChallengeToken(response.data.challenge.challenge_token);
         return;
@@ -125,6 +135,32 @@ export function AuthLoginPage() {
     }
   }
 
+  async function handleTwoFactorSetup(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!setupToken || !discovery?.discoveryToken || !selectedAccount) return;
+    setError('');
+    setIsSubmitting(true);
+    try {
+      await authApi.confirmRequiredTwoFactor(setupToken, twoFactorCode);
+      const response = await authApi.loginAccount({
+        email: discovery.email,
+        discovery_token: discovery.discoveryToken,
+        account_ref: selectedAccount.accountRef,
+        password,
+        remember,
+        device_name: deviceName()
+      });
+      setTwoFactorSecret('');
+      setSetupToken('');
+      setTwoFactorCode('');
+      if (response.data.type === '2fa_required') setChallengeToken(response.data.challenge.challenge_token);
+      else if (response.data.type === 'logged_in') navigate(destinationFor(response.data), { replace: true });
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
   async function handleTwoFactor(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
@@ -315,6 +351,19 @@ export function AuthLoginPage() {
             </form>
           ) : null}
 
+          {phase === '2fa_setup' ? (
+            <form className="auth-form" onSubmit={handleTwoFactorSetup}>
+              <p>Two-factor authentication is required by your administrator.</p>
+              <p><strong>Setup secret:</strong> <code>{twoFactorSecret}</code></p>
+              <label>
+                <span>Authenticator code</span>
+                <input autoComplete="one-time-code" inputMode="numeric" maxLength={6} onChange={(event) => setTwoFactorCode(event.target.value)} required value={twoFactorCode} />
+              </label>
+              <Button disabled={isSubmitting} type="submit">
+                {isSubmitting ? 'Confirming...' : 'Confirm and continue'}
+              </Button>
+            </form>
+          ) : null}
           {phase === '2fa' ? (
             <form className="auth-form" onSubmit={handleTwoFactor}>
               <label>
@@ -350,3 +399,6 @@ export function AuthLoginPage() {
     </section>
   );
 }
+
+
+
