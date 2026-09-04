@@ -83,7 +83,7 @@ export type PermissionPayload = {
 
 export type TeamPayload = {
   name: string;
-  code: string;
+  code?: string;
   parent_team_id?: string | null;
   description?: string;
   lead_platform_user_id?: string | null;

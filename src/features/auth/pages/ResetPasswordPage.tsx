@@ -1,5 +1,5 @@
 import { FormEvent, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { KeyRound, Save } from 'lucide-react';
 
 import { authApi } from '@/features/auth/api/authApi';
@@ -13,9 +13,10 @@ function errorMessage(error: unknown) {
 }
 
 export function ResetPasswordPage() {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [email, setEmail] = useState(searchParams.get('email') ?? '');
-  const [token, setToken] = useState(searchParams.get('token') ?? '');
+  const [email] = useState(searchParams.get('email') ?? '');
+  const [token] = useState(searchParams.get('token') ?? '');
   const [password, setPassword] = useState('');
   const [passwordConfirmation, setPasswordConfirmation] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -40,7 +41,7 @@ export function ResetPasswordPage() {
         password,
         password_confirmation: passwordConfirmation
       });
-      setMessage('Password reset complete. You can sign in now.');
+      navigate('/auth/login', { replace: true });
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -62,12 +63,9 @@ export function ResetPasswordPage() {
       <form className="auth-form" onSubmit={handleSubmit}>
         <label>
           <span>Email</span>
-          <input onChange={(event) => setEmail(event.target.value)} required type="email" value={email} />
+          <input readOnly required type="email" value={email} />
         </label>
-        <label>
-          <span>Reset token</span>
-          <input onChange={(event) => setToken(event.target.value)} required value={token} />
-        </label>
+        <input aria-hidden="true" type="hidden" value={token} />
         <label>
           <span>New password</span>
           <span className="auth-input">

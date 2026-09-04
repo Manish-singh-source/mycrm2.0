@@ -269,11 +269,7 @@ export const appRouter = createBrowserRouter([
       },
       {
         path: 'password/reset',
-        element: (
-          <PublicAuthRoute>
-            <ResetPasswordPage />
-          </PublicAuthRoute>
-        )
+        element: <ResetPasswordPage />
       }
     ]
   },

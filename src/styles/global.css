@@ -5412,3 +5412,50 @@ textarea:focus-visible {
   padding-right: 28px;
 }
 
+.team-leadership-panel {
+  border: 1px solid var(--crm-line);
+  border-radius: 10px;
+  margin-bottom: 16px;
+  padding: 16px;
+}
+.team-leadership-panel header {
+  align-items: baseline;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.team-leadership-panel h2 {
+  font-size: 15px;
+  margin: 0;
+}
+.team-leadership-panel header span {
+  color: var(--crm-muted);
+  font-size: 12px;
+}
+.team-leadership-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.team-leadership-grid article {
+  background: var(--crm-panel-soft);
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+}
+.team-leadership-grid small {
+  color: var(--crm-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+@media (max-width: 640px) {
+  .team-leadership-panel header, .team-leadership-grid {
+    grid-template-columns: 1fr;
+  }
+  .team-leadership-panel header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

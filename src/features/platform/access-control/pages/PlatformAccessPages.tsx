@@ -117,6 +117,7 @@ const teamSchema = z.object({
 });
 
 const teamRoleSchema = z.object({
+  code: z.string().optional(),
   name: z.string().min(2),
   description: z.string().optional(),
   permissions: z.array(z.string()).optional(),
@@ -218,7 +219,10 @@ function roleDisplayDetails(record: Record<string, unknown>, kind: ResourceKind)
       'lead_uuid',
       'assistant_lead_uuid'
     ]);
-    return Object.fromEntries(Object.entries(record).filter(([key]) => !hidden.has(key)));
+    const details = Object.fromEntries(Object.entries(record).filter(([key]) => !hidden.has(key)));
+    if (record.lead && typeof record.lead === 'object') details.lead = userLabel(record.lead as Record<string, unknown>);
+    if (record.assistant_lead && typeof record.assistant_lead === 'object') details.assistant_lead = userLabel(record.assistant_lead as Record<string, unknown>);
+    return details;
   }
   if (kind === 'permissions') {
     const hidden = new Set(['uuid', 'id', 'roles', 'roleAssignments', 'modelAssignments', 'permissions', 'created_at', 'updated_at']);
@@ -697,29 +701,15 @@ function ResourceList({ kind }: { kind: ResourceKind }) {
       title={meta.label}
       description={descriptionFor(kind)}
       actions={
-        <>
-          {kind === 'teamRoles' ? null : (
-            <PermissionButton
-              guard="platform"
-              permission={`${meta.permission}.create`}
-              type="button"
-              onClick={() => navigate(`${meta.route}/create`)}
-            >
-              <Plus size={16} aria-hidden="true" />
-              {kind === 'roles' ? 'Create Role' : 'Create'}
-            </PermissionButton>
-          )}
-          {kind === 'teamRoles' ? (
-            <PermissionButton
-              guard="platform"
-              permission="platform_team.create"
-              type="button"
-              onClick={() => setModal('teamRoleEditor')}
-            >
-              <Plus size={16} aria-hidden="true" />
-              Create Team Role
-            </PermissionButton>
-          ) : null}
+        <>          <PermissionButton
+            guard="platform"
+            permission={`${meta.permission}.create`}
+            type="button"
+            onClick={() => navigate(`${meta.route}/create`)}
+          >
+            <Plus size={16} aria-hidden="true" />
+            {kind === 'roles' ? 'Create Role' : kind === 'teamRoles' ? 'Create Team Role' : 'Create'}
+          </PermissionButton>
         </>
       }
     />
@@ -949,13 +939,7 @@ function columnsFor(
         accessor: (row) => row.users_count,
         cell: (row) => textOf(row, ['users_count'], '0')
       },
-      {
-        id: 'is_system',
-        header: 'System',
-        accessor: (row) => row.is_system,
-        cell: (row) => <SystemRoleBadge system={Boolean(row.is_system)} />
-      },
-      statusColumn,
+statusColumn,
       {
         id: 'created_at',
         header: 'Created At',
@@ -1007,13 +991,7 @@ function columnsFor(
         accessor: (row) => row.roles_count,
         cell: (row) => textOf(row, ['roles_count'], '0')
       },
-      {
-        id: 'is_system',
-        header: 'System',
-        accessor: (row) => row.is_system,
-        cell: (row) => (row.is_system ? 'Yes' : 'No')
-      },
-      statusColumn,
+statusColumn,
       actionColumn
     ];
   }
@@ -1036,7 +1014,7 @@ function columnsFor(
         id: 'lead',
         header: 'Lead',
         accessor: (row) => row.lead_name as string,
-        cell: (row) => textOf(row, ['lead_name', 'lead_platform_user_id'])
+        cell: (row) => row.lead && typeof row.lead === 'object' ? userLabel(row.lead as Record<string, unknown>) : displayText(row, ['lead_name', 'lead_platform_user_id'])
       },
       {
         id: 'members_count',
@@ -1079,6 +1057,17 @@ function columnsFor(
       header: 'Sort',
       accessor: (row) => row.sort_order as number,
       cell: (row) => textOf(row, ['sort_order'], '0')
+    },    {
+      id: 'permissions_count',
+      header: 'Permissions',
+      accessor: (row) => row.permissions_count,
+      cell: (row) => textOf(row, ['permissions_count'], '0')
+    },
+    {
+      id: 'members_count',
+      header: 'Members',
+      accessor: (row) => row.members_count,
+      cell: (row) => textOf(row, ['members_count'], '0')
     },
     {
       id: 'is_system',
@@ -1333,19 +1322,17 @@ function ResourceActionsMenu({
           >
             <Eye size={15} aria-hidden="true" /> View
           </button>
-          {kind === 'teamRoles' ? null : (
-            <PermissionButton
-              guard="platform"
-              permission={permissionFor(kind, 'edit')}
-              type="button"
-              role="menuitem"
-              variant="ghost"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => run(() => handlers.onEdit(row))}
-            >
-              <Pencil size={15} aria-hidden="true" /> Edit
-            </PermissionButton>
-          )}
+          <PermissionButton
+            guard="platform"
+            permission={permissionFor(kind, 'edit')}
+            type="button"
+            role="menuitem"
+            variant="ghost"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => run(() => handlers.onEdit(row))}
+          >
+            <Pencil size={15} aria-hidden="true" /> Edit
+          </PermissionButton>
 
           {kind === 'permissions' ? (
             <>
@@ -1424,23 +1411,12 @@ function ResourceActionsMenu({
               <hr />
               <PermissionButton
                 guard="platform"
-                permission="platform_team.edit"
-                type="button"
-                role="menuitem"
-                variant="ghost"
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => run(() => handlers.onAction('teamRoleEditor', row))}
-              >
-                <KeyRound size={15} aria-hidden="true" /> Team Role Editor
-              </PermissionButton>
-              <hr />
-              <PermissionButton
-                guard="platform"
                 permission="platform_team.delete"
                 type="button"
                 role="menuitem"
                 variant="ghost"
                 className="is-danger"
+                disabled={Boolean(row.is_system)}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => run(() => handlers.onAction('deleteTeamRole', row))}
               >
@@ -1453,7 +1429,6 @@ function ResourceActionsMenu({
     </div>
   );
 }
-
 function PortalActionMenu({
   anchorRef,
   children,
@@ -1724,7 +1699,7 @@ function TeamFormPage({ record, title }: { record?: PlatformRecord; title?: stri
     mutationFn: (values: TeamForm) => {
       const payload: TeamPayload = {
         ...values,
-        code: values.code || generateTeamCode(values.name),
+        code: undefined,
         audit_reason: values.audit_reason || (record ? 'Team profile update' : 'Team created')
       };
       return record
@@ -1768,7 +1743,7 @@ function TeamFormPage({ record, title }: { record?: PlatformRecord; title?: stri
           form={form}
           name="status"
           label="Status"
-          options={['active', 'inactive', 'archived']}
+          options={['active', 'inactive']}
         />
         <InputField form={form} name="description" label="Description" type="textarea" />
         {record ? <InputField form={form} name="audit_reason" label="Audit reason" /> : null}
@@ -1788,6 +1763,7 @@ function TeamRoleFormPage({ record, title }: { record?: PlatformRecord; title?: 
     resolver: zodResolver(teamRoleSchema),
     defaultValues: {
       name: textOf(record, ['name'], ''),
+      code: textOf(record, ['code'], ''),
       description: textOf(record, ['description'], ''),
       permissions: selectedTeamRolePermissions(record),
       is_system: Boolean(record?.is_system),
@@ -2005,12 +1981,12 @@ function ResourceView({ kind, record }: { kind: ResourceKind; record: PlatformRe
           label={kind === 'permissions' ? 'Assigned Roles' : kind === 'teams' ? 'Members' : 'Assigned Users'}
           value={textOf(record, kind === 'permissions' ? ['roles_count'] : ['users_count', 'members_count'], '0')}
         />
-        {kind !== 'roles' ? (
+        {kind === 'permissions' || kind === 'teamRoles' ? (
           <>
             <SummaryTile
               icon={<KeyRound />}
               label="Guard"
-              value={textOf(record, ['guard_name'], kind === 'teams' ? 'platform_team' : '-')}
+              value={textOf(record, ['guard_name'], 'platform')}
             />
             <SummaryTile
               icon={<CheckCircle2 />}
@@ -2028,7 +2004,7 @@ function ResourceView({ kind, record }: { kind: ResourceKind; record: PlatformRe
         {activeTab === 'permissions' ? (
           <PermissionGroups groups={permissionGroups} />
         ) : null}
-        {activeTab === 'users' && kind === 'teams' ? <TeamMembersPanel team={record} /> : null}
+        {activeTab === 'users' && kind === 'teams' ? <><TeamLeadershipPanel team={record} /><TeamMembersPanel team={record} /></> : null}
         {activeTab === 'users' && kind === 'roles' ? (
           <RecordList
             rows={
@@ -3420,6 +3396,7 @@ function TeamRoleEditorModal({
     resolver: zodResolver(teamRoleSchema),
     defaultValues: {
       name: '',
+      code: '',
       description: '',
       permissions: [],
       is_system: false,
@@ -3682,13 +3659,15 @@ function InputField({
   name,
   label,
   placeholder,
-  type = 'text'
+  type = 'text',
+  readOnly = false
 }: {
   form: any;
   name: string;
   label: ReactNode;
   placeholder?: string;
   type?: string;
+  readOnly?: boolean;
 }) {
   const error = form.formState.errors[name]?.message;
   const errorId = `${name}-error`;
@@ -3703,7 +3682,7 @@ function InputField({
       {type === 'textarea' ? (
         <textarea placeholder={placeholder} {...fieldProps} />
       ) : (
-        <input type={type} placeholder={placeholder} {...fieldProps} />
+        <input type={type} placeholder={placeholder} readOnly={readOnly} {...fieldProps} />
       )}
       {error ? <strong id={errorId} role="alert">{String(error)}</strong> : null}
     </label>
@@ -3746,9 +3725,9 @@ function titleCaseOption(option: string) {
 
 function RequiredLabel({ children }: { children: ReactNode }) {
   return (
-    <>
+    <span className="required-label">
       {children} <span className="required-mark" aria-label="required">*</span>
-    </>
+    </span>
   );
 }
 
@@ -3794,11 +3773,6 @@ function UserSelectField({
       {error ? <strong id={errorId} role="alert">{String(error)}</strong> : null}
     </label>
   );
-}
-
-function generateTeamCode(name: string) {
-  const code = toSnakeCase(name).toUpperCase();
-  return code || 'TEAM';
 }
 
 function CheckboxField({ form, name, label, disabled = false }: { form: any; name: string; label: ReactNode; disabled?: boolean }) {
@@ -3887,6 +3861,33 @@ function recordListMeta(row: PlatformRecord) {
   return [email, status].filter(Boolean).join(' / ') || '-';
 }
 
+function TeamLeadershipPanel({ team }: { team: PlatformRecord }) {
+  const lead = team.lead && typeof team.lead === 'object'
+    ? userLabel(team.lead as Record<string, unknown>)
+    : '-';
+  const assistant = team.assistant_lead && typeof team.assistant_lead === 'object'
+    ? userLabel(team.assistant_lead as Record<string, unknown>)
+    : '-';
+
+  return (
+    <section className="team-leadership-panel">
+      <header>
+        <h2>Team leadership</h2>
+        <span>Leaders are shown separately from regular members.</span>
+      </header>
+      <div className="team-leadership-grid">
+        <article>
+          <small>Team lead</small>
+          <strong>{lead}</strong>
+        </article>
+        <article>
+          <small>Assistant lead</small>
+          <strong>{assistant}</strong>
+        </article>
+      </div>
+    </section>
+  );
+}
 function TeamMembersPanel({ team }: { team: PlatformRecord }) {
   const queryClient = useQueryClient();
   const [editingMember, setEditingMember] = useState<PlatformRecord | null>(null);
@@ -4198,11 +4199,15 @@ function AuditRail({ rows, compact = false, record, kind }: { rows: PlatformReco
   const [activeTab, setActiveTab] = useState<'activity' | 'details'>('activity');
   const [showFull, setShowFull] = useState(false);
   const auditSubjectType = kind === 'permissions'
-    ? 'App\Models\PlatformPermission'
+    ? 'App\\Models\\PlatformPermission'
     : kind === 'roles'
-      ? 'App\Models\PlatformRole'
-      : undefined;
-  const auditSubjectId = kind === 'permissions' || kind === 'roles' ? record?.id : undefined;
+      ? 'App\\Models\\PlatformRole'
+      : kind === 'teamRoles'
+        ? 'App\\Models\\PlatformTeamRole'
+        : kind === 'teams'
+          ? 'App\\Models\\PlatformTeam'
+          : undefined;
+  const auditSubjectId = kind === 'permissions' || kind === 'roles' || kind === 'teamRoles' || kind === 'teams' ? record?.id : undefined;
   const auditQuery = useQuery({
     queryKey: platformQueryKeys.list('platform-audit-logs-access-control', {
       per_page: showFull ? 25 : 6,
@@ -4369,7 +4374,7 @@ function TeamSummary({
   users?: Array<Record<string, unknown>>;
 }) {
   const name = String(values?.name || textOf(record, ['name'], 'New team'));
-  const code = String(values?.code || textOf(record, ['code'], generateTeamCode(name)));
+  const code = String(values?.code || textOf(record, ['code'], 'Auto-generated on save'));
   const lead = users?.find((user) => userSelectValue(user) === values?.lead_platform_user_id);
   const assistantLead = users?.find((user) => userSelectValue(user) === values?.assistant_lead_platform_user_id);
 

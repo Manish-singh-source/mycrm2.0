@@ -11,17 +11,20 @@ export type PlatformStaffRecord = {
   email?: string;
   mobile?: string;
   profile_photo_url?: string | null;
-  profile_photo_file_id?: string | null;
-  designation?: string;
-  department?: string;
+  profile_photo_file_id?: string | number | null;
+  designation?: PlatformStaffRelation | string | null;
+  department?: PlatformStaffRelation | string | null;
+  manager?: PlatformStaffRelation | string | null;
+  manager_id?: number | null;
   timezone?: string;
   locale?: string;
   two_factor_enabled?: boolean;
+  two_factor_required?: boolean;
   email_verified_at?: string | null;
   status?: string;
   roles?: Array<{ uuid?: string; name?: string; display_name?: string } | string>;
   teams?: Array<{ uuid?: string; name?: string; code?: string } | string>;
-  permissions?: Record<string, PlatformStaffRecord[]> | string[];
+  permissions?: PlatformStaffRelation[] | Record<string, PlatformStaffRelation[]> | string[];
   direct_permissions_count?: number;
   permissions_count?: number;
   last_login_at?: string | null;
@@ -30,6 +33,18 @@ export type PlatformStaffRecord = {
   updated_at?: string;
   assignments?: PlatformStaffRecord[];
   activity?: PlatformStaffRecord[];
+  [key: string]: unknown;
+};
+
+export type PlatformStaffRelation = {
+  uuid?: string;
+  id?: string | number;
+  name?: string;
+  display_name?: string;
+  code?: string;
+  title?: string;
+  module?: string;
+  status?: string;
   [key: string]: unknown;
 };
 
@@ -46,15 +61,17 @@ export type PlatformStaffPayload = {
   email: string;
   mobile?: string;
   password?: string;
-  profile_photo_file_id?: string | null;
-  designation?: string;
-  department?: string;
+  profile_photo_file_id?: string | number | null;
+  designation_uuid?: string | null;
+  department_uuid?: string | null;
+  manager_uuid?: string | null;
   timezone: string;
   locale: string;
   two_factor_enabled?: boolean;
+  two_factor_required?: boolean;
   status: string;
-  role_ids?: string[];
-  team_ids?: string[];
+  role_uuids?: string[];
+  team_uuids?: string[];
 };
 
 type PlatformFileRecord = {
@@ -137,18 +154,29 @@ export const platformStaffApi = {
       team_uuids: body.team_ids,
       audit_reason: body.audit_reason
     }),
-  permissions: (id: string) =>
-    platformClient.get<{ permissions: Record<string, PlatformStaffRecord[]> }>(`/platform-users/${encodeURIComponent(id)}/permissions`),
+  permissions: async (id: string) => {
+    const response = await platformClient.get<PlatformStaffRelation[] | { permissions: PlatformStaffRelation[] }>(`/platform-users/${encodeURIComponent(id)}/permissions`);
+    const permissions = Array.isArray(response.data) ? response.data : response.data?.permissions ?? [];
+    return { ...response, data: { permissions } };
+  },
   replacePermissions: (id: string, body: { permission_ids: string[]; audit_reason: string }) =>
     platformClient.put(`/platform-users/${encodeURIComponent(id)}/permissions`, {
       permission_uuids: body.permission_ids,
       audit_reason: body.audit_reason
     }),
-  activity: (id: string) =>
-    platformClient.get<{ activity: PlatformStaffRecord[] }>(`/platform-users/${encodeURIComponent(id)}/activity`),
+  activity: async (id: string) => {
+    const response = await platformClient.get<PlatformStaffRecord[] | { activity: PlatformStaffRecord[] }>(`/platform-users/${encodeURIComponent(id)}/activity`);
+    const activity = Array.isArray(response.data) ? response.data : response.data?.activity ?? [];
+    return { ...response, data: { activity } };
+  },
   files: {
     upload: (body: FormData) => platformClient.post<{ file: PlatformFileRecord }, FormData>('/files', body)
   },
   invite: (body: Record<string, unknown>) => platformClient.post('/platform-users/invite', body),
   export: (body: Record<string, unknown>) => platformClient.post('/platform-users/export', body)
 };
+
+
+
+
+

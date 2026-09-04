@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Camera,
   CheckCircle2,
   Eye,
   KeyRound,
@@ -30,6 +29,7 @@ import {
   type PlatformStaffPayload,
   type PlatformStaffRecord
 } from '@/features/platform/staff/api/platformStaffApi';
+import { platformOrganizationApi } from '@/features/platform/organization/api/platformOrganizationApi';
 import { PLATFORM_ROUTES } from '@/features/platform/routes/platformRoutes';
 import { ApiError } from '@/lib/api/apiError';
 import { createListQuery } from '@/lib/api/listQuery';
@@ -57,7 +57,6 @@ type StaffModal =
   | 'resetPassword'
   | 'forceLogout'
   | 'require2fa'
-  | 'photo'
   | 'export'
   | 'columns'
   | 'views'
@@ -74,11 +73,12 @@ const staffSchema = z.object({
   mobile: z.string().optional(),
   password: z.string().optional(),
   profile_photo_file_id: z.string().optional(),
-  designation: z.string().optional(),
-  department: z.string().optional(),
+  designation_uuid: z.string().optional(),
+  department_uuid: z.string().optional(),
   timezone: z.string().min(1, 'Select a timezone.'),
   locale: z.string().min(1, 'Select a locale.'),
   two_factor_enabled: z.boolean(),
+  two_factor_required: z.boolean().optional(),
   status: z.string().min(1, 'Select a status.'),
   role_ids: z.array(z.string()).optional(),
   team_ids: z.array(z.string()).optional()
@@ -90,10 +90,28 @@ function idOf(row?: PlatformStaffRecord | null) {
   return String(row?.uuid ?? row?.id ?? '');
 }
 
+function relationLabel(value: unknown, fallback = '-') {
+  if (value === undefined || value === null || value === '') return fallback;
+  if (typeof value === 'object') {
+    const relation = value as Record<string, unknown>;
+    return relationLabel(relation.display_name ?? relation.name ?? relation.title ?? relation.code ?? relation.email, fallback);
+  }
+  return String(value);
+}
+
+function relationId(value: unknown) {
+  if (typeof value === 'string' || typeof value === 'number') return String(value);
+  if (value && typeof value === 'object') {
+    const relation = value as Record<string, unknown>;
+    return String(relation.uuid ?? relation.id ?? '');
+  }
+  return '';
+}
+
 function textOf(row: PlatformStaffRecord | null | undefined, keys: string[], fallback = '-') {
   for (const key of keys) {
     const value = row?.[key];
-    if (value !== undefined && value !== null && value !== '') return String(value);
+    if (value !== undefined && value !== null && value !== '') return relationLabel(value, fallback);
   }
   return fallback;
 }
@@ -176,15 +194,15 @@ function cleanPayload(values: StaffForm, includePassword: boolean): PlatformStaf
     email: values.email,
     mobile: values.mobile || undefined,
     password: includePassword && values.password ? values.password : undefined,
-    profile_photo_file_id: values.profile_photo_file_id || undefined,
-    designation: values.designation || undefined,
-    department: values.department || undefined,
+    profile_photo_file_id: values.profile_photo_file_id && /^\d+$/.test(values.profile_photo_file_id) ? Number(values.profile_photo_file_id) : undefined,
+    designation_uuid: values.designation_uuid || undefined,
+    department_uuid: values.department_uuid || undefined,
     timezone: values.timezone,
     locale: values.locale,
     two_factor_enabled: values.two_factor_enabled,
     status: values.status,
-    role_ids: values.role_ids ?? [],
-    team_ids: values.team_ids ?? []
+    role_uuids: values.role_ids ?? [],
+    team_uuids: values.team_ids ?? []
   };
 }
 
@@ -192,6 +210,7 @@ export function PlatformStaffListPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(10);
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -201,11 +220,11 @@ export function PlatformStaffListPage() {
   const [hiddenColumnIds, setHiddenColumnIds] = useState<string[]>([]);
   const query = createListQuery({
     page,
-    per_page: 25,
+    per_page: perPage,
     search,
     filter: {
       status: filters.status || undefined,
-      two_factor_enabled: filters.two_factor_enabled || undefined
+      department: filters.department || undefined
     }
   });
   const listQuery = useQuery({
@@ -263,7 +282,7 @@ export function PlatformStaffListPage() {
       {
         id: 'employment',
         header: 'Employment',
-        accessor: (row) => row.department,
+        accessor: (row) => textOf(row, ['department']),
         cell: (row) => <EmploymentCell row={row} />
       },
       {
@@ -287,7 +306,9 @@ export function PlatformStaffListPage() {
         header: '2FA',
         accessor: (row) => row.two_factor_enabled,
         cell: (row) =>
-          row.two_factor_enabled ? (
+          row.two_factor_required ? (
+            <span className="system-badge system-badge--yes">Required</span>
+          ) : row.two_factor_enabled ? (
             <span className="system-badge system-badge--yes">Enabled</span>
           ) : (
             <span className="system-badge system-badge--no">Off</span>
@@ -394,8 +415,10 @@ export function PlatformStaffListPage() {
         selectedRowIds={selectedIds}
         onSelectionChange={setSelectedIds}
         page={page}
+        perPage={perPage}
         total={listQuery.data?.total ?? rows.length}
         onPageChange={setPage}
+        onPerPageChange={(next) => { setPerPage(next); setPage(1); }}
         bulkActions={
           <div className="table-actions">
             <Button type="button" size="sm" variant="secondary" onClick={() => setModal('export')}>
@@ -417,6 +440,7 @@ export function PlatformStaffListPage() {
         }}
         hiddenColumnIds={hiddenColumnIds}
         selectedCount={selectedIds.length}
+        selectedIds={selectedIds}
         onHiddenColumnIdsChange={setHiddenColumnIds}
         onClose={() => {
           setModal(null);
@@ -444,7 +468,6 @@ export function PlatformStaffEditPage() {
 function PlatformStaffFormPage({ staff }: { staff?: PlatformStaffRecord }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [profilePhotoFile, setProfilePhotoFile] = useState<File | null>(null);
   const rolesQuery = useQuery({
     queryKey: platformQueryKeys.list('platform-role-options', { per_page: 100 }),
     queryFn: () => platformAccessApi.roles.list({ per_page: 100 })
@@ -452,6 +475,14 @@ function PlatformStaffFormPage({ staff }: { staff?: PlatformStaffRecord }) {
   const teamsQuery = useQuery({
     queryKey: platformQueryKeys.list('platform-team-options', { per_page: 100 }),
     queryFn: () => platformAccessApi.teams.list({ per_page: 100 })
+  });
+  const departmentsQuery = useQuery({
+    queryKey: platformQueryKeys.list('platform-department-options-staff', { per_page: 100 }),
+    queryFn: () => platformOrganizationApi.departments.list({ per_page: 100 })
+  });
+  const designationsQuery = useQuery({
+    queryKey: platformQueryKeys.list('platform-designation-options-staff', { per_page: 100 }),
+    queryFn: () => platformOrganizationApi.designations.list({ per_page: 100 })
   });
   const form = useForm<StaffForm>({
     resolver: zodResolver(staffSchema),
@@ -464,16 +495,19 @@ function PlatformStaffFormPage({ staff }: { staff?: PlatformStaffRecord }) {
       mobile: textOf(staff, ['mobile'], ''),
       password: '',
       profile_photo_file_id: textOf(staff, ['profile_photo_file_id'], ''),
-      designation: textOf(staff, ['designation'], ''),
-      department: textOf(staff, ['department'], ''),
+      designation_uuid: relationId(staff?.designation),
+      department_uuid: relationId(staff?.department),
       timezone: textOf(staff, ['timezone'], 'Asia/Kolkata'),
       locale: textOf(staff, ['locale'], 'en'),
       two_factor_enabled: Boolean(staff?.two_factor_enabled),
+      two_factor_required: Boolean(staff?.two_factor_required),
       status: textOf(staff, ['status'], 'active'),
       role_ids: relationIds(staff?.roles),
       team_ids: relationIds(staff?.teams)
     }
   });
+  const [profilePhotoFile, setProfilePhotoFile] = useState<File | null>(null);
+  const [confirmCancel, setConfirmCancel] = useState(false);
   const mutation = useMutation({
     mutationFn: async (values: StaffForm) => {
       const payload = cleanPayload(values, !staff);
@@ -483,7 +517,7 @@ function PlatformStaffFormPage({ staff }: { staff?: PlatformStaffRecord }) {
         body.append('visibility', 'private');
         body.append('purpose', 'platform-staff-profile-photo');
         const upload = await platformStaffApi.files.upload(body);
-        payload.profile_photo_file_id = String(upload.data.file.uuid ?? upload.data.file.id ?? '');
+        payload.profile_photo_file_id = Number(upload.data.file.id);
       }
       return staff
         ? platformStaffApi.update(idOf(staff), payload)
@@ -527,25 +561,23 @@ function PlatformStaffFormPage({ staff }: { staff?: PlatformStaffRecord }) {
       >
         <article className="enterprise-form">
           <FormSection title="Identity">
-            <InputField form={form} name="employee_code" label="Employee code" />
+            <InputField form={form} name="employee_code" label="Employee code" readOnly placeholder={staff ? undefined : 'PL-EMP-0001 (auto-generated)'} />
             <InputField form={form} name="first_name" label={<RequiredLabel>First name</RequiredLabel>} />
             <InputField form={form} name="last_name" label="Last name" />
             <InputField form={form} name="display_name" label="Display name" />
             <ProfilePhotoUploadField
-              currentFileId={form.watch('profile_photo_file_id')}
-              error={form.formState.errors.profile_photo_file_id?.message}
+              currentFileId={form.getValues('profile_photo_file_id')}
               selectedFile={profilePhotoFile}
               onFileSelected={(file) => setProfilePhotoFile(file)}
             />
-            <input type="hidden" {...form.register('profile_photo_file_id')} />
           </FormSection>
           <FormSection title="Contact">
             <InputField form={form} name="email" label={<RequiredLabel>Email</RequiredLabel>} type="email" />
             <InputField form={form} name="mobile" label="Mobile" />
           </FormSection>
           <FormSection title="Employment">
-            <InputField form={form} name="designation" label="Designation" />
-            <InputField form={form} name="department" label="Department" />
+            <RelationSelectField form={form} name="designation_uuid" label="Designation" options={designationsQuery.data?.data ?? []} loading={designationsQuery.isLoading} />
+            <RelationSelectField form={form} name="department_uuid" label="Department" options={departmentsQuery.data?.data ?? []} loading={departmentsQuery.isLoading} />
           </FormSection>
           <FormSection title="Access">
             <RelationMultiSelectField
@@ -596,7 +628,7 @@ function PlatformStaffFormPage({ staff }: { staff?: PlatformStaffRecord }) {
           </p>
           <StaffAvatar staff={staff} />
         </aside>
-        <footer className="enterprise-form__footer rbac-sticky-footer">
+        <footer className="enterprise-form__footer rbac-sticky-footer organization-form-actions">
           <Button type="button" variant="secondary" onClick={() => navigate(PLATFORM_ROUTES.staff)}>
             Cancel
           </Button>
@@ -642,6 +674,13 @@ function StaffView({ staff }: { staff: PlatformStaffRecord }) {
   const [activeTab, setActiveTab] = useState('profile');
   const [modal, setModal] = useState<StaffModal>(null);
   const [drawer, setDrawer] = useState<StaffDrawer>(null);
+  const activityQuery = useQuery({
+    queryKey: platformQueryKeys.detail('platform-staff-activity', idOf(staff)),
+    queryFn: () => platformStaffApi.activity(idOf(staff)),
+    enabled: activeTab === 'activity' && Boolean(idOf(staff))
+  });
+  const [profilePhotoFile, setProfilePhotoFile] = useState<File | null>(null);
+  const [confirmCancel, setConfirmCancel] = useState(false);
   const mutation = useMutation({
     mutationFn: (payload: Record<string, unknown>) =>
       platformStaffApi.delete(idOf(staff), {
@@ -650,6 +689,19 @@ function StaffView({ staff }: { staff: PlatformStaffRecord }) {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource('platform-staff') });
       navigate(PLATFORM_ROUTES.staff);
+    }
+  });
+  const actionMutation = useMutation({
+    mutationFn: ({ action, payload }: { action: string; payload: Record<string, unknown> }) =>
+      action === 'suspend'
+        ? platformStaffApi.suspend(idOf(staff), payload)
+        : platformStaffApi.activate(idOf(staff), payload),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource('platform-staff') }),
+        queryClient.invalidateQueries({ queryKey: platformQueryKeys.detail('platform-staff', idOf(staff)) })
+      ]);
+      setModal(null);
     }
   });
   const tabs = [
@@ -749,7 +801,7 @@ function StaffView({ staff }: { staff: PlatformStaffRecord }) {
         <SummaryTile
           icon={<ShieldCheck />}
           label="2FA"
-          value={staff.two_factor_enabled ? 'Enabled' : 'Off'}
+          value={staff.two_factor_required ? 'Required' : staff.two_factor_enabled ? 'Enabled' : 'Off'}
         />
         <SummaryTile
           icon={<KeyRound />}
@@ -773,13 +825,14 @@ function StaffView({ staff }: { staff: PlatformStaffRecord }) {
           <SafeRecordDetails
             record={{
               two_factor_enabled: staff.two_factor_enabled,
+              two_factor_required: staff.two_factor_required,
               email_verified_at: staff.email_verified_at,
               last_login_at: staff.last_login_at,
               last_login_ip: staff.last_login_ip
             }}
           />
         ) : null}
-        {activeTab === 'activity' ? <RecordList rows={staff.activity ?? []} /> : null}
+        {activeTab === 'activity' ? (activityQuery.isLoading ? <div className="surface-state">Loading activity...</div> : activityQuery.isError ? <div className="surface-error">{errorMessage(activityQuery.error)}</div> : <RecordList rows={activityQuery.data?.data.activity ?? []} emptyLabel="No activity recorded for this staff member." />) : null}
       </article>
       <StaffControls
         modal={modal}
@@ -791,9 +844,10 @@ function StaffView({ staff }: { staff: PlatformStaffRecord }) {
         }}
         onAction={(action, payload) => {
           if (action === 'delete') mutation.mutate(payload);
+          if (action === 'suspend' || action === 'activate') actionMutation.mutate({ action, payload });
         }}
-        actionLoading={mutation.isPending}
-        actionError={mutation.error}
+        actionLoading={mutation.isPending || actionMutation.isPending}
+        actionError={mutation.error || actionMutation.error}
       />
     </section>
   );
@@ -808,6 +862,7 @@ function StaffControls({
   onFiltersChange,
   hiddenColumnIds = [],
   selectedCount = 0,
+  selectedIds = [],
   onHiddenColumnIdsChange,
   onClose,
   onAction,
@@ -822,6 +877,7 @@ function StaffControls({
   onFiltersChange?: (filters: Record<string, string>) => void;
   hiddenColumnIds?: string[];
   selectedCount?: number;
+  selectedIds?: string[];
   onHiddenColumnIdsChange?: (ids: string[]) => void;
   onClose: () => void;
   onAction?: (action: string, payload: Record<string, unknown>) => void;
@@ -829,6 +885,18 @@ function StaffControls({
   actionError?: unknown;
 }) {
   const [draftFilters, setDraftFilters] = useState(filters);
+  const exportMutation = useMutation({
+    mutationFn: (options: { format: string; delivery: 'job' | 'download'; scope: 'filtered' | 'selected'; timezone: string; emailWhenReady: boolean }) =>
+      platformStaffApi.export({
+        format: options.format.toLowerCase(),
+        delivery: options.delivery,
+        scope: options.scope,
+        timezone: options.timezone,
+        email_when_ready: options.emailWhenReady,
+        selected_ids: selectedIds
+      }),
+    onSuccess: onClose
+  });
 
   useEffect(() => {
     if (drawer === 'filters') setDraftFilters(filters);
@@ -858,22 +926,6 @@ function StaffControls({
               </select>
             )
           },
-          {
-            name: 'two_factor_enabled',
-            label: '2FA',
-            input: (
-              <select
-                value={draftFilters.two_factor_enabled ?? ''}
-                onChange={(event) =>
-                  setDraftFilters({ ...draftFilters, two_factor_enabled: event.target.value })
-                }
-              >
-                <option value="">Any</option>
-                <option value="1">Enabled</option>
-                <option value="0">Off</option>
-              </select>
-            )
-          }
         ]}
         onApply={() => {
           onFiltersChange?.(draftFilters);
@@ -924,7 +976,9 @@ function StaffControls({
           .filter((column) => !hiddenColumnIds.includes(column.id) && column.id !== 'actions')
           .map((column) => String(column.header))}
         selectedCount={selectedCount}
-        onExport={onClose}
+        loading={exportMutation.isPending}
+        error={exportMutation.error ? errorMessage(exportMutation.error) : undefined}
+        onExport={(options) => exportMutation.mutate(options)}
       />
       <InviteStaffModal open={modal === 'invite'} onClose={onClose} />
       <AssignRolesModal open={modal === 'assignRoles'} staff={staff} onClose={onClose} />
@@ -949,7 +1003,6 @@ function StaffControls({
       <ResetPasswordModal open={modal === 'resetPassword'} staff={staff} onClose={onClose} />
       <ForceLogoutDialog open={modal === 'forceLogout'} staff={staff} onClose={onClose} />
       <RequireTwoFactorModal open={modal === 'require2fa'} staff={staff} onClose={onClose} />
-      <ProfilePhotoModal open={modal === 'photo'} staff={staff} onClose={onClose} />
     </>
   );
 }
@@ -1092,16 +1145,6 @@ function StaffActionsMenu({
           >
             <ShieldCheck size={15} aria-hidden /> Require 2FA
           </PermissionButton>
-          <PermissionButton
-            guard="platform"
-            permission="platform_user.edit"
-            type="button"
-            variant="ghost"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => run(() => onModal('photo'))}
-          >
-            <Camera size={15} aria-hidden /> Profile Photo
-          </PermissionButton>
           <hr />
           <PermissionButton
             guard="platform"
@@ -1183,8 +1226,8 @@ function InviteStaffModal({ open, onClose }: { open: boolean; onClose: () => voi
     email: '',
     first_name: '',
     last_name: '',
-    designation: '',
-    department: '',
+    designation_uuid: '',
+    department_uuid: '',
     role_ids: [] as string[],
     team_ids: [] as string[],
     send_invite: true
@@ -1199,13 +1242,27 @@ function InviteStaffModal({ open, onClose }: { open: boolean; onClose: () => voi
     queryFn: () => platformAccessApi.teams.list({ per_page: 100 }),
     enabled: open
   });
+  const departmentsQuery = useQuery({
+    queryKey: platformQueryKeys.list('platform-department-options-invite', { per_page: 100 }),
+    queryFn: () => platformOrganizationApi.departments.list({ per_page: 100 }),
+    enabled: open
+  });
+  const designationsQuery = useQuery({
+    queryKey: platformQueryKeys.list('platform-designation-options-invite', { per_page: 100 }),
+    queryFn: () => platformOrganizationApi.designations.list({ per_page: 100 }),
+    enabled: open
+  });
+  const [profilePhotoFile, setProfilePhotoFile] = useState<File | null>(null);
+  const [confirmCancel, setConfirmCancel] = useState(false);
   const mutation = useMutation({
-    mutationFn: () =>
-      platformStaffApi.invite({
-        ...payload,
-        role_ids: payload.role_ids,
-        team_ids: payload.team_ids
-      }),
+    mutationFn: () => {
+      const { role_ids, team_ids, ...inviteFields } = payload;
+      return platformStaffApi.invite({
+        ...inviteFields,
+        role_uuids: role_ids,
+        team_uuids: team_ids
+      });
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({
         queryKey: platformQueryKeys.resource('platform-staff')
@@ -1239,16 +1296,8 @@ function InviteStaffModal({ open, onClose }: { open: boolean; onClose: () => voi
         value={payload.last_name}
         onChange={(last_name) => setPayload({ ...payload, last_name })}
       />
-      <SimpleInput
-        label="Designation"
-        value={payload.designation}
-        onChange={(designation) => setPayload({ ...payload, designation })}
-      />
-      <SimpleInput
-        label="Department"
-        value={payload.department}
-        onChange={(department) => setPayload({ ...payload, department })}
-      />
+      <SimpleRelationSelect label="Designation" value={payload.designation_uuid} options={designationsQuery.data?.data ?? []} loading={designationsQuery.isLoading} onChange={(designation_uuid) => setPayload({ ...payload, designation_uuid })} />
+      <SimpleRelationSelect label="Department" value={payload.department_uuid} options={departmentsQuery.data?.data ?? []} loading={departmentsQuery.isLoading} onChange={(department_uuid) => setPayload({ ...payload, department_uuid })} />
       <SimpleMultiSelect
         label="Roles"
         value={payload.role_ids}
@@ -1292,6 +1341,8 @@ function AssignRolesModal({
     queryFn: () => platformAccessApi.roles.list({ per_page: 100 }),
     enabled: open
   });
+  const [profilePhotoFile, setProfilePhotoFile] = useState<File | null>(null);
+  const [confirmCancel, setConfirmCancel] = useState(false);
   const mutation = useMutation({
     mutationFn: () =>
       platformStaffApi.replaceRoles(idOf(staff), {
@@ -1354,6 +1405,8 @@ function DirectPermissionsDrawer({
     queryFn: () => platformStaffApi.permissions(idOf(staff)),
     enabled: open && Boolean(idOf(staff))
   });
+  const [profilePhotoFile, setProfilePhotoFile] = useState<File | null>(null);
+  const [confirmCancel, setConfirmCancel] = useState(false);
   const mutation = useMutation({
     mutationFn: () =>
       platformStaffApi.replacePermissions(idOf(staff), {
@@ -1430,6 +1483,8 @@ function AssignTeamsModal({
     queryFn: () => platformAccessApi.teams.list({ per_page: 100 }),
     enabled: open
   });
+  const [profilePhotoFile, setProfilePhotoFile] = useState<File | null>(null);
+  const [confirmCancel, setConfirmCancel] = useState(false);
   const mutation = useMutation({
     mutationFn: () =>
       platformStaffApi.replaceTeams(idOf(staff), {
@@ -1711,75 +1766,6 @@ function RequireTwoFactorModal({
   );
 }
 
-function ProfilePhotoModal({
-  open,
-  staff,
-  onClose
-}: {
-  open: boolean;
-  staff: PlatformStaffRecord | null;
-  onClose: () => void;
-}) {
-  const queryClient = useQueryClient();
-  const [profilePhotoFile, setProfilePhotoFile] = useState<File | null>(null);
-  const [fieldError, setFieldError] = useState<string | null>(null);
-  const mutation = useMutation({
-    mutationFn: async () => {
-      if (!profilePhotoFile) throw new Error('Choose an image before saving.');
-
-      const body = new FormData();
-      body.append('file', profilePhotoFile);
-      body.append('visibility', 'private');
-      body.append('purpose', 'platform-staff-profile-photo');
-
-      const upload = await platformStaffApi.files.upload(body);
-      const profilePhotoFileId = String(upload.data.file.uuid ?? upload.data.file.id ?? '');
-      return platformStaffApi.update(idOf(staff), {
-        profile_photo_file_id: profilePhotoFileId
-      });
-    },
-    onMutate: () => setFieldError(null),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource('platform-staff') }).then(onClose),
-    onError: (error) => {
-      if (error instanceof Error && error.message === 'Choose an image before saving.') {
-        setFieldError(error.message);
-      }
-    }
-  });
-
-  useEffect(() => {
-    if (!open) return;
-    setProfilePhotoFile(null);
-    setFieldError(null);
-    mutation.reset();
-  }, [open, staff]);
-
-  return (
-    <StaffModalShell
-      open={open}
-      onClose={onClose}
-      title="Profile photo"
-      permission="platform_user.edit"
-      loading={mutation.isPending}
-      error={fieldError ? null : mutation.error}
-      onSubmit={() => mutation.mutate()}
-      submitLabel="Save photo"
-    >
-      <StaffAvatar staff={staff} />
-      <ProfilePhotoUploadField
-        currentFileId={textOf(staff, ['profile_photo_file_id'], '')}
-        selectedFile={profilePhotoFile}
-        error={fieldError}
-        onFileSelected={(file) => {
-          setFieldError(null);
-          setProfilePhotoFile(file);
-        }}
-      />
-    </StaffModalShell>
-  );
-}
-
 function StaffModalShell({
   open,
   title,
@@ -1991,7 +1977,7 @@ function RelationMultiSelectField({
   form: any;
   name: string;
   label: string;
-  options: PlatformRecord[];
+  options: Array<{ uuid?: string; id?: string | number; name?: string; code?: string; display_name?: string; guard_name?: string; status?: string }>;
   loading?: boolean;
   error?: unknown;
   emptyLabel: string;
@@ -2019,7 +2005,7 @@ function RelationMultiSelectField({
               const value = idOf(option as PlatformStaffRecord);
               return value ? (
                 <option key={value} value={value}>
-                  {optionLabel(option)}
+                  {optionLabel(option as PlatformRecord)}
                 </option>
               ) : null;
             })
@@ -2031,24 +2017,55 @@ function RelationMultiSelectField({
   );
 }
 
+function RelationSelectField({
+  form,
+  name,
+  label,
+  options,
+  loading
+}: {
+  form: any;
+  name: string;
+  label: string;
+  options: Array<{ uuid?: string; id?: string | number; name?: string; code?: string; display_name?: string; guard_name?: string; status?: string }>;
+  loading?: boolean;
+}) {
+  const error = form.formState.errors[name]?.message;
+  return (
+    <label>
+      <span>{label}</span>
+      <select {...form.register(name)} disabled={loading}>
+        <option value="">Select {label.toLowerCase()}</option>
+        {options.map((option) => {
+          const value = idOf(option as PlatformStaffRecord);
+          return value ? <option key={value} value={value}>{optionLabel(option as PlatformRecord)}</option> : null;
+        })}
+      </select>
+      {error ? <strong role="alert">{String(error)}</strong> : null}
+    </label>
+  );
+}
+
 function InputField({
   form,
   name,
   label,
   placeholder,
-  type = 'text'
+  type = 'text',
+  readOnly = false
 }: {
   form: any;
   name: string;
   label: ReactNode;
   placeholder?: string;
   type?: string;
+  readOnly?: boolean;
 }) {
   const error = form.formState.errors[name]?.message;
   return (
     <label>
       <span>{label}</span>
-      <input type={type} placeholder={placeholder} {...form.register(name)} />
+      <input type={type} placeholder={placeholder} readOnly={readOnly} {...form.register(name)} />
       {error ? <strong role="alert">{String(error)}</strong> : null}
     </label>
   );
@@ -2088,6 +2105,33 @@ function CheckboxField({ form, name, label }: { form: any; name: string; label: 
   );
 }
 
+function SimpleRelationSelect({
+  label,
+  value,
+  options,
+  loading,
+  onChange
+}: {
+  label: string;
+  value: string;
+  options: Array<{ uuid?: string; id?: string | number; name?: string; code?: string; display_name?: string }>;
+  loading?: boolean;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label>
+      <span>{label}</span>
+      <select value={value} disabled={loading} onChange={(event) => onChange(event.target.value)}>
+        <option value="">No {label.toLowerCase()} selected</option>
+        {options.map((option) => {
+          const id = String(option.uuid ?? option.id ?? '');
+          return id ? <option key={id} value={id}>{option.display_name ?? option.name ?? option.code ?? id}</option> : null;
+        })}
+      </select>
+    </label>
+  );
+}
+
 function SimpleInput({
   label,
   value,
@@ -2116,9 +2160,9 @@ function SimpleInput({
 
 function RequiredLabel({ children }: { children: ReactNode }) {
   return (
-    <>
+    <span className="required-label">
       {children} <span className="required-mark" aria-label="required">*</span>
-    </>
+    </span>
   );
 }
 
@@ -2131,7 +2175,7 @@ function SimpleMultiSelect({
 }: {
   label: string;
   value: string[];
-  options: PlatformRecord[];
+  options: Array<{ uuid?: string; id?: string | number; name?: string; code?: string; display_name?: string; guard_name?: string; status?: string }>;
   loading?: boolean;
   onChange: (value: string[]) => void;
 }) {
@@ -2154,7 +2198,7 @@ function SimpleMultiSelect({
               const value = idOf(option as PlatformStaffRecord);
               return value ? (
                 <option key={value} value={value}>
-                  {optionLabel(option)}
+                  {optionLabel(option as PlatformRecord)}
                 </option>
               ) : null;
             })
@@ -2337,3 +2381,28 @@ function RecordList({
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
