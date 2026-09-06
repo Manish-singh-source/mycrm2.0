@@ -84,7 +84,12 @@ type ActionKey =
   | 'remoteEnd'
   | 'reportExport'
   | 'alertResolve'
+  | 'serviceLogs'
+  | 'queueJobDetail'
+  | 'queueDelete'
   | 'incidentEditor'
+  | 'incidentDetail'
+  | 'incidentResolve'
   | 'payload'
   | 'retry'
   | 'providerEditor'
@@ -102,6 +107,7 @@ type ActionKey =
   | 'backupRun'
   | 'templateEditor'
   | 'auditCompare'
+  | 'securityReview'
   | 'auditExport'
   | 'trialExtend'
   | 'trialConvert'
@@ -109,6 +115,8 @@ type ActionKey =
   | 'legalPublish'
   | 'announcementEditor'
   | 'announcementPublish'
+  | 'announcementArchive'
+  | 'announcementDelete'
   | 'webhookEditor'
   | null;
 
@@ -222,7 +230,7 @@ function PlatformModulesListPage() {
     queryFn: () => platformOperationsApi.modules.list(queryParams)
   });
   const rows = query.data?.data ?? [];
-  const selectedRows = rows.filter((row) => selectedIds.includes(idOf(row)));
+  const selectedRows = rows.filter((row: PlatformRecord) => selectedIds.includes(idOf(row)));
   const mutation = useMutation({
     mutationFn: async ({ action, record }: { action: 'delete' | 'bulkDelete' | 'toggle'; record?: PlatformRecord | null }) => {
       if (action === 'bulkDelete') return platformOperationsApi.modules.bulkDelete(selectedIds);
@@ -599,8 +607,8 @@ function ModuleFeatureModal({ module, open, onClose, onComplete }: { module?: Pl
   const [selected, setSelected] = useState<string[]>([]);
   const moduleId = idOf(module ?? undefined);
   const optionsQuery = useQuery({
-    queryKey: platformQueryKeys.list('features', { per_page: 200 }),
-    queryFn: () => platformOperationsApi.references.features({ per_page: 200 }),
+    queryKey: platformQueryKeys.list('features', { per_page: 100 }),
+    queryFn: () => platformOperationsApi.references.features({ per_page: 100 }),
     enabled: open
   });
   const currentQuery = useQuery({
@@ -639,7 +647,6 @@ function ModuleFeatureModal({ module, open, onClose, onComplete }: { module?: Pl
 
 const moduleFormFields: Field[] = [
   { name: 'name', label: 'Name', required: true },
-  { name: 'code', label: 'Code', required: true },
   { name: 'category', label: 'Category', type: 'select', options: moduleCategoryOptions },
   { name: 'icon', label: 'Icon' },
   { name: 'is_core', label: 'Core module', type: 'checkbox' },
@@ -651,7 +658,6 @@ const moduleFormFields: Field[] = [
 function defaultModuleForm(record?: PlatformRecord): Record<string, string | boolean | number> {
   return {
     name: printable(record?.name === '-' ? '' : record?.name ?? ''),
-    code: printable(record?.code === '-' ? '' : record?.code ?? ''),
     category: String(record?.category ?? 'platform'),
     icon: String(record?.icon ?? ''),
     is_core: Boolean(record?.is_core),
@@ -766,7 +772,6 @@ function HeaderActions({ config, activeTab, onAction }: { config: AreaConfig; ac
   if (config.id === 'monitoring') return <Button type="button" onClick={() => onAction('incidentEditor')}><AlertTriangle size={16} aria-hidden />New Incident</Button>;
   if (config.id === 'integrations') {
     if (activeTab === 'providers') return <Button type="button" onClick={() => onAction('providerEditor')}><PlugZap size={16} aria-hidden />Create Provider</Button>;
-    if (activeTab === 'webhooks') return <Button type="button" onClick={() => onAction('integrationWebhookEditor')}><UploadCloud size={16} aria-hidden />Create Webhook</Button>;
     if (activeTab === 'tenant') return <Button type="button" onClick={() => onAction('connectProvider')}><PlugZap size={16} aria-hidden />Connect Integration</Button>;
     return null;
   }
@@ -924,13 +929,13 @@ function ActionSurface({ area, action, selectedIds, onClose, onComplete }: { are
   const [payload, setPayload] = useState<Record<string, unknown>>({});
   const fields = fieldsFor(area, action);
   const featureOptionsQuery = useQuery({
-    queryKey: platformQueryKeys.list('features', { per_page: 200 }),
-    queryFn: () => platformOperationsApi.references.features({ per_page: 200 }),
+    queryKey: platformQueryKeys.list('features', { per_page: 100 }),
+    queryFn: () => platformOperationsApi.references.features({ per_page: 100 }),
     enabled: action.key === 'featureAttach'
   });
   const categoryOptionsQuery = useQuery({
-    queryKey: platformQueryKeys.list('kb-categories', { per_page: 200 }),
-    queryFn: () => platformOperationsApi.support.kbCategories.list({ per_page: 200 }),
+    queryKey: platformQueryKeys.list('kb-categories', { per_page: 100 }),
+    queryFn: () => platformOperationsApi.support.kbCategories.list({ per_page: 100 }),
     enabled: action.key === 'articleEditor' || action.key === 'categoryEditor'
   });
   const tenantOptionsQuery = useQuery({
@@ -953,11 +958,32 @@ function ActionSurface({ area, action, selectedIds, onClose, onComplete }: { are
     queryFn: () => safeReferenceList(() => platformOperationsApi.integrations.tenantIntegrations({ per_page: 200 })),
     enabled: action.key === 'integrationWebhookEditor'
   });
+  const queueJobDetailQuery = useQuery({
+    queryKey: platformQueryKeys.detail('queue-jobs', idOf(action.record)),
+    queryFn: () => platformOperationsApi.monitoring.queueJob(idOf(action.record)),
+    enabled: area === 'monitoring' && action.key === 'queueJobDetail' && Boolean(idOf(action.record))
+  });
+  const incidentDetailQuery = useQuery({
+    queryKey: platformQueryKeys.detail('system-incidents', idOf(action.record)),
+    queryFn: () => platformOperationsApi.monitoring.incident(idOf(action.record)),
+    enabled: area === 'monitoring' && action.key === 'incidentDetail' && Boolean(idOf(action.record))
+  });
+  const serviceLogsQuery = useQuery({
+    queryKey: platformQueryKeys.related('monitoring-services', idOf(action.record), 'logs'),
+    queryFn: () => platformOperationsApi.monitoring.serviceLogs(String(action.record?.code ?? idOf(action.record)), { per_page: 100 }),
+    enabled: area === 'monitoring' && action.key === 'serviceLogs' && Boolean(action.record?.code ?? idOf(action.record))
+  });
   const moduleDetailQuery = useQuery({
     queryKey: platformQueryKeys.detail('modules', idOf(action.record)),
     queryFn: () => platformOperationsApi.modules.detail(idOf(action.record)),
     enabled: area === 'modules' && action.key === 'payload' && Boolean(idOf(action.record))
   });
+  const announcementDetailQuery = useQuery({
+    queryKey: platformQueryKeys.detail('announcements', idOf(action.record)),
+    queryFn: () => platformOperationsApi.lifecycle.announcement(idOf(action.record)),
+    enabled: area === 'announcements' && action.key === 'announcementEditor' && Boolean(idOf(action.record))
+  });
+
   const articleDetailQuery = useQuery({
     queryKey: platformQueryKeys.detail('kb-articles', idOf(action.record)),
     queryFn: () => platformOperationsApi.support.articles.detail(idOf(action.record)),
@@ -1012,6 +1038,12 @@ function ActionSurface({ area, action, selectedIds, onClose, onComplete }: { are
   }, [action.key, action.record]);
 
   useEffect(() => {
+    if (action.key === 'announcementEditor' && announcementDetailQuery.data) {
+      setPayload(defaultPayloadFor({ ...action, record: announcementDetailQuery.data }));
+    }
+  }, [action, announcementDetailQuery.data]);
+
+  useEffect(() => {
     if (action.key === 'articleEditor' && articleDetailQuery.data) {
       setPayload(defaultPayloadFor({ ...action, record: articleDetailQuery.data }));
     }
@@ -1044,6 +1076,45 @@ function ActionSurface({ area, action, selectedIds, onClose, onComplete }: { are
   }, [action.key, currentModuleFeaturesQuery.data]);
 
   if (!action.key) return null;
+  if (area === 'monitoring' && action.tab === 'queue' && action.key === 'payload') {
+    return (
+      <AppDrawer open onClose={onClose} title="Queue Job Exception" guard="platform" permission="monitoring.view" size="lg">
+        <DetailGrid record={{
+          status: action.record?.status,
+          job_name: action.record?.job_name,
+          queue: action.record?.queue,
+          attempts: action.record?.attempts,
+          exception: action.record?.exception ?? 'No exception recorded.'
+        }} />
+      </AppDrawer>
+    );
+  }
+  if (action.key === 'queueJobDetail') {
+    return (
+      <AppDrawer open onClose={onClose} title="Queue Job Details" guard="platform" permission="monitoring.view" size="lg">
+        {queueJobDetailQuery.isLoading ? <div className="surface-state">Loading queue job...</div> : null}
+        {queueJobDetailQuery.isError ? <div className="surface-error">{errorMessage(queueJobDetailQuery.error)}</div> : null}
+        {!queueJobDetailQuery.isLoading && !queueJobDetailQuery.isError ? <DetailGrid record={queueJobDetailQuery.data} /> : null}
+      </AppDrawer>
+    );
+  }
+  if (action.key === 'incidentDetail') {
+    return (
+      <AppDrawer open onClose={onClose} title="Incident Details" guard="platform" permission="monitoring.view" size="lg">
+        {incidentDetailQuery.isLoading ? <div className="surface-state">Loading incident...</div> : null}
+        {incidentDetailQuery.isError ? <div className="surface-error">{errorMessage(incidentDetailQuery.error)}</div> : null}
+        {!incidentDetailQuery.isLoading && !incidentDetailQuery.isError ? <DetailGrid record={incidentDetailQuery.data} /> : null}
+      </AppDrawer>
+    );
+  }  if (action.key === 'serviceLogs') {
+    return (
+      <AppDrawer open onClose={onClose} title="Service Logs" guard="platform" permission="monitoring.view" size="lg">
+        {serviceLogsQuery.isLoading ? <div className="surface-state">Loading service logs...</div> : null}
+        {serviceLogsQuery.isError ? <div className="surface-error">{errorMessage(serviceLogsQuery.error)}</div> : null}
+        {!serviceLogsQuery.isLoading && !serviceLogsQuery.isError ? <RelatedRows title="Service Logs" rows={serviceLogsQuery.data?.data ?? []} /> : null}
+      </AppDrawer>
+    );
+  }
   if (action.key === 'payload' || action.key === 'auditCompare') {
     return (
       <AppDrawer open onClose={onClose} title={detailTitleFor(area, action)} guard="platform" permission={viewPermissionFor(area, action.key)} size="lg">
@@ -1090,7 +1161,7 @@ function ActionSurface({ area, action, selectedIds, onClose, onComplete }: { are
       </AppDrawer>
     );
   }
-  if (['fieldMapping', 'incidentEditor', 'articleEditor', 'ticketEditor', 'providerEditor', 'connectProvider', 'integrationEditor', 'integrationWebhookEditor'].includes(action.key)) {
+  if (['securityReview', 'fieldMapping', 'incidentEditor', 'incidentResolve', 'articleEditor', 'ticketEditor', 'providerEditor', 'connectProvider', 'integrationEditor', 'integrationWebhookEditor'].includes(action.key)) {
     return (
       <AppDrawer
         open
@@ -1340,6 +1411,8 @@ async function runAction(area: OperationArea, action: ActionState, payload: Reco
     if (action.key === 'alertResolve') return platformOperationsApi.monitoring.resolveAlert(action.record?.id ?? id, payload);
     if (action.key === 'incidentEditor') return id ? platformOperationsApi.monitoring.updateIncident(action.record?.id ?? id, payload) : platformOperationsApi.monitoring.createIncident(payload);
     if (action.key === 'retry' && action.tab === 'queue') return platformOperationsApi.monitoring.retryQueueJob(action.record?.id ?? id, payload);
+    if (action.key === 'queueDelete' && action.tab === 'queue') return platformOperationsApi.monitoring.deleteQueueJob(action.record?.id ?? id, payload);
+    if (action.key === 'incidentResolve') return platformOperationsApi.monitoring.resolveIncident(action.record?.id ?? id, payload);
   }
   if (area === 'integrations') {
     if (action.key === 'providerEditor') return id ? platformOperationsApi.integrations.updateProvider(id, payload) : platformOperationsApi.integrations.createProvider(payload);
@@ -1360,6 +1433,9 @@ async function runAction(area: OperationArea, action: ActionState, payload: Reco
     if (action.key === 'templateEditor') return platformOperationsApi.settings.createTemplate(normalizePayload(action.key, payload));
   }
   if (area === 'audit') {
+    if (action.key === 'securityReview') return platformOperationsApi.audit.reviewSecurity(id, { review_status: payload.review_status, review_notes: payload.review_notes });
+  if (action.key === 'announcementArchive' || action.key === 'announcementDelete') return { reason: '' };
+  if (action.key === 'announcementEditor') return { title: action.record?.title ?? '', audience: action.record?.audience ?? 'all', status: action.record?.status ?? 'draft', body: action.record?.body ?? '' };
     if (action.key === 'auditExport') return platformOperationsApi.audit.export({ ...payload, selected_ids: selectedIds });
   }
   if (area === 'trials') {
@@ -1373,6 +1449,8 @@ async function runAction(area: OperationArea, action: ActionState, payload: Reco
   if (area === 'announcements') {
     if (action.key === 'announcementEditor') return id ? platformOperationsApi.lifecycle.updateAnnouncement(id, payload) : platformOperationsApi.lifecycle.createAnnouncement(payload);
     if (action.key === 'announcementPublish') return platformOperationsApi.lifecycle.publishAnnouncement(id);
+    if (action.key === 'announcementArchive') return platformOperationsApi.lifecycle.archiveAnnouncement(id, payload);
+    if (action.key === 'announcementDelete') return platformOperationsApi.lifecycle.deleteAnnouncement(id, payload);
   }
   if (area === 'webhooks') {
     if (action.key === 'webhookEditor') return id ? platformOperationsApi.webhooks.updateEndpoint(id, normalizePayload(action.key, payload)) : platformOperationsApi.webhooks.createEndpoint(normalizePayload(action.key, payload));
@@ -1432,24 +1510,23 @@ const configs: Record<OperationArea, AreaConfig> = {
     description: 'Service health, jobs, scheduler logs, API logs, alerts, incidents, and raw exception drawers.',
     permission: 'monitoring.view',
     tabs: [
-      { id: 'services', label: 'Services', resource: 'monitoring-services', query: platformOperationsApi.monitoring.services, columns: ['name', 'code', 'type', 'status', 'response_time_ms', 'last_checked_at'], primary: ['name'] },
-      { id: 'queue', label: 'Queue Jobs', resource: 'queue-jobs', query: platformOperationsApi.monitoring.queueJobs, columns: ['id', 'queue', 'job_name', 'status', 'attempts', 'started_at', 'finished_at'], actions: [{ key: 'retry', label: 'Retry', icon: <RotateCw size={14} aria-hidden /> }, { key: 'payload', label: 'Exception', icon: <FileJson2 size={14} aria-hidden /> }] },
+      { id: 'services', label: 'Services', resource: 'monitoring-services', query: platformOperationsApi.monitoring.services, columns: ['name', 'code', 'service_type', 'status', 'check_interval_seconds'], primary: ['name'], actions: [{ key: 'serviceLogs', label: 'View Logs', icon: <FileJson2 size={14} aria-hidden /> }] },
+      { id: 'queue', label: 'Queue Jobs', resource: 'queue-jobs', query: platformOperationsApi.monitoring.queueJobs, columns: ['id', 'queue', 'job_name', 'status', 'attempts', 'started_at', 'finished_at'], actions: [{ key: 'queueJobDetail', label: 'View Details', icon: <FileJson2 size={14} aria-hidden /> }, { key: 'retry', label: 'Retry', icon: <RotateCw size={14} aria-hidden /> }, { key: 'queueDelete', label: 'Delete', icon: <Trash2 size={14} aria-hidden /> }, { key: 'payload', label: 'Exception', icon: <FileJson2 size={14} aria-hidden /> }] },
       { id: 'scheduler', label: 'Scheduler Logs', resource: 'scheduler-logs', query: platformOperationsApi.monitoring.schedulerLogs, columns: ['command', 'status', 'duration_ms', 'started_at', 'finished_at'] },
-      { id: 'api', label: 'API Logs', resource: 'api-request-logs', query: platformOperationsApi.monitoring.apiLogs, columns: ['tenant_id', 'method', 'path', 'status_code', 'duration_ms', 'ip_address', 'created_at'], actions: [{ key: 'payload', label: 'Payload', icon: <FileJson2 size={14} aria-hidden /> }] },
+      { id: 'api', label: 'API Logs', resource: 'api-request-logs', query: platformOperationsApi.monitoring.apiLogs, columns: ['tenant_name', 'user_name', 'method', 'path', 'status_code', 'duration_ms', 'ip_address', 'created_at'] },
       { id: 'alerts', label: 'Alerts', resource: 'monitoring-alerts', query: platformOperationsApi.monitoring.alerts, columns: ['id', 'severity', 'message', 'status', 'triggered_at', 'resolved_at'], primary: ['message'], actions: [{ key: 'alertResolve', label: 'Resolve', icon: <CheckCircle2 size={14} aria-hidden /> }] },
-      { id: 'incidents', label: 'Incidents', resource: 'system-incidents', query: platformOperationsApi.monitoring.incidents, columns: ['id', 'title', 'severity', 'status', 'started_at', 'resolved_at'], primary: ['title'], actions: [{ key: 'incidentEditor', label: 'Edit', icon: <Pencil size={14} aria-hidden /> }] },
-      { id: 'usage', label: 'Usage Snapshots', resource: 'tenant-usage-snapshots', query: platformOperationsApi.monitoring.usage, columns: ['tenant_id', 'period_start', 'period_end', 'api_requests', 'storage_used_mb', 'created_at'] }
+      { id: 'incidents', label: 'Incidents', resource: 'system-incidents', query: platformOperationsApi.monitoring.incidents, columns: ['id', 'title', 'severity', 'status', 'started_at', 'resolved_at'], primary: ['title'], actions: [{ key: 'incidentDetail', label: 'View Details', icon: <FileJson2 size={14} aria-hidden /> }, { key: 'incidentEditor', label: 'Edit', icon: <Pencil size={14} aria-hidden /> }, { key: 'incidentResolve', label: 'Resolve', icon: <CheckCircle2 size={14} aria-hidden /> }] },
+      { id: 'usage', label: 'Usage Snapshots', resource: 'tenant-usage-snapshots', query: platformOperationsApi.monitoring.usage, columns: ['tenant_name', 'period_start', 'period_end', 'api_requests', 'storage_used_mb', 'created_at'] }
     ]
   },
   integrations: {
     id: 'integrations',
     title: 'Integrations',
-    description: 'Provider catalog, tenant integrations, credentials, webhooks, sync jobs, mappings, and rate-limit surfaces.',
+    description: 'Provider catalog, tenant integrations, credentials, sync jobs, mappings, and rate-limit surfaces.',
     permission: 'integration.view',
     tabs: [
       { id: 'providers', label: 'Providers', resource: 'integration-providers', query: platformOperationsApi.integrations.providers, columns: ['name', 'code', 'category', 'auth_type', 'status'], primary: ['name'], actions: [{ key: 'providerEditor', label: 'Edit', icon: <Pencil size={14} aria-hidden /> }] },
       { id: 'tenant', label: 'Tenant Integrations', resource: 'tenant-integrations', query: platformOperationsApi.integrations.tenantIntegrations, columns: ['uuid', 'tenant_name', 'provider_code', 'name', 'status', 'connected_at'], primary: ['name'], actions: [{ key: 'integrationEditor', label: 'Edit', icon: <Pencil size={14} aria-hidden /> }, { key: 'integrationTest', label: 'Test', icon: <CheckCircle2 size={14} aria-hidden /> }, { key: 'rotateCredentials', label: 'Rotate', icon: <LockKeyhole size={14} aria-hidden /> }, { key: 'fieldMapping', label: 'Mappings', icon: <Split size={14} aria-hidden /> }, { key: 'integrationRateLimits', label: 'Rate Limits', icon: <Clock size={14} aria-hidden /> }, { key: 'integrationDisconnect', label: 'Disconnect', icon: <Ban size={14} aria-hidden /> }] },
-      { id: 'webhooks', label: 'Webhooks', resource: 'integration-webhooks', query: platformOperationsApi.integrations.webhooks, columns: ['id', 'tenant_integration_name', 'event', 'status', 'last_delivered_at'], actions: [{ key: 'integrationWebhookEditor', label: 'Edit', icon: <Pencil size={14} aria-hidden /> }, { key: 'integrationWebhookLogs', label: 'Logs', icon: <FileJson2 size={14} aria-hidden /> }, { key: 'integrationWebhookDisable', label: 'Disable', icon: <Ban size={14} aria-hidden /> }] },
       { id: 'sync', label: 'Sync Jobs', resource: 'integration-sync-jobs', query: platformOperationsApi.integrations.syncJobs, columns: ['id', 'tenant_integration_id', 'sync_type', 'entity', 'status', 'started_at', 'finished_at'], actions: [{ key: 'retry', label: 'Retry', icon: <RotateCw size={14} aria-hidden /> }, { key: 'payload', label: 'Payload', icon: <FileJson2 size={14} aria-hidden /> }] }
     ]
   },
@@ -1470,8 +1547,8 @@ const configs: Record<OperationArea, AreaConfig> = {
     description: 'Activity, security, billing/payment/subscription/system and remote-login audit surfaces with compare and export.',
     permission: 'audit_log.view',
     tabs: [
-      { id: 'activity', label: 'Activity', resource: 'audit-activity', query: platformOperationsApi.audit.activity, columns: ['id', 'actor_platform_user_id', 'subject_type', 'event', 'ip_address', 'created_at'], primary: ['event'], actions: [{ key: 'auditCompare', label: 'Compare', icon: <CopyCheck size={14} aria-hidden /> }] },
-      { id: 'security', label: 'Security', resource: 'audit-security', query: platformOperationsApi.audit.security, columns: ['id', 'event', 'severity', 'ip_address', 'created_at'], primary: ['event'], actions: [{ key: 'ticketReply', label: 'Review', icon: <ClipboardCheck size={14} aria-hidden /> }] }
+      { id: 'activity', label: 'Activity', resource: 'audit-activity', query: platformOperationsApi.audit.activity, columns: ['id', 'actor_name', 'tenant_name', 'subject_type', 'event', 'ip_address', 'request_id', 'created_at'], primary: ['event'], actions: [{ key: 'auditCompare', label: 'Compare', icon: <CopyCheck size={14} aria-hidden /> }] },
+      { id: 'security', label: 'Security', resource: 'audit-security', query: platformOperationsApi.audit.security, columns: ['id', 'tenant_name', 'user_name', 'event', 'severity', 'ip_address', 'review_status', 'created_at'], primary: ['event'], actions: [{ key: 'securityReview', label: 'Review', icon: <ClipboardCheck size={14} aria-hidden /> }] }
     ]
   },
   onboarding: {
@@ -1492,15 +1569,15 @@ const configs: Record<OperationArea, AreaConfig> = {
     id: 'legal',
     title: 'Legal Documents',
     description: 'Terms, privacy, DPA, tenant agreement versions, publishing, and acceptance review shell.',
-    permission: 'setting.view',
+    permission: 'legal_document.view',
     tabs: [{ id: 'documents', label: 'Documents', resource: 'legal-documents', query: platformOperationsApi.lifecycle.legal, columns: ['document_type', 'title', 'version', 'status', 'published_at', 'updated_at'], primary: ['title'], actions: [{ key: 'legalEditor', label: 'Edit', icon: <Pencil size={14} aria-hidden /> }, { key: 'legalPublish', label: 'Publish', icon: <Send size={14} aria-hidden /> }] }]
   },
   announcements: {
     id: 'announcements',
     title: 'Announcements',
     description: 'Platform announcements to tenants with draft, publish, and archive controls.',
-    permission: 'setting.view',
-    tabs: [{ id: 'announcements', label: 'Announcements', resource: 'announcements', query: platformOperationsApi.lifecycle.announcements, columns: ['title', 'audience', 'status', 'published_at', 'created_at'], primary: ['title'], actions: [{ key: 'announcementEditor', label: 'Edit', icon: <Pencil size={14} aria-hidden /> }, { key: 'announcementPublish', label: 'Publish', icon: <Send size={14} aria-hidden /> }] }]
+    permission: 'announcement.view',
+    tabs: [{ id: 'announcements', label: 'Announcements', resource: 'announcements', query: platformOperationsApi.lifecycle.announcements, columns: ['title', 'audience', 'status', 'published_at', 'created_at'], primary: ['title'], actions: [{ key: 'announcementEditor', label: 'Edit', icon: <Pencil size={14} aria-hidden /> }, { key: 'announcementPublish', label: 'Publish', icon: <Send size={14} aria-hidden /> }, { key: 'announcementArchive', label: 'Archive', icon: <Archive size={14} aria-hidden /> }, { key: 'announcementDelete', label: 'Delete', icon: <Trash2 size={14} aria-hidden /> }] }]
   },
   webhooks: {
     id: 'webhooks',
@@ -1529,13 +1606,12 @@ function reportTabs(): AreaConfig['tabs'] {
 
 async function settingsList() {
   const response = await platformOperationsApi.settings.platform();
-  const settings = response.data?.settings;
-  const rows = Array.isArray(settings) ? settings as PlatformRecord[] : [];
+  const rows = Array.isArray(response.data) ? response.data : [];
   return { data: rows, total: rows.length };
 }
 
 function fieldsFor(area: OperationArea, action: ActionState): Field[] {
-  if (action.key === 'moduleEditor') return [{ name: 'name', label: 'Name', required: true }, { name: 'code', label: 'Code', required: true }, { name: 'category', label: 'Category', type: 'select', options: ['crm', 'sales', 'support', 'billing', 'operations', 'analytics', 'integrations', 'security'] }, { name: 'icon', label: 'Icon' }, { name: 'is_core', label: 'Core module', type: 'checkbox' }, { name: 'status', label: 'Status', type: 'select', options: ['active', 'inactive'] }, { name: 'sort_order', label: 'Sort Order', type: 'number' }, { name: 'description', label: 'Description', type: 'textarea' }];
+  if (action.key === 'moduleEditor') return [{ name: 'name', label: 'Name', required: true }, { name: 'category', label: 'Category', type: 'select', options: ['crm', 'sales', 'support', 'billing', 'operations', 'analytics', 'integrations', 'security'] }, { name: 'icon', label: 'Icon' }, { name: 'is_core', label: 'Core module', type: 'checkbox' }, { name: 'status', label: 'Status', type: 'select', options: ['active', 'inactive'] }, { name: 'sort_order', label: 'Sort Order', type: 'number' }, { name: 'description', label: 'Description', type: 'textarea' }];
   if (action.key === 'featureAttach') return [{ name: 'feature_uuids', label: 'Features', type: 'multiselect', reference: 'features', required: true }];
   if (action.key === 'ticketEditor') return [{ name: 'tenant_uuid', label: 'Tenant', reference: 'tenants' }, { name: 'subject', label: 'Subject', required: true }, { name: 'description', label: 'Description', type: 'textarea' }, { name: 'priority', label: 'Priority', type: 'select', options: ['low', 'medium', 'high', 'urgent'] }, { name: 'category', label: 'Category', type: 'select', options: ['general', 'billing', 'technical', 'account', 'feature_request'] }, { name: 'source', label: 'Source', type: 'select', options: ['platform', 'tenant_help_center', 'email', 'phone', 'chat'] }, { name: 'assigned_to_uuid', label: 'Assignee', reference: 'platformUsers' }, { name: 'status', label: 'Status', type: 'select', options: ['open', 'in_progress', 'pending', 'closed'] }];
   if (action.key === 'ticketAssign') return [{ name: 'assigned_to_uuid', label: 'Assignee', reference: 'platformUsers' }, { name: 'audit_reason', label: 'Audit Reason', type: 'textarea' }];
@@ -1543,36 +1619,38 @@ function fieldsFor(area: OperationArea, action: ActionState): Field[] {
   if (action.key === 'ticketAttach') return [{ name: 'upload_file', label: 'File', type: 'file', required: true }];
   if (action.key === 'ticketClose') return [{ name: 'notes', label: 'Resolution Notes', type: 'textarea' }];
   if (action.key === 'ticketReopen') return [];
-  if (action.key === 'articleEditor') return [{ name: 'category_uuid', label: 'Category', reference: 'categories' }, { name: 'title', label: 'Title', required: true }, { name: 'slug', label: 'Slug' }, { name: 'audience', label: 'Audience', type: 'select', options: ['all', 'public', 'tenant', 'internal'] }, { name: 'status', label: 'Status', type: 'select', options: ['draft', 'published', 'archived'] }, { name: 'body', label: 'Body', type: 'textarea', required: true }];
-  if (action.key === 'categoryEditor') return [{ name: 'parent_uuid', label: 'Parent Category', reference: 'categories' }, { name: 'name', label: 'Name', required: true }, { name: 'slug', label: 'Slug' }, { name: 'audience', label: 'Audience', type: 'select', options: ['all', 'public', 'tenant', 'internal'] }, { name: 'status', label: 'Status', type: 'select', options: ['active', 'inactive', 'archived'] }];
+  if (action.key === 'articleEditor') return [{ name: 'category_uuid', label: 'Category', reference: 'categories' }, { name: 'title', label: 'Title', required: true }, { name: 'audience', label: 'Audience', type: 'select', options: ['all', 'public', 'tenant', 'internal'] }, { name: 'status', label: 'Status', type: 'select', options: ['draft', 'published', 'archived'] }, { name: 'body', label: 'Body', type: 'textarea', required: true }];
+  if (action.key === 'categoryEditor') return [{ name: 'parent_uuid', label: 'Parent Category', reference: 'categories' }, { name: 'name', label: 'Name', required: true }, { name: 'audience', label: 'Audience', type: 'select', options: ['all', 'public', 'tenant', 'internal'] }, { name: 'status', label: 'Status', type: 'select', options: ['active', 'inactive'] }];
   if (action.key === 'reportExport') return [{ name: 'format', label: 'Format', type: 'select', options: ['csv', 'xlsx', 'pdf'] }, { name: 'delivery', label: 'Delivery', type: 'select', options: ['job', 'download'] }, { name: 'email_when_ready', label: 'Email when ready', type: 'checkbox' }];
-  if (action.key === 'alertResolve') return [{ name: 'resolution_note', label: 'Resolution Note', type: 'textarea' }, { name: 'status', label: 'Status', type: 'select', options: ['resolved', 'ignored'] }];
-  if (action.key === 'incidentEditor') return [{ name: 'title', label: 'Title' }, { name: 'severity', label: 'Severity', type: 'select', options: ['low', 'medium', 'high', 'critical'] }, { name: 'status', label: 'Status', type: 'select', options: ['open', 'investigating', 'resolved'] }, { name: 'summary', label: 'Summary', type: 'textarea' }];
-  if (action.key === 'providerEditor') return [{ name: 'name', label: 'Name', required: true }, { name: 'code', label: 'Code', required: true }, { name: 'category', label: 'Category', type: 'select', required: true, options: ['crm', 'billing', 'support', 'communication', 'storage', 'analytics', 'automation'] }, { name: 'auth_type', label: 'Auth Type', type: 'select', required: true, options: ['api_key', 'oauth2', 'basic', 'bearer', 'none'] }, { name: 'status', label: 'Status', type: 'select', options: ['active', 'inactive'] }];
+  if (action.key === 'alertResolve') return [{ name: 'resolution_notes', label: 'Resolution Notes', type: 'textarea' }];
+  if (action.key === 'incidentResolve') return [{ name: 'resolution_notes', label: 'Resolution Notes', type: 'textarea' }];
+  if (action.key === 'incidentEditor') return [{ name: 'title', label: 'Title', required: true }, { name: 'severity', label: 'Severity', type: 'select', options: ['low', 'medium', 'high', 'critical'] }, { name: 'status', label: 'Status', type: 'select', options: ['open', 'investigating', 'resolved'] }, { name: 'summary', label: 'Summary', type: 'textarea' }];
+  if (action.key === 'providerEditor') return [{ name: 'name', label: 'Name', required: true }, { name: 'category', label: 'Category', type: 'select', required: true, options: ['crm', 'billing', 'support', 'communication', 'storage', 'analytics', 'automation'] }, { name: 'auth_type', label: 'Auth Type', type: 'select', required: true, options: ['api_key', 'oauth2', 'basic', 'bearer', 'none'] }, { name: 'status', label: 'Status', type: 'select', options: ['active', 'inactive'] }];
   if (action.key === 'connectProvider' || action.key === 'integrationEditor') return [{ name: 'tenant_uuid', label: 'Tenant', reference: 'tenants', required: true }, { name: 'provider_code', label: 'Provider', reference: 'providers', required: true }, { name: 'name', label: 'Connection Name', required: true }, { name: 'status', label: 'Status', type: 'select', options: ['active', 'inactive', 'disconnected'] }, { name: 'credential_api_key', label: 'API Key' }, { name: 'credential_secret', label: 'Secret' }, { name: 'credential_token', label: 'Access Token' }];
   if (action.key === 'rotateCredentials') return [{ name: 'credential_api_key', label: 'API Key' }, { name: 'credential_secret', label: 'Secret' }, { name: 'credential_token', label: 'Access Token' }];
   if (action.key === 'fieldMapping') return [{ name: 'entity_type', label: 'Entity Type', type: 'select', required: true, options: ['customer', 'contact', 'invoice', 'payment', 'ticket', 'lead', 'deal'] }, { name: 'local_field', label: 'Local Field', required: true }, { name: 'external_field', label: 'External Field', required: true }, { name: 'transform_rule', label: 'Transform Rule', type: 'select', options: ['none', 'uppercase', 'lowercase', 'trim', 'date_iso'] }];
-  if (action.key === 'integrationWebhookEditor') return [{ name: 'integration_uuid', label: 'Tenant Integration', reference: 'tenantIntegrations', required: true }, { name: 'event', label: 'Event', type: 'select', required: true, options: ['customer.created', 'customer.updated', 'invoice.created', 'invoice.paid', 'payment.failed', 'ticket.created', 'ticket.updated', 'sync.completed', 'sync.failed'] }, { name: 'secret', label: 'Secret' }, { name: 'status', label: 'Status', type: 'select', options: ['active', 'inactive'] }];
+  if (action.key === 'integrationWebhookEditor') return [{ name: 'tenant_uuid', label: 'Tenant', reference: 'tenants' }, { name: 'name', label: 'Name', required: true }, { name: 'url', label: 'URL', required: true }, { name: 'events', label: 'Events (comma separated)', required: true }, { name: 'secret', label: 'Secret' }, { name: 'status', label: 'Status', type: 'select', options: ['active', 'inactive'] }];
   if (action.key === 'integrationDisconnect') return [{ name: 'reason', label: 'Reason', type: 'textarea' }];
   if (action.key === 'settingsEditor') return [{ name: 'settings', label: 'Settings JSON by Group', type: 'textarea' }];
-  if (action.key === 'backupRun') return [{ name: 'backup_type', label: 'Backup Type', type: 'select', options: ['manual', 'full', 'database', 'files'] }];
+  if (action.key === 'backupRun') return [{ name: 'backup_type', label: 'Backup Type', type: 'select', options: ['full', 'database'] }];
   if (action.key === 'templateEditor') return [{ name: 'code', label: 'Code' }, { name: 'channel', label: 'Channel', type: 'select', options: ['email', 'sms', 'whatsapp', 'push'] }, { name: 'subject', label: 'Subject' }, { name: 'body', label: 'Body', type: 'textarea' }, { name: 'variables', label: 'Variables CSV' }, { name: 'status', label: 'Status', type: 'select', options: ['active', 'inactive'] }];
+  if (action.key === 'securityReview') return [{ name: 'review_status', label: 'Review Status', type: 'select', options: ['reviewed', 'dismissed', 'escalated'], required: true }, { name: 'review_notes', label: 'Review Notes', type: 'textarea', required: true }];
   if (action.key === 'auditExport') return [{ name: 'format', label: 'Format', type: 'select', options: ['csv'] }, { name: 'delivery', label: 'Delivery', type: 'select', options: ['job', 'download'] }, { name: 'scope', label: 'Scope', type: 'select', options: ['filtered', 'selected'] }, { name: 'email_when_ready', label: 'Email when ready', type: 'checkbox' }];
   if (action.key === 'trialExtend') return [{ name: 'trial_ends_at', label: 'New Trial End', type: 'date' }, { name: 'reason', label: 'Reason', type: 'textarea' }];
   if (action.key === 'trialConvert') return [{ name: 'plan_uuid', label: 'Plan UUID' }, { name: 'billing_cycle', label: 'Billing Cycle', type: 'select', options: ['monthly', 'yearly'] }, { name: 'starts_at', label: 'Start Date', type: 'date' }, { name: 'coupon_code', label: 'Coupon Code' }];
-  if (action.key === 'legalEditor') return [{ name: 'document_type', label: 'Type' }, { name: 'title', label: 'Title' }, { name: 'version', label: 'Version' }, { name: 'status', label: 'Status', type: 'select', options: ['draft', 'published'] }, { name: 'content', label: 'Content', type: 'textarea' }];
-  if (action.key === 'announcementEditor') return [{ name: 'title', label: 'Title' }, { name: 'audience', label: 'Audience' }, { name: 'status', label: 'Status', type: 'select', options: ['draft', 'published', 'archived'] }, { name: 'body', label: 'Body', type: 'textarea' }];
+  if (action.key === 'legalEditor') return [{ name: 'document_type', label: 'Type', type: 'select', options: ['terms_and_conditions', 'privacy_policy', 'dpa', 'tenant_agreement'], required: true }, { name: 'title', label: 'Title', required: true }, { name: 'version', label: 'Version', required: true }, { name: 'status', label: 'Status', type: 'select', options: ['draft', 'review'] }, { name: 'content', label: 'Content', type: 'textarea', required: true }];
+  if (action.key === 'announcementEditor') return [{ name: 'title', label: 'Title', required: true }, { name: 'audience', label: 'Audience', type: 'select', options: ['all', 'platform_users', 'tenants'] }, { name: 'status', label: 'Status', type: 'select', options: ['draft', 'review', 'scheduled', 'cancelled'] }, { name: 'body', label: 'Body', type: 'textarea', required: true }];
   if (action.key === 'webhookEditor') return [{ name: 'tenant_uuid', label: 'Tenant UUID' }, { name: 'name', label: 'Name' }, { name: 'url', label: 'URL' }, { name: 'events', label: 'Events CSV' }, { name: 'secret', label: 'Secret' }, { name: 'status', label: 'Status', type: 'select', options: ['active', 'inactive'] }];
   return [{ name: 'reason', label: 'Reason / Notes', type: 'textarea' }];
 }
 
 function normalizePayload(action: ActionKey, payload: Record<string, unknown>) {
-  if (action === 'providerEditor' || action === 'integrationWebhookEditor') return stripEmpty(payload);
+  if (action === 'providerEditor') return stripEmpty(payload);
+  if (action === 'integrationWebhookEditor' || action === 'webhookEditor') return { ...stripEmpty(payload), events: csv(payload.events) };
   if (action === 'connectProvider') return stripEmpty({ ...withoutCredentialFields(payload), credentials: credentialsFromPayload(payload) });
   if (action === 'integrationEditor') return stripEmpty(withoutCredentialFields(payload));
   if (action === 'templateEditor') return { ...payload, variables: csv(payload.variables) };
-  if (action === 'webhookEditor') return { ...payload, events: csv(payload.events) };
-  return payload;
+    return payload;
 }
 
 function withoutCredentialFields(payload: Record<string, unknown>) {
@@ -1609,7 +1687,6 @@ function defaultPayloadFor(action: ActionState): Record<string, unknown> {
   if (action.key === 'moduleEditor') {
     return {
       name: action.record?.name ?? '',
-      code: action.record?.code ?? '',
       category: action.record?.category ?? 'crm',
       icon: action.record?.icon ?? '',
       is_core: Boolean(action.record?.is_core),
@@ -1633,13 +1710,13 @@ function defaultPayloadFor(action: ActionState): Record<string, unknown> {
   }
   if (action.key === 'ticketAssign') return { assigned_to_uuid: action.record?.assigned_to_uuid ?? '', audit_reason: '' };
   if (action.key === 'ticketReply') return { comment: '', is_internal: false };
+  if (action.key === 'securityReview') return { review_status: 'reviewed', review_notes: '' };
   if (action.key === 'ticketAttach') return { upload_file: null };
   if (action.key === 'ticketClose') return { notes: '' };
   if (action.key === 'articleEditor') {
     return {
-      category_uuid: action.record?.category_uuid ?? '',
+      category_uuid: action.record?.category_uuid ?? ((action.record?.category as PlatformRecord | undefined)?.uuid ?? ''),
       title: action.record?.title ?? '',
-      slug: action.record?.slug ?? '',
       audience: action.record?.audience ?? 'all',
       status: action.record?.status ?? 'draft',
       body: action.record?.body ?? ''
@@ -1647,9 +1724,8 @@ function defaultPayloadFor(action: ActionState): Record<string, unknown> {
   }
   if (action.key === 'categoryEditor') {
     return {
-      parent_uuid: action.record?.parent_uuid ?? '',
+      parent_uuid: action.record?.parent_uuid ?? ((action.record?.parent as PlatformRecord | undefined)?.uuid ?? ''),
       name: action.record?.name ?? '',
-      slug: action.record?.slug ?? '',
       audience: action.record?.audience ?? 'all',
       status: action.record?.status ?? 'active'
     };
@@ -1657,7 +1733,6 @@ function defaultPayloadFor(action: ActionState): Record<string, unknown> {
   if (action.key === 'providerEditor') {
     return {
       name: action.record?.name ?? '',
-      code: action.record?.code ?? '',
       category: action.record?.category ?? 'crm',
       auth_type: action.record?.auth_type ?? 'api_key',
       status: action.record?.status ?? 'active'
@@ -1751,7 +1826,7 @@ function RelatedRows({ rows, title }: { rows: PlatformRecord[]; title: string })
         <div className="record-list">
           {rows.map((row, index) => (
             <article key={idOf(row) || index}>
-              <strong>{printable(row.name ?? row.organization_name ?? row.code ?? row.uuid)}</strong>
+              <strong>{printable(row.tenant_name ?? row.name ?? row.organization_name ?? row.code ?? row.uuid)}</strong>
               <p>{printable(row.status ?? row.module ?? row.slug ?? row.enabled)}</p>
             </article>
           ))}
@@ -1894,9 +1969,16 @@ function permissionFor(area: OperationArea, action: ActionKey) {
   if (['ticketEditor', 'ticketReply', 'ticketAttach'].includes(String(action))) return 'support.ticket.reply';
   if (area === 'support-tickets') return 'support.ticket.view';
   if (area === 'remote-login') return 'tenant.impersonate';
+  if (action === 'queueJobDetail') return 'monitoring.view';
+  if (action === 'serviceLogs') return 'monitoring.view';
   if (area === 'monitoring') return 'monitoring.manage';
   if (area === 'integrations' || area === 'webhooks') return 'integration.edit';
-  if (area === 'settings' || area === 'legal' || area === 'announcements') return 'setting.edit';
+  if (action === 'legalPublish') return 'legal_document.publish';
+  if (action === 'announcementPublish') return 'announcement.publish';
+  if (['announcementArchive', 'announcementDelete'].includes(String(action))) return 'announcement.delete';
+  if (action === 'legalEditor') return 'legal_document.edit';
+  if (area === 'settings' || area === 'announcements') return 'setting.edit';
+  if (action === 'securityReview') return 'audit_log.view';
   if (area === 'audit') return 'audit_log.export';
   if (area === 'trials') return 'subscription.edit';
   return 'dashboard.view';
@@ -1999,3 +2081,4 @@ function mask(value: unknown): unknown {
     sensitive.some((item) => key.toLowerCase().includes(item)) ? '[masked]' : mask(entry)
   ]));
 }
+

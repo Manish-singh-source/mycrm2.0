@@ -500,7 +500,7 @@ function CatalogList({ kind }: { kind: CatalogKind }) {
       const planId = idOf(record);
       const currentResponse = await platformSubscriptionsApi.plans.features(planId);
       const selectedFeatureUuid = String(payload.feature_uuid ?? '');
-      const currentFeatures = (currentResponse.data.features ?? []).map((feature) => ({
+      const currentFeatures = (currentResponse.data?.features ?? []).map((feature) => ({
         feature_uuid: idOf(feature),
         value: feature.value ?? '',
         metadata: parseMetadata(feature.metadata)
@@ -516,12 +516,13 @@ function CatalogList({ kind }: { kind: CatalogKind }) {
 
       return platformSubscriptionsApi.plans.replaceFeatures(planId, nextFeatures);
     },
-    onSuccess: async () => {
+    onSuccess: async (_result, variables) => {
       await queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource(meta.resourceKey) });
+      await queryClient.invalidateQueries({ queryKey: platformQueryKeys.detail('plans', idOf(variables.record)) });
+      await queryClient.invalidateQueries({ queryKey: platformQueryKeys.related('plans', idOf(variables.record), 'features') });
       setPlanModal(null);
     }
   });
-
   const columns = catalogColumns(kind, {
     onView: (record) => navigate(`${meta.route}/${idOf(record)}`),
     onEdit: (record) => navigate(`${meta.route}/${idOf(record)}/edit`),
@@ -717,6 +718,12 @@ function CatalogForm({ kind, mode }: { kind: CatalogKind; mode: 'create' | 'edit
     enabled: kind === 'features'
   });
   const moduleOptions = moduleOptionsQuery.data?.data ?? [];
+  const [moduleSearch, setModuleSearch] = useState('');
+  const filteredModuleOptions = useMemo(() => {
+    const searchTerm = moduleSearch.trim().toLowerCase();
+    if (!searchTerm) return moduleOptions;
+    return moduleOptions.filter((module) => [textOf(module, ['name'], ''), textOf(module, ['code'], '')].some((value) => value.toLowerCase().includes(searchTerm)));
+  }, [moduleOptions, moduleSearch]);
   const [form, setForm] = useState<Record<string, string | boolean | number>>(() => defaultCatalogForm(kind));
 
   useEffect(() => {
@@ -760,10 +767,15 @@ function CatalogForm({ kind, mode }: { kind: CatalogKind; mode: 'create' | 'edit
                 <>
                   {label}
                   {kind === 'features' && field.name === 'module' ? (
+
+
+                    <>
+                                                          <input type="search" aria-label="Search modules" placeholder="Search modules..." value={moduleSearch} onChange={(event) => setModuleSearch(event.target.value)} />
                     <select required={required} value={String(form[field.name] ?? '')} onChange={(event) => setForm((current) => ({ ...current, module: event.target.value }))}>
                       <option value="">{moduleOptionsQuery.isLoading ? 'Loading modules...' : 'Select module'}</option>
-                      {moduleOptions.map((module) => <option key={idOf(module)} value={textOf(module, ['code'])}>{textOf(module, ['name'])} ({textOf(module, ['code'])})</option>)}
+                      {filteredModuleOptions.map((module) => <option key={idOf(module)} value={textOf(module, ['code'])}>{textOf(module, ['name'])} ({textOf(module, ['code'])})</option>)}
                     </select>
+                    </>
                   ) : field.type === 'select' ? (
                     <select required={required} value={String(form[field.name] ?? '')} onChange={(event) => setForm((current) => ({ ...current, [field.name]: event.target.value }))}>
                       {field.options?.map((option) => <option key={option} value={option}>{option}</option>)}
@@ -807,6 +819,11 @@ function CatalogView({ kind }: { kind: CatalogKind }) {
     queryFn: () => platformSubscriptionsApi.plans.features(id),
     enabled: kind === 'plans'
   });
+  const addonsQuery = useQuery({
+    queryKey: platformQueryKeys.related('plans', id, 'addons'),
+    queryFn: () => platformSubscriptionsApi.plans.addons(id),
+    enabled: kind === 'plans'
+  });
   const deleteMutation = useMutation({
     mutationFn: () => deleteCatalog(kind, id),
     onSuccess: async () => {
@@ -839,6 +856,7 @@ function CatalogView({ kind }: { kind: CatalogKind }) {
         tabs={[
           { id: 'overview', label: 'Overview', content: <RecordDetails record={record} moneyFields={['base_price', 'price']} /> },
           { id: 'features', label: 'Features and Limits', content: <RecordList rows={kind === 'addons' ? record.features_limits ?? [] : featuresQuery.data?.data.features ?? record.features ?? []} /> },
+          ...(kind === 'plans' ? [{ id: 'addons', label: 'Add-ons', content: <RecordList rows={addonsQuery.data?.data.addons ?? record.addons ?? []} /> }] : []),
           { id: 'subscriptions', label: 'Active Subscriptions', content: <RecordList rows={record.subscriptions ?? []} /> },
           { id: 'activity', label: 'Activity', content: <RecordList rows={record.activity ?? []} /> }
         ]}
@@ -1280,7 +1298,6 @@ function PlanActionModals({ modal, kind, record, loading, error, onClose, onArch
   useEffect(() => {
     setPayload({
       name: `${textOf(record, ['name'], 'Plan')} Copy`,
-      code: `${textOf(record, ['code'], 'plan')}_copy`,
       description: textOf(record, ['description'], ''),
       billing_cycle: textOf(record, ['billing_cycle'], 'monthly'),
       base_price: String(record?.base_price ?? '0.00'),
@@ -1336,7 +1353,6 @@ function PlanActionModals({ modal, kind, record, loading, error, onClose, onArch
   }
   const cloneFields = [
     { name: 'name', label: 'Name', required: true },
-    { name: 'code', label: 'Code', required: true },
     { name: 'description', label: 'Description', type: 'textarea' },
     { name: 'billing_cycle', label: 'Billing Cycle', type: 'select', options: ['monthly', 'quarterly', 'yearly'], required: true },
     { name: 'base_price', label: 'Base Price', type: 'number', required: true },
@@ -1349,7 +1365,7 @@ function PlanActionModals({ modal, kind, record, loading, error, onClose, onArch
   ];
   const attachFeatureDisabled = modal === 'attachFeature' && (!payload.feature_uuid || featureOptionsQuery.isLoading);
   const attachAddonDisabled = modal === 'attachAddon' && (addonOptionsQuery.isLoading || detailQuery.isLoading);
-  const cloneDisabled = modal === 'clone' && (!payload.name || !payload.code || !payload.billing_cycle || !payload.base_price);
+  const cloneDisabled = modal === 'clone' && (!payload.name || !payload.billing_cycle || !payload.base_price);
 
   return (
     <AppModal
@@ -1595,7 +1611,6 @@ function fieldsFor(kind: CatalogKind) {
   if (kind === 'addons') {
     return [
       { name: 'name', label: 'Name' },
-      { name: 'code', label: 'Code' },
       { name: 'pricing_type', label: 'Pricing Type', type: 'select', options: ['recurring', 'one time', 'usage based', 'tiered'] },
       { name: 'price', label: 'Price', type: 'number' },
       { name: 'currency', label: 'Currency', type: 'select', options: CURRENCY_OPTIONS },
@@ -1605,7 +1620,6 @@ function fieldsFor(kind: CatalogKind) {
   }
   return [
     { name: 'name', label: 'Name' },
-    { name: 'code', label: 'Code' },
     { name: 'billing_cycle', label: 'Billing Cycle', type: 'select', options: ['monthly', 'quarterly', 'yearly'] },
     { name: 'base_price', label: 'Base Price', type: 'number' },
     { name: 'currency', label: 'Currency' },
@@ -1832,7 +1846,6 @@ function defaultCatalogForm(kind: CatalogKind, record?: CatalogRecord): Record<s
   if (kind === 'addons') {
     return {
       name: textOf(record, ['name'], ''),
-      code: textOf(record, ['code'], ''),
       pricing_type: textOf(record, ['pricing_type'], 'recurring'),
       price: textOf(record, ['price'], ''),
       currency: textOf(record, ['currency'], 'INR'),
@@ -1842,7 +1855,6 @@ function defaultCatalogForm(kind: CatalogKind, record?: CatalogRecord): Record<s
   }
   return {
     name: textOf(record, ['name'], ''),
-    code: textOf(record, ['code'], ''),
     description: textOf(record, ['description'], ''),
     billing_cycle: textOf(record, ['billing_cycle'], 'monthly'),
     base_price: textOf(record, ['base_price'], '0.00'),
@@ -1860,7 +1872,7 @@ function saveCatalog(kind: CatalogKind, id: string, form: Record<string, string 
     return mode === 'create' ? platformSubscriptionsApi.features.create(payload) : platformSubscriptionsApi.features.update(id, payload);
   }
   if (kind === 'addons') {
-    const payload = Object.fromEntries(Object.entries(form).filter(([key, value]) => key !== 'code' || String(value).trim() !== '')) as AddonPayload;
+    const payload = form as AddonPayload;
     return mode === 'create' ? platformSubscriptionsApi.addons.create(payload) : platformSubscriptionsApi.addons.update(id, payload);
   }
   const payload = form as PlanPayload;
@@ -1928,3 +1940,4 @@ function buildFeatureMetadata(payload: Record<string, string | boolean>) {
     notes: String(payload.metadata_notes || '')
   };
 }
+

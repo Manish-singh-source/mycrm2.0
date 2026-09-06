@@ -9,7 +9,8 @@ import {
   AuthLoginPage,
   ForgotPasswordPage,
   ResetPasswordPage,
-  TenantRegistrationPage
+  TenantRegistrationPage,
+  PublicLegalDocumentPage,
 } from '@/features/auth/pages';
 import { RequireAuth } from '@/features/auth/guards/RequireAuth';
 import { RequirePermission } from '@/features/auth/guards/RequirePermission';
@@ -103,6 +104,7 @@ import {
   PlatformWebhooksPage
 } from '@/features/platform/operations/pages/PlatformOperationsPages';
 import { ForbiddenPage } from '@/pages/ForbiddenPage';
+import { PlatformNotificationDetailPage, PlatformNotificationsPage } from '@/features/platform/notifications/pages/PlatformNotificationsPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { PlaceholderPage } from '@/pages/PlaceholderPage';
 import { PLATFORM_ROUTES } from '@/features/platform/routes/platformRoutes';
@@ -251,6 +253,7 @@ export const appRouter = createBrowserRouter([
           </PublicAuthRoute>
         )
       },
+      { path: 'legal/:documentType', element: <PublicLegalDocumentPage /> },
       {
         path: 'register',
         element: (
@@ -878,6 +881,20 @@ export const appRouter = createBrowserRouter([
         )
       },
       {
+        path: 'notifications',
+        element: (
+          <RequirePermission guard="platform" anyOf={['announcement.view']}>
+            <PlatformNotificationsPage />
+          </RequirePermission>
+        )
+      },      {
+        path: 'notifications/:notificationId',
+        element: (
+          <RequirePermission guard="platform" anyOf={['announcement.view']}>
+            <PlatformNotificationDetailPage />
+          </RequirePermission>
+        )
+      },      {
         path: 'webhooks',
         element: (
           <RequirePermission guard="platform" anyOf={['integration.view']}>

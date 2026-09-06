@@ -347,13 +347,13 @@ function BillingView({ kind }: { kind: BillingKind }) {
   });
   const mutation = useMutation({
     mutationFn: ({ action, record, payload }: { action: BillingModal; record: BillingRecord; payload: Record<string, unknown> }) => mutateFor(kind, action, record, payload),
-	    onSuccess: async () => {
-	      await queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource(meta.resourceKey) });
-	      await queryClient.invalidateQueries({ queryKey: platformQueryKeys.detail(meta.resourceKey, id) });
-	      setModal(null);
-	    }
+    onSuccess: async (_data, variables) => {
+      await queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource(meta.resourceKey) });
+      await queryClient.invalidateQueries({ queryKey: platformQueryKeys.detail(meta.resourceKey, id) });
+      setModal(null);
+      if (kind === 'coupons' && variables.action === 'deleteCoupon') navigate(meta.route);
+    }
   });
-  if (query.isLoading) return <div className="surface-state">Loading {meta.singular.toLowerCase()}...</div>;
   if (query.isError) return <div className="surface-error">{errorMessage(query.error)}</div>;
   const record = query.data;
   if (!record) return <div className="empty-state">{meta.singular} not found.</div>;
@@ -855,14 +855,21 @@ function fieldsForModal(modal: BillingModal): ModalField[] {
   return [];
 }
 
+function toDateTimeLocal(value: unknown): string {
+  if (!value) return '';
+  const date = value instanceof Date ? value : new Date(String(value));
+  if (Number.isNaN(date.getTime())) return String(value).slice(0, 16);
+  const pad = (part: number) => String(part).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
 function defaultPayload(modal: BillingModal, record?: BillingRecord | null): Record<string, string | boolean | number> {
-  const now = new Date().toISOString().slice(0, 16);
+  const now = toDateTimeLocal(new Date());
   if (modal === 'sendInvoice') return { to: '', cc: '', message: 'Please find your invoice attached.', attach_pdf: true };
   if (modal === 'recordPayment') return { gateway: textOf(record, ['gateway'], 'razorpay'), gateway_payment_id: '', payment_method: 'card', amount: Number(record?.balance ?? record?.balance_amount ?? record?.amount ?? 0), currency: textOf(record, ['currency'], 'INR'), payment_status: 'success', paid_at: now, notes: '' };
   if (modal === 'retryPayment') return { gateway: textOf(record, ['gateway'], 'razorpay'), amount: Number(record?.amount ?? 0), reason: 'Retry failed payment' };
   if (modal === 'refundPayment') return { amount: Number(record?.amount ?? 0), currency: textOf(record, ['currency'], 'INR'), reason: '', gateway: textOf(record, ['gateway'], 'razorpay'), confirm_gateway_refund: false };
   if (modal === 'retryRefund') return { gateway: textOf(record, ['gateway'], 'razorpay'), reason: 'Retry failed refund' };
-  if (modal === 'couponRules') return { code: textOf(record, ['code'], ''), name: textOf(record, ['name'], ''), discount_type: textOf(record, ['discount_type'], 'percent'), discount_value: Number(record?.discount_value ?? 0), starts_at: textOf(record, ['starts_at'], now), expires_at: textOf(record, ['expires_at'], ''), max_redemptions: Number(record?.max_redemptions ?? 100), status: textOf(record, ['status'], 'active') };
+  if (modal === 'couponRules') return { code: textOf(record, ['code'], ''), name: textOf(record, ['name'], ''), discount_type: textOf(record, ['discount_type'], 'percent'), discount_value: Number(record?.discount_value ?? 0), starts_at: toDateTimeLocal(record?.starts_at) || now, expires_at: toDateTimeLocal(record?.expires_at), max_redemptions: Number(record?.max_redemptions ?? 100), status: textOf(record, ['status'], 'active') };
   return {};
 }
 

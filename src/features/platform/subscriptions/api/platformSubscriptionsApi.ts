@@ -1,4 +1,4 @@
-import type { ApiQuery, NormalizedApiResponse } from '@/lib/api/apiTypes';
+﻿import type { ApiQuery, NormalizedApiResponse } from '@/lib/api/apiTypes';
 import { platformClient } from '@/lib/api/platformClient';
 
 export type CatalogRecord = {
@@ -72,7 +72,6 @@ export type ListResult<TRecord extends CatalogRecord> = {
 
 export type PlanPayload = {
   name: string;
-  code?: string;
   description?: string;
   billing_cycle: string;
   base_price: string;
@@ -95,7 +94,6 @@ export type FeaturePayload = {
 
 export type AddonPayload = {
   name: string;
-  code?: string;
   pricing_type: string;
   price: string;
   currency: string;
@@ -323,6 +321,8 @@ export const platformSubscriptionsApi = {
   references: {
     tenants: (query?: ApiQuery) => list<CatalogRecord>('/tenants', query),
     coupons: (query?: ApiQuery) => list<CatalogRecord>('/coupons', query),
-    modules: (query?: ApiQuery) => list<CatalogRecord>('/modules', query)
+    modules: (query?: ApiQuery) => list<CatalogRecord>('/modules', query),
+    featureModules: () => list<CatalogRecord>('/features/options/modules')
   }
 };
+

@@ -41,6 +41,7 @@ export const PLATFORM_ROUTES = {
   trials: `${platformBase}/trials`,
   legal: `${platformBase}/legal`,
   announcements: `${platformBase}/announcements`,
+  notifications: `${platformBase}/notifications`,
   apiTokens: `${platformBase}/api-tokens`,
   webhooks: `${platformBase}/webhooks`
 } as const;

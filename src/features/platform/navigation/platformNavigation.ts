@@ -137,7 +137,7 @@ export const platformNavigation: NavGroup[] = [
       { label: 'Onboarding', to: PLATFORM_ROUTES.onboarding, icon: ScrollText, permission: 'tenant.view' },
       { label: 'Trials', to: PLATFORM_ROUTES.trials, icon: Bell, permission: 'subscription.view' },
       { label: 'Legal', to: PLATFORM_ROUTES.legal, icon: Gavel, permission: 'setting.view' },
-      { label: 'Announcements', to: PLATFORM_ROUTES.announcements, icon: Bell, permission: 'setting.view' },
+      { label: 'Announcements', to: PLATFORM_ROUTES.announcements, icon: Bell, permission: 'announcement.view' },
       { label: 'API Tokens', to: PLATFORM_ROUTES.apiTokens, icon: FileBadge2, permission: 'setting.view' },
       { label: 'Webhooks', to: PLATFORM_ROUTES.webhooks, icon: Users, permission: 'integration.view' }
     ]

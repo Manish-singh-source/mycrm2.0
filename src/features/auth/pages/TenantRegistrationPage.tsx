@@ -494,7 +494,7 @@ export function TenantRegistrationPage() {
                 <ReviewGrid planName={selectedPlan?.name} values={getValues()} workspaceUrl={workspaceUrl} />
                 <label className="check-row registration-terms">
                   <input type="checkbox" {...register('accept_terms')} />
-                  <span>I accept the terms and privacy policy. <span className="required-mark" aria-hidden="true">*</span></span>
+                  <span>I accept the <Link to="/auth/legal/terms_and_conditions" target="_blank" rel="noreferrer">Terms and Conditions</Link> and <Link to="/auth/legal/privacy_policy" target="_blank" rel="noreferrer">Privacy Policy</Link>. <span className="required-mark" aria-hidden="true">*</span></span>
                 </label>
                 {errors.accept_terms?.message ? <strong className="field-error">{errors.accept_terms.message}</strong> : null}
               </StepPanel>
