@@ -255,8 +255,8 @@ function SubscriptionsList() {
   const columns = useMemo<DataTableColumn<SubscriptionRecord>[]>(
     () => [
       { id: 'subscription_number', header: 'Subscription', accessor: (row) => row.subscription_number, enableSorting: true, cell: (row) => <strong>{textOf(row, ['subscription_number'])}</strong> },
-      { id: 'tenant', header: 'Tenant', accessor: (row) => row.tenant_name ?? row.organization_name, cell: (row) => textOf(row, ['tenant_name', 'organization_name']) },
-      { id: 'plan', header: 'Plan', accessor: (row) => row.plan_name, cell: (row) => textOf(row, ['plan_name']) },
+      { id: 'tenant', header: 'Tenant', accessor: (row) => row.tenant_name ?? row.organization_name, cell: (row) => textOf(row.tenant ?? row, ['organization_name', 'name', 'tenant_name'], textOf(row, ['tenant_name', 'organization_name'])) },
+      { id: 'plan', header: 'Plan', accessor: (row) => row.plan_name, cell: (row) => textOf(row.plan ?? row, ['name', 'code'], textOf(row, ['plan_name'])) },
       { id: 'type', header: 'Type', accessor: (row) => row.type, cell: (row) => textOf(row, ['type']) },
       { id: 'billing_cycle', header: 'Cycle', accessor: (row) => row.billing_cycle, cell: (row) => textOf(row, ['billing_cycle']) },
       { id: 'status', header: 'Status', accessor: (row) => row.status, cell: (row) => <Badge value={textOf(row, ['status'], 'inactive')} /> },
@@ -388,19 +388,19 @@ function SubscriptionView({ id }: { id: string }) {
     <section className="enterprise-module-page platform-subscriptions-page">
       <PageHeader
         title={textOf(record, ['subscription_number'], 'Subscription')}
-        description={`${textOf(record, ['tenant_name', 'organization_name'])} / ${textOf(record, ['plan_name'])}`}
+        description={`${textOf(record.tenant ?? record, ['organization_name', 'name', 'tenant_name'], textOf(record, ['tenant_name', 'organization_name']))} / ${textOf(record.plan ?? record, ['name', 'code'], textOf(record, ['plan_name']))}`}
         actions={<SubscriptionActions record={record} onOpen={setModal} />}
       />
       <SubscriptionStats rows={[record]} />
       <DetailTabs
         tabs={[
-          { id: 'summary', label: 'Summary', content: <RecordDetails record={record} moneyFields={['payable_amount', 'subtotal', 'discount_amount', 'tax_amount', 'total_amount', 'amount']} /> },
-          { id: 'usage', label: 'Usage', content: <RecordList rows={usageQuery.data?.data.usage ?? record.usage ?? []} /> },
-          { id: 'addons', label: 'Add-ons', content: <RecordList rows={record.addons ?? []} /> },
-          { id: 'invoices', label: 'Invoices', content: <RecordList rows={record.invoices ?? []} /> },
-          { id: 'payments', label: 'Payments', content: <RecordList rows={record.payments ?? []} /> },
-          { id: 'discounts', label: 'Discounts', content: <RecordList rows={record.coupons ?? record.redemptions ?? []} /> },
-          { id: 'history', label: 'History', content: <RecordList rows={[...(historyQuery.data?.data.versions ?? []), ...(historyQuery.data?.data.renewals ?? [])]} /> }
+          { id: 'summary', label: 'Summary', content: <SubscriptionSummary record={record} /> },
+          { id: 'usage', label: 'Usage', content: <SubscriptionRelationsList kind="usage" rows={usageQuery.data?.data.usage ?? record.usage ?? []} /> },
+          { id: 'addons', label: 'Add-ons', content: <SubscriptionRelationsList kind="addons" rows={record.addons ?? []} /> },
+          { id: 'invoices', label: 'Invoices', content: <SubscriptionRelationsList kind="invoices" rows={record.invoices ?? []} /> },
+          { id: 'payments', label: 'Payments', content: <SubscriptionRelationsList kind="payments" rows={record.payments ?? []} /> },
+          { id: 'discounts', label: 'Discounts', content: <SubscriptionRelationsList kind="discounts" rows={record.coupons ?? record.redemptions ?? []} /> },
+          { id: 'history', label: 'History', content: <SubscriptionRelationsList kind="history" rows={[...(historyQuery.data?.data.versions ?? []), ...(historyQuery.data?.data.renewals ?? [])]} /> }
         ]}
       />
       <SubscriptionLifecycleModal
@@ -1581,6 +1581,61 @@ function RecordList({ rows }: { rows: CatalogRecord[] }) {
   );
 }
 
+
+function SubscriptionSummary({ record }: { record: SubscriptionRecord }) {
+  const tenant = record.tenant ?? {};
+  const plan = record.plan ?? {};
+  const fields: Array<[string, unknown]> = [
+    ['Tenant', record.tenant_name ?? record.organization_name ?? tenant.organization_name ?? tenant.name],
+    ['Tenant slug', tenant.slug ?? record.tenant_slug],
+    ['Plan', record.plan_name ?? plan.name],
+    ['Plan code', plan.code],
+    ['Status', record.status],
+    ['Billing cycle', record.billing_cycle],
+    ['Subscription starts', formatDate(record.starts_at)],
+    ['Expires', formatDate(record.expires_at)],
+    ['Next billing', formatDate(record.next_billing_at)],
+    ['Auto renew', boolText(record.auto_renew)],
+    ['Base amount', money(record.base_amount ?? record.base_price, record.currency)],
+    ['Add-on amount', money(record.addon_amount, record.currency)],
+    ['Discount', money(record.discount_amount, record.currency)],
+    ['Tax', money(record.tax_amount, record.currency)],
+    ['Payable', money(totalFor(record), record.currency)]
+  ];
+  return (
+    <div className="summary-grid subscription-summary-grid">
+      {fields.map(([label, value]) => <div className="summary-card subscription-summary-card" key={String(label)}><span>{String(label)}</span><strong>{String(value ?? '-')}</strong></div>)}
+    </div>
+  );
+}
+
+function SubscriptionRelationsList({ rows, kind }: { rows: CatalogRecord[]; kind: 'addons' | 'invoices' | 'payments' | 'discounts' | 'usage' | 'history' }) {
+  if (!rows.length) return <div className="empty-state">No {kind} records returned.</div>;
+  return <div className="record-list subscription-relation-list">{rows.map((row, index) => {
+    const addon = (row.addonPlan ?? row.addon_plan ?? {}) as CatalogRecord;
+    const tenant = (row.tenant ?? {}) as CatalogRecord;
+    const coupon = (row.coupon ?? {}) as CatalogRecord;
+    const feature = (row.feature ?? {}) as CatalogRecord;
+    const title = kind === 'addons' ? textOf(addon, ['name', 'code'], textOf(row, ['name', 'code'], 'Add-on'))
+      : kind === 'invoices' ? textOf(row, ['invoice_number', 'uuid'], 'Invoice')
+      : kind === 'payments' ? textOf(row, ['payment_number', 'uuid'], 'Payment')
+      : kind === 'discounts' ? textOf(coupon, ['code', 'name'], textOf(row, ['code', 'coupon_code'], 'Coupon'))
+      : kind === 'usage' ? textOf(feature, ['name', 'code'], textOf(row, ['feature_name', 'metric'], 'Usage'))
+      : textOf(row, ['change_reason', 'status', 'renewed_at', 'created_at'], 'Subscription event');
+    const details = kind === 'addons'
+      ? `Qty ${row.quantity ?? 1} · ${money(row.unit_price ?? addon.price, row.currency ?? 'INR')} · ${textOf(row, ['status'], 'active')}`
+      : kind === 'invoices'
+        ? `${textOf(row, ['status'])} · ${money(row.total_amount, row.currency)} · due ${formatDate(row.due_date)}`
+        : kind === 'payments'
+          ? `${textOf(row, ['payment_status', 'status'])} · ${money(row.amount, row.currency)} · ${formatDate(row.paid_at)}`
+          : kind === 'discounts'
+            ? `${money(row.discount_amount, 'INR')} · ${textOf(tenant, ['organization_name', 'slug'], '')} · ${formatDate(row.redeemed_at)}`
+            : kind === 'usage'
+              ? `${row.used_value ?? 0} / ${row.limit_value ?? 'unlimited'} ${textOf(feature, ['unit'], '')} · ${formatDate(row.period_start)} - ${formatDate(row.period_end)}`
+              : `${textOf(row, ['status'], '')} · ${formatDate(row.renewed_at ?? row.created_at)}`;
+    return <article key={idOf(row) || index}><strong>{title}</strong><p>{details}</p></article>;
+  })}</div>;
+}
 function DetailTabs({ tabs }: { tabs: Array<{ id: string; label: string; content: ReactNode }> }) {
   const [activeId, setActiveId] = useState(tabs[0]?.id ?? '');
   const active = tabs.find((tab) => tab.id === activeId) ?? tabs[0];

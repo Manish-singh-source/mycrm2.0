@@ -83,7 +83,12 @@ function paginationTotal(meta?: Record<string, unknown>, fallback = 0) {
 function unwrapTenant(data: unknown): PlatformTenantRecord {
   if (data && typeof data === 'object' && 'tenant' in data) {
     const payload = data as Record<string, unknown> & { tenant: PlatformTenantRecord };
-    return { ...payload.tenant, owner: payload.owner as PlatformTenantRecord | undefined, office: payload.office as PlatformTenantRecord | undefined, subscription: payload.subscription as PlatformTenantRecord | undefined };
+    return {
+      ...payload.tenant,
+      owner: payload.owner as PlatformTenantRecord | undefined,
+      office: payload.office as PlatformTenantRecord | undefined,
+      subscription: payload.subscription as PlatformTenantRecord | undefined
+    };
   }
   return data as PlatformTenantRecord;
 }
@@ -101,18 +106,30 @@ export const platformTenantsApi = {
   list: async (query?: ApiQuery): Promise<PlatformTenantListResult> => {
     const response = await platformClient.get<PlatformTenantRecord[]>('/tenants', { query });
     const rows = Array.isArray(response.data) ? response.data : [];
-    return { data: rows, total: paginationTotal(response.meta, rows.length), stats: response.meta?.stats as PlatformTenantListResult['stats'] };
+    return {
+      data: rows,
+      total: paginationTotal(response.meta, rows.length),
+      stats: response.meta?.stats as PlatformTenantListResult['stats']
+    };
   },
   detail: async (id: string) => {
-    const response = await platformClient.get<PlatformTenantRecord | { tenant: PlatformTenantRecord }>(`/tenants/${encodeURIComponent(id)}`);
+    const response = await platformClient.get<
+      PlatformTenantRecord | { tenant: PlatformTenantRecord }
+    >(`/tenants/${encodeURIComponent(id)}`);
     return unwrapTenant(response.data);
   },
   create: async (body: TenantCreatePayload) => {
-    const response = await platformClient.post<PlatformTenantRecord | { tenant: PlatformTenantRecord }, TenantCreatePayload>('/tenants', body);
+    const response = await platformClient.post<
+      PlatformTenantRecord | { tenant: PlatformTenantRecord },
+      TenantCreatePayload
+    >('/tenants', body);
     return unwrapTenant(response.data);
   },
   update: async (id: string, body: Partial<TenantCreatePayload>) => {
-    const response = await platformClient.patch<PlatformTenantRecord | { tenant: PlatformTenantRecord }, Partial<TenantCreatePayload>>(`/tenants/${encodeURIComponent(id)}`, body);
+    const response = await platformClient.patch<
+      PlatformTenantRecord | { tenant: PlatformTenantRecord },
+      Partial<TenantCreatePayload>
+    >(`/tenants/${encodeURIComponent(id)}`, body);
     return unwrapTenant(response.data);
   },
   delete: (id: string, body: Record<string, unknown>) =>
@@ -136,17 +153,48 @@ export const platformTenantsApi = {
   resetOwnerPassword: (id: string, body: Record<string, unknown>) =>
     platformClient.post(`/tenants/${encodeURIComponent(id)}/reset-owner-password`, body),
   paymentOrder: (id: string, body: Record<string, unknown>) =>
-    platformClient.post(`/tenants/${encodeURIComponent(id)}/payment-order`, body),  impersonate: (id: string, body: { reason: string; duration_minutes: number; target_user_uuid?: string }) =>
-    platformClient.post(`/tenants/${encodeURIComponent(id)}/impersonate`, body, { impersonationReason: body.reason }),
+    platformClient.post(`/tenants/${encodeURIComponent(id)}/payment-order`, body),
+  impersonate: (
+    id: string,
+    body: { reason: string; duration_minutes: number; target_user_uuid?: string }
+  ) =>
+    platformClient.post(`/tenants/${encodeURIComponent(id)}/impersonate`, body, {
+      impersonationReason: body.reason
+    }),
   endImpersonation: (id: string, sessionId: string) =>
-    platformClient.delete(`/tenants/${encodeURIComponent(id)}/impersonate/${encodeURIComponent(sessionId)}`),
+    platformClient.delete(
+      `/tenants/${encodeURIComponent(id)}/impersonate/${encodeURIComponent(sessionId)}`
+    ),
   relation: async (id: string, relation: string, query?: ApiQuery) => {
-    const response = await platformClient.get<unknown>(`/tenants/${encodeURIComponent(id)}/${relation}`, { query });
+    const response = await platformClient.get<unknown>(
+      `/tenants/${encodeURIComponent(id)}/${relation}`,
+      { query }
+    );
     return { data: unwrapRows(response.data, relation), raw: response.data };
   },
-  updateModules: (id: string, body: { modules: Array<{ module_code: string; enabled: boolean; limits?: Record<string, unknown>; metadata?: Record<string, unknown> }> }) =>
-    platformClient.put(`/tenants/${encodeURIComponent(id)}/modules`, body),
+  moduleEntitlements: async (id: string) => {
+    const response = await platformClient.get<PlatformTenantRecord[]>('/tenants/' + encodeURIComponent(id) + '/module-entitlements');
+    const data = response.data as unknown as { modules?: PlatformTenantRecord[] };
+    return { data: Array.isArray(data?.modules) ? data.modules : [] };
+  },
+  upsertModuleOverride: (id: string, moduleCode: string, body: { enabled: boolean; limits?: Record<string, unknown>; metadata?: Record<string, unknown>; reason?: string }) =>
+    platformClient.put('/tenants/' + encodeURIComponent(id) + '/modules/' + encodeURIComponent(moduleCode), body),
+  updateModules: (
+    id: string,
+    body: {
+      modules: Array<{
+        module_code: string;
+        enabled: boolean;
+        limits?: Record<string, unknown>;
+        metadata?: Record<string, unknown>;
+      }>;
+    }
+  ) => platformClient.put(`/tenants/${encodeURIComponent(id)}/modules`, body),
+  downloadFile: async (fileUuid: string) => {
+    const response = await platformClient.get<{ url?: string; expires_at?: string }>(
+      `/files/${encodeURIComponent(fileUuid)}/download`
+    );
+    return response.data;
+  },
   export: (body: Record<string, unknown>) => platformClient.post('/tenants/export', body)
 };
-
-

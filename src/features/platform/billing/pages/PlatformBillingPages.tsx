@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BadgeDollarSign, Eye, FileSpreadsheet, FileText, MoreVertical, Pencil, Receipt, RefreshCw, RotateCw, Send, Tags, Trash2 } from 'lucide-react';
@@ -17,7 +17,7 @@ import { Button, PermissionButton } from '@/shared/components/ui';
 import { ConfirmDialog } from '@/shared/components/workflows';
 
 type BillingKind = 'invoices' | 'payments' | 'refunds' | 'coupons';
-type BillingModal = 'manualInvoice' | 'lineItemEditor' | 'sendInvoice' | 'recordPayment' | 'cancelInvoice' | 'pdfPreview' | 'gatewayResponse' | 'retryPayment' | 'refundPayment' | 'retryRefund' | 'couponRules' | 'assignPlans' | 'assignTenants' | 'activateCoupon' | 'deactivateCoupon' | 'deleteCoupon' | null;
+type BillingModal = 'manualInvoice' | 'lineItemEditor' | 'sendInvoice' | 'recordPayment' | 'cancelInvoice' | 'pdfPreview' | 'gatewayResponse' | 'reconcilePayment' | 'retryPayment' | 'refundPayment' | 'retryRefund' | 'couponRules' | 'assignPlans' | 'assignTenants' | 'activateCoupon' | 'deactivateCoupon' | 'deleteCoupon' | null;
 
 type InvoiceLineItem = {
   item_type: string;
@@ -362,10 +362,18 @@ function BillingView({ kind }: { kind: BillingKind }) {
       <PageHeader title={textOf(record, ['invoice_number', 'payment_number', 'refund_number', 'code', 'name'], meta.singular)} description={textOf(record, ['tenant_name', 'organization_name', 'status', 'payment_status', 'refund_status'])} actions={<ViewActions kind={kind} record={record} onModal={setModal} onBack={() => navigate(meta.route)} onEdit={() => navigate(`${meta.route}/${id}/edit`)} />} />
       <BillingStats kind={kind} rows={[record]} />
       <DetailTabs tabs={[
-        { id: 'summary', label: kind === 'coupons' ? 'Overview' : 'Summary', content: <RecordDetails record={record} /> },
-        { id: 'items', label: 'Line items', content: <RecordList rows={record.items ?? []} /> },
-        { id: 'payments', label: 'Payments', content: <RecordList rows={record.payments ?? []} /> },
-        { id: 'refunds', label: 'Refunds', content: <RecordList rows={record.refunds ?? []} /> },
+        ...(kind === 'invoices'
+          ? [
+              { id: 'summary', label: 'Summary', content: <InvoiceSummary record={record} /> },
+              { id: 'items', label: 'Line items', content: <InvoiceRelations kind="items" rows={record.items ?? []} /> },
+              { id: 'payments', label: 'Payments', content: <InvoiceRelations kind="payments" rows={record.payments ?? []} /> }
+            ]
+          : [
+              { id: 'summary', label: kind === 'coupons' ? 'Overview' : 'Summary', content: <RecordDetails record={record} /> },
+              { id: 'items', label: 'Line items', content: <RecordList rows={record.items ?? []} /> },
+              { id: 'payments', label: 'Payments', content: <RecordList rows={record.payments ?? []} /> },
+              { id: 'refunds', label: 'Refunds', content: <RecordList rows={record.refunds ?? []} /> }
+            ]),
         ...(kind === 'coupons'
           ? [
               { id: 'plans', label: 'Plans', content: <RecordList rows={record.plans ?? []} /> },
@@ -373,7 +381,7 @@ function BillingView({ kind }: { kind: BillingKind }) {
               { id: 'redemptions', label: 'Redemptions', content: <RecordList rows={(Array.isArray(redemptionsQuery.data?.data) ? redemptionsQuery.data.data : record.redemptions ?? []) as BillingRecord[]} /> },
               { id: 'activity', label: 'Activity', content: <RecordList rows={(record.activity as BillingRecord[] | undefined) ?? []} /> }
             ]
-          : [{ id: 'redemptions', label: 'Redemptions', content: <RecordList rows={record.redemptions ?? []} /> }])
+          : kind === 'invoices' ? [] : [{ id: 'redemptions', label: 'Redemptions', content: <RecordList rows={record.redemptions ?? []} /> }])
       ]} />
       <BillingActionSurface modal={modal} kind={kind} record={record} loading={mutation.isPending} error={mutation.error} onClose={() => setModal(null)} onConfirm={(payload) => { if (!modal) return; mutation.mutate({ action: modal, record, payload }); }} />
     </section>
@@ -429,6 +437,7 @@ function BillingRowActions({ kind, row, handlers }: { kind: BillingKind; row: Bi
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const couponActive = isActiveCoupon(row);
+  const invoiceFinal = ['paid', 'voided', 'cancelled'].includes(textOf(row, ['status'], '').toLowerCase());
   function run(callback: () => void) { callback(); setOpen(false); }
   return (
     <div className="action-dropdown">
@@ -436,8 +445,8 @@ function BillingRowActions({ kind, row, handlers }: { kind: BillingKind; row: Bi
       <PortalActionMenu open={open} anchorRef={triggerRef} onClose={() => setOpen(false)}>
         <div className="action-menu" role="menu">
           <button type="button" role="menuitem" onMouseDown={(event) => event.preventDefault()} onClick={() => run(() => handlers.onView(row))}><Eye size={15} aria-hidden /> View</button>
-          {kind === 'invoices' ? <><PermissionButton guard="platform" permission="billing.invoice.send" type="button" role="menuitem" variant="ghost" onClick={() => run(() => handlers.onModal('sendInvoice', row))}><Send size={15} aria-hidden /> Send Invoice</PermissionButton><PermissionButton guard="platform" permission="billing.payment.create" type="button" role="menuitem" variant="ghost" onClick={() => run(() => handlers.onModal('recordPayment', row))}><BadgeDollarSign size={15} aria-hidden /> Record Payment</PermissionButton><button type="button" role="menuitem" onClick={() => run(() => handlers.onModal('pdfPreview', row))}><FileText size={15} aria-hidden /> PDF Preview</button><hr /><PermissionButton guard="platform" permission="billing.invoice.cancel" type="button" role="menuitem" variant="ghost" className="is-danger" onClick={() => run(() => handlers.onModal('cancelInvoice', row))}><Trash2 size={15} aria-hidden /> Cancel Invoice</PermissionButton></> : null}
-          {kind === 'payments' ? <><button type="button" role="menuitem" onClick={() => run(() => handlers.onModal('gatewayResponse', row))}><FileSpreadsheet size={15} aria-hidden /> Gateway Response</button><PermissionButton guard="platform" permission="billing.payment.create" type="button" role="menuitem" variant="ghost" onClick={() => run(() => handlers.onModal('retryPayment', row))}><RotateCw size={15} aria-hidden /> Retry Payment</PermissionButton><PermissionButton guard="platform" permission="billing.payment.refund" type="button" role="menuitem" variant="ghost" onClick={() => run(() => handlers.onModal('refundPayment', row))}><RefreshCw size={15} aria-hidden /> Initiate Refund</PermissionButton></> : null}
+          {kind === 'invoices' ? <><PermissionButton guard="platform" permission="billing.invoice.send" type="button" role="menuitem" variant="ghost" disabled={invoiceFinal} onClick={() => run(() => handlers.onModal('sendInvoice', row))}><Send size={15} aria-hidden /> Send Invoice</PermissionButton><PermissionButton guard="platform" permission="billing.payment.create" type="button" role="menuitem" variant="ghost" disabled={invoiceFinal} onClick={() => run(() => handlers.onModal('recordPayment', row))}><BadgeDollarSign size={15} aria-hidden /> Record Payment</PermissionButton><button type="button" role="menuitem" onClick={() => run(() => handlers.onModal('pdfPreview', row))}><FileText size={15} aria-hidden /> PDF Preview</button><hr /><PermissionButton guard="platform" permission="billing.invoice.cancel" type="button" role="menuitem" variant="ghost" className="is-danger" disabled={invoiceFinal} onClick={() => run(() => handlers.onModal('cancelInvoice', row))}><Trash2 size={15} aria-hidden /> Cancel Invoice</PermissionButton></> : null}
+          {kind === 'payments' ? <><button type="button" role="menuitem" onClick={() => run(() => handlers.onModal('gatewayResponse', row))}><FileSpreadsheet size={15} aria-hidden /> Gateway Response</button><PermissionButton guard="platform" permission="billing.payment.create" type="button" role="menuitem" variant="ghost" onClick={() => run(() => handlers.onModal('retryPayment', row))}><RotateCw size={15} aria-hidden /> Retry Payment</PermissionButton><PermissionButton guard="platform" permission="billing.payment.create" type="button" role="menuitem" variant="ghost" onClick={() => run(() => handlers.onModal('reconcilePayment', row))}><RotateCw size={15} aria-hidden /> Reconcile Payment</PermissionButton><PermissionButton guard="platform" permission="billing.payment.refund" type="button" role="menuitem" variant="ghost" onClick={() => run(() => handlers.onModal('refundPayment', row))}><RefreshCw size={15} aria-hidden /> Initiate Refund</PermissionButton></> : null}
           {kind === 'refunds' ? <><button type="button" role="menuitem" onClick={() => run(() => handlers.onModal('gatewayResponse', row))}><FileSpreadsheet size={15} aria-hidden /> Gateway Response</button><PermissionButton guard="platform" permission="billing.payment.refund" type="button" role="menuitem" variant="ghost" onClick={() => run(() => handlers.onModal('retryRefund', row))}><RotateCw size={15} aria-hidden /> Retry Refund</PermissionButton></> : null}
           {kind === 'coupons' ? <><PermissionButton guard="platform" permission="coupon.edit" type="button" role="menuitem" variant="ghost" onClick={() => run(() => handlers.onModal('couponRules', row))}><Pencil size={15} aria-hidden /> Rule Builder</PermissionButton><PermissionButton guard="platform" permission="coupon.edit" type="button" role="menuitem" variant="ghost" onClick={() => run(() => handlers.onModal('assignPlans', row))}><Tags size={15} aria-hidden /> Assign Plans</PermissionButton><PermissionButton guard="platform" permission="coupon.edit" type="button" role="menuitem" variant="ghost" onClick={() => run(() => handlers.onModal('assignTenants', row))}><Tags size={15} aria-hidden /> Assign Tenants</PermissionButton>{couponActive ? <PermissionButton guard="platform" permission="coupon.edit" type="button" role="menuitem" variant="ghost" onClick={() => run(() => handlers.onModal('deactivateCoupon', row))}><Trash2 size={15} aria-hidden /> Deactivate</PermissionButton> : <PermissionButton guard="platform" permission="coupon.edit" type="button" role="menuitem" variant="ghost" onClick={() => run(() => handlers.onModal('activateCoupon', row))}><RefreshCw size={15} aria-hidden /> Activate</PermissionButton>}<PermissionButton guard="platform" permission="coupon.delete" type="button" role="menuitem" variant="ghost" className="is-danger" onClick={() => run(() => handlers.onModal('deleteCoupon', row))}><Trash2 size={15} aria-hidden /> Delete / Archive</PermissionButton></> : null}
         </div>
@@ -461,6 +470,10 @@ function BillingActionSurface({ modal, kind, record, loading, error, onClose, on
     setTypedRefund('');
   }, [modal, record]);
 
+  const pdfBlob = pdfQuery.data?.data;
+  const pdfUrl = useMemo(() => pdfBlob instanceof Blob ? URL.createObjectURL(pdfBlob) : '', [pdfBlob]);
+  useEffect(() => () => { if (pdfUrl) URL.revokeObjectURL(pdfUrl); }, [pdfUrl]);
+
   if (!modal) return null;
   if (modal === 'manualInvoice') return <ManualInvoiceDrawer loading={loading} error={error} onClose={onClose} onConfirm={onConfirm} />;
   if (modal === 'pdfPreview') {
@@ -471,7 +484,7 @@ function BillingActionSurface({ modal, kind, record, loading, error, onClose, on
             <strong>{textOf(record, ['invoice_number'], 'Invoice')}</strong>
             <span>{money(record?.total ?? record?.total_amount, record?.currency)}</span>
           </div>
-          <DetailSummary record={rawSummary(pdfQuery.data?.data ?? pdfQuery.data ?? { endpoint: `/billing/invoices/${recordId}/pdf`, note: 'PDF metadata will render here when returned by the API.' })} />
+          <div className="surface-state">{pdfUrl ? <a href={pdfUrl} download={`${textOf(record, ['invoice_number'], 'invoice')}.pdf`}>Download invoice PDF</a> : 'Invoice PDF is being generated.'}</div>
         </div>
       </AppDrawer>
     );
@@ -571,6 +584,38 @@ function SummaryTile({ icon, label, value }: { icon: ReactNode; label: string; v
   return <article className="summary-card"><span>{icon}</span><p>{label}</p><strong>{value}</strong></article>;
 }
 
+
+function InvoiceSummary({ record }: { record: BillingRecord }) {
+  const tenant = (record.tenant ?? {}) as BillingRecord;
+  const subscription = (record.subscription ?? {}) as BillingRecord;
+  const fields: Array<[string, unknown]> = [
+    ['Invoice', record.invoice_number],
+    ['Tenant', record.tenant_name ?? record.organization_name ?? tenant.organization_name ?? tenant.name],
+    ['Subscription', record.subscription_number ?? subscription.subscription_number],
+    ['Invoice date', formatDate(record.invoice_date)],
+    ['Due date', formatDate(record.due_date)],
+    ['Status', record.status],
+    ['Currency', record.currency],
+    ['Subtotal', money(record.subtotal, record.currency)],
+    ['Discount', money(record.discount_amount, record.currency)],
+    ['Tax', money(record.tax_amount, record.currency)],
+    ['Total', money(record.total_amount ?? record.total, record.currency)],
+    ['Paid', money(record.paid_amount, record.currency)],
+    ['Amount due', money(record.balance_amount ?? record.balance, record.currency)]
+  ];
+  return <div className="summary-grid">{fields.map(([label, value]) => <article className="summary-card" key={String(label)}><span>{String(label)}</span><strong>{String(value ?? '-')}</strong></article>)}</div>;
+}
+
+function InvoiceRelations({ rows, kind }: { rows: BillingRecord[]; kind: 'items' | 'payments' }) {
+  if (!rows.length) return <div className="empty-state">No {kind} returned.</div>;
+  return <div className="record-list">{rows.map((row, index) => {
+    const title = kind === 'items' ? textOf(row, ['description', 'item_type'], 'Line item') : textOf(row, ['payment_number', 'gateway_payment_id'], 'Payment');
+    const details = kind === 'items'
+      ? `${row.quantity ?? 1} Ãƒâ€” ${money(row.unit_price, row.currency)} = ${money(row.amount, row.currency)}`
+      : `${textOf(row, ['payment_status', 'status'], 'pending')} Ã‚Â· ${money(row.amount, row.currency)} Ã‚Â· ${formatDate(row.paid_at)}`;
+    return <article key={idOf(row) || index}><strong>{title}</strong><p>{details}</p></article>;
+  })}</div>;
+}
 function DetailTabs({ tabs }: { tabs: Array<{ id: string; label: string; content: ReactNode }> }) {
   const [activeId, setActiveId] = useState(tabs[0]?.id ?? '');
   const active = tabs.find((tab) => tab.id === activeId) ?? tabs[0];
@@ -604,12 +649,13 @@ function PortalActionMenu({ anchorRef, children, onClose, open }: { anchorRef: R
 
 function ViewActions({ kind, record, onModal, onBack, onEdit }: { kind: BillingKind; record?: BillingRecord | null; onModal: (modal: BillingModal) => void; onBack?: () => void; onEdit?: () => void }) {
   if (kind === 'invoices') {
+    const invoiceFinal = ['paid', 'voided', 'cancelled'].includes(textOf(record, ['status'], '').toLowerCase());
     return (
       <>
-        <Button type="button" variant="secondary" onClick={() => onModal('sendInvoice')}><Send size={16} aria-hidden />Send</Button>
-        <Button type="button" variant="secondary" onClick={() => onModal('recordPayment')}><BadgeDollarSign size={16} aria-hidden />Record Payment</Button>
+        <Button type="button" variant="secondary" disabled={invoiceFinal} onClick={() => onModal('sendInvoice')}><Send size={16} aria-hidden />Send</Button>
+        <Button type="button" variant="secondary" disabled={invoiceFinal} onClick={() => onModal('recordPayment')}><BadgeDollarSign size={16} aria-hidden />Record Payment</Button>
         <Button type="button" variant="secondary" onClick={() => onModal('pdfPreview')}><FileText size={16} aria-hidden />PDF Preview</Button>
-        <Button type="button" variant="danger" onClick={() => onModal('cancelInvoice')}><Trash2 size={16} aria-hidden />Cancel</Button>
+        <Button type="button" variant="danger" disabled={invoiceFinal} onClick={() => onModal('cancelInvoice')}><Trash2 size={16} aria-hidden />Cancel</Button>
       </>
     );
   }
@@ -617,7 +663,7 @@ function ViewActions({ kind, record, onModal, onBack, onEdit }: { kind: BillingK
     return (
       <>
         <Button type="button" variant="secondary" onClick={() => onModal('gatewayResponse')}><FileSpreadsheet size={16} aria-hidden />Gateway</Button>
-        <Button type="button" variant="secondary" onClick={() => onModal('retryPayment')}><RotateCw size={16} aria-hidden />Retry</Button>
+        <Button type="button" variant="secondary" onClick={() => onModal('retryPayment')}><RotateCw size={16} aria-hidden />Retry</Button><Button type="button" variant="secondary" onClick={() => onModal('reconcilePayment')}><RotateCw size={16} aria-hidden />Reconcile</Button>
         <Button type="button" variant="danger" onClick={() => onModal('refundPayment')}><RefreshCw size={16} aria-hidden />Refund</Button>
       </>
     );
@@ -822,6 +868,7 @@ async function mutateFor(kind: BillingKind, action: BillingModal, record: Billin
   if (action === 'sendInvoice') return platformBillingApi.invoices.send(id, payload);
   if (action === 'recordPayment') return platformBillingApi.invoices.recordPayment(id, payload);
   if (action === 'cancelInvoice') return platformBillingApi.invoices.cancel(id, payload);
+  if (action === 'reconcilePayment') return platformBillingApi.payments.reconcile(id, payload);
   if (action === 'retryPayment') return platformBillingApi.payments.retry(id, payload);
   if (action === 'refundPayment') return platformBillingApi.payments.refund(id, payload);
   if (action === 'retryRefund') return platformBillingApi.refunds.retry(id, payload);
@@ -848,6 +895,7 @@ function exportFor(kind: BillingKind) {
 function fieldsForModal(modal: BillingModal): ModalField[] {
   if (modal === 'sendInvoice') return [{ name: 'to', label: 'Recipients' }, { name: 'cc', label: 'CC' }, { name: 'message', label: 'Message' }, { name: 'attach_pdf', label: 'Attach PDF', type: 'checkbox' }];
   if (modal === 'recordPayment') return [{ name: 'gateway', label: 'Gateway' }, { name: 'gateway_payment_id', label: 'Gateway Payment ID' }, { name: 'payment_method', label: 'Method' }, { name: 'amount', label: 'Amount', type: 'number' }, { name: 'currency', label: 'Currency' }, { name: 'payment_status', label: 'Status', type: 'select', options: ['success', 'failed', 'pending'] }, { name: 'paid_at', label: 'Paid At', type: 'datetime-local' }, { name: 'notes', label: 'Notes' }];
+  if (modal === 'reconcilePayment') return [{ name: 'payment_status', label: 'Result', type: 'select', options: ['success', 'failed', 'pending'] }, { name: 'failure_reason', label: 'Failure Reason' }];
   if (modal === 'retryPayment') return [{ name: 'gateway', label: 'Gateway' }, { name: 'amount', label: 'Amount', type: 'number' }, { name: 'reason', label: 'Reason' }];
   if (modal === 'refundPayment') return [{ name: 'amount', label: 'Refund Amount', type: 'number' }, { name: 'currency', label: 'Currency' }, { name: 'reason', label: 'Reason' }, { name: 'gateway', label: 'Gateway' }, { name: 'confirm_gateway_refund', label: 'Confirm gateway refund', type: 'checkbox' }];
   if (modal === 'retryRefund') return [{ name: 'gateway', label: 'Gateway' }, { name: 'reason', label: 'Retry Reason' }];
@@ -866,6 +914,7 @@ function defaultPayload(modal: BillingModal, record?: BillingRecord | null): Rec
   const now = toDateTimeLocal(new Date());
   if (modal === 'sendInvoice') return { to: '', cc: '', message: 'Please find your invoice attached.', attach_pdf: true };
   if (modal === 'recordPayment') return { gateway: textOf(record, ['gateway'], 'razorpay'), gateway_payment_id: '', payment_method: 'card', amount: Number(record?.balance ?? record?.balance_amount ?? record?.amount ?? 0), currency: textOf(record, ['currency'], 'INR'), payment_status: 'success', paid_at: now, notes: '' };
+  if (modal === 'reconcilePayment') return { payment_status: textOf(record, ['payment_status'], 'success'), failure_reason: '' };
   if (modal === 'retryPayment') return { gateway: textOf(record, ['gateway'], 'razorpay'), amount: Number(record?.amount ?? 0), reason: 'Retry failed payment' };
   if (modal === 'refundPayment') return { amount: Number(record?.amount ?? 0), currency: textOf(record, ['currency'], 'INR'), reason: '', gateway: textOf(record, ['gateway'], 'razorpay'), confirm_gateway_refund: false };
   if (modal === 'retryRefund') return { gateway: textOf(record, ['gateway'], 'razorpay'), reason: 'Retry failed refund' };
@@ -876,6 +925,7 @@ function defaultPayload(modal: BillingModal, record?: BillingRecord | null): Rec
 function titleFor(modal: BillingModal) {
   if (modal === 'sendInvoice') return 'Send Invoice';
   if (modal === 'recordPayment') return 'Record Payment';
+  if (modal === 'reconcilePayment') return 'Reconcile Payment';
   if (modal === 'retryPayment') return 'Retry Payment';
   if (modal === 'refundPayment') return 'Initiate Refund';
   if (modal === 'retryRefund') return 'Retry Refund';
@@ -890,7 +940,7 @@ function titleFor(modal: BillingModal) {
 
 function permissionFor(modal: BillingModal, kind: BillingKind) {
   if (modal === 'sendInvoice') return 'billing.invoice.send';
-  if (modal === 'recordPayment' || modal === 'retryPayment') return 'billing.payment.create';
+  if (modal === 'recordPayment' || modal === 'retryPayment' || modal === 'reconcilePayment') return 'billing.payment.create';
   if (modal === 'refundPayment' || modal === 'retryRefund') return 'billing.payment.refund';
   if (modal === 'couponRules' || modal === 'assignPlans' || modal === 'assignTenants' || modal === 'activateCoupon' || modal === 'deactivateCoupon') return 'coupon.edit';
   if (modal === 'deleteCoupon') return 'coupon.delete';

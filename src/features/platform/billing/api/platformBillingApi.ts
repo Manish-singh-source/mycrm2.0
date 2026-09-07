@@ -45,6 +45,10 @@ export type BillingRecord = {
   redemptions?: BillingRecord[];
   plans?: BillingRecord[];
   tenants?: BillingRecord[];
+  tenant?: BillingRecord;
+  payment?: BillingRecord;
+  invoice?: BillingRecord;
+  subscription?: BillingRecord;
   activity?: BillingRecord[];
   [key: string]: unknown;
 };
@@ -92,9 +96,26 @@ function unwrapCoupon(response: NormalizedApiResponse<BillingRecord | Record<str
 async function list(path: string, query?: ApiQuery): Promise<BillingListResult> {
   const response = await platformClient.get<BillingRecord[]>(path, { query });
   return {
-    data: Array.isArray(response.data) ? response.data : [],
+    data: (Array.isArray(response.data) ? response.data : []).map((row) => normalizeBillingRecord(row)),
     total: paginationTotal(response.meta, Array.isArray(response.data) ? response.data.length : 0),
     meta: response.meta
+  };
+}
+
+function normalizeBillingRecord(row: BillingRecord): BillingRecord {
+  const payment = (row.payment ?? {}) as BillingRecord;
+  const invoice = (row.invoice ?? payment.invoice ?? {}) as BillingRecord;
+  const subscription = (row.subscription ?? payment.subscription ?? invoice.subscription ?? {}) as BillingRecord;
+  const relatedTenant = (row.tenant ?? payment.tenant ?? invoice.tenant ?? {}) as BillingRecord;
+  return { ...row, tenant: relatedTenant, payment, invoice, subscription,
+    tenant_name: row.tenant_name ?? relatedTenant.organization_name ?? relatedTenant.name,
+    organization_name: row.organization_name ?? relatedTenant.organization_name,
+    invoice_number: row.invoice_number ?? invoice.invoice_number,
+    subscription_number: row.subscription_number ?? subscription.subscription_number,
+    plan_name: row.plan_name ?? (subscription.plan as BillingRecord | undefined)?.name,
+    items: row.items ?? (row.line_items as BillingRecord[] | undefined),
+    payments: row.payments ?? (row.platform_payments as BillingRecord[] | undefined),
+    refunds: row.refunds ?? (payment.refunds as BillingRecord[] | undefined)
   };
 }
 
@@ -105,9 +126,9 @@ function idempotencyKey(action: string, id?: string) {
 export const platformBillingApi = {
   invoices: {
     list: (query?: ApiQuery) => list('/billing/invoices', query),
-    detail: async (id: string) => unwrap(await platformClient.get(`/billing/invoices/${encodeURIComponent(id)}`), ['invoice']),
+    detail: async (id: string) => normalizeBillingRecord(unwrap(await platformClient.get('/billing/invoices/' + encodeURIComponent(id)), ['invoice'])),
     create: async (body: Record<string, unknown>) =>
-      unwrap(await platformClient.post('/billing/invoices', body, { idempotencyKey: idempotencyKey('invoice-create') }), ['invoice']),
+      normalizeBillingRecord(unwrap(await platformClient.post('/billing/invoices', body, { idempotencyKey: idempotencyKey('invoice-create') }), ['invoice'])),
     update: async (id: string, body: Record<string, unknown>) =>
       unwrap(await platformClient.patch(`/billing/invoices/${encodeURIComponent(id)}`, body, { idempotencyKey: idempotencyKey('invoice-update', id) }), ['invoice']),
     cancel: (id: string, body: Record<string, unknown>) =>
@@ -126,13 +147,14 @@ export const platformBillingApi = {
   },
   payments: {
     list: (query?: ApiQuery) => list('/billing/payments', query),
-    detail: async (id: string) => unwrap(await platformClient.get(`/billing/payments/${encodeURIComponent(id)}`), ['payment']),
+    detail: async (id: string) => normalizeBillingRecord(unwrap(await platformClient.get('/billing/payments/' + encodeURIComponent(id)), ['payment'])),
     create: async (body: Record<string, unknown>) =>
       unwrap(await platformClient.post('/billing/payments', body, { idempotencyKey: idempotencyKey('payment-record') }), ['payment']),
     retry: (id: string, body: Record<string, unknown>) =>
       platformClient.post(`/billing/payments/${encodeURIComponent(id)}/retry`, body, {
         idempotencyKey: idempotencyKey('payment-retry', id)
       }),
+    reconcile: (id: string, body: Record<string, unknown>) => platformClient.post('/billing/payments/' + encodeURIComponent(id) + '/reconcile', body, { idempotencyKey: idempotencyKey('payment-reconcile', id) }),
     refund: (id: string, body: Record<string, unknown>) =>
       platformClient.post(`/billing/payments/${encodeURIComponent(id)}/refund`, body, {
         idempotencyKey: idempotencyKey('payment-refund', id)
@@ -141,7 +163,7 @@ export const platformBillingApi = {
   },
   refunds: {
     list: (query?: ApiQuery) => list('/billing/refunds', query),
-    detail: async (id: string) => unwrap(await platformClient.get(`/billing/refunds/${encodeURIComponent(id)}`), ['refund']),
+    detail: async (id: string) => normalizeBillingRecord(unwrap(await platformClient.get('/billing/refunds/' + encodeURIComponent(id)), ['refund'])),
     create: async (body: Record<string, unknown>) =>
       unwrap(await platformClient.post('/billing/refunds', body, { idempotencyKey: idempotencyKey('refund-create') }), ['refund']),
     retry: (id: string, body: Record<string, unknown>) =>

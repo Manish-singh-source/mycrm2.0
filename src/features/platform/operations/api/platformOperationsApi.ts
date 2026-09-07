@@ -54,6 +54,21 @@ const audit = {
   export: (body: Record<string, unknown>) => platformClient.post('/audit/export', body)
 };
 
+const modules = {
+  list: (query?: ApiQuery) => list('/modules', query),
+  detail: (value: string) => detail(`/modules/${id(value)}`, ['module']),
+  create: (body: Record<string, unknown>) => platformClient.post('/modules', body),
+  update: (value: string, body: Record<string, unknown>) => platformClient.patch(`/modules/${id(value)}`, body),
+  delete: (value: string) => platformClient.delete(`/modules/${id(value)}`),
+  bulkDelete: (uuids: string[]) => platformClient.delete('/modules/bulk', { body: { module_uuids: uuids } }),
+  enable: (value: string) => platformClient.post(`/modules/${id(value)}/enable`),
+  disable: (value: string) => platformClient.post(`/modules/${id(value)}/disable`),
+  features: (value: string) => platformClient.get(`/modules/${id(value)}/features`),
+  tenants: (value: string) => platformClient.get(`/modules/${id(value)}/tenants`),
+  replaceFeatures: (value: string, feature_uuids: string[]) => platformClient.put(`/modules/${id(value)}/features`, { feature_uuids }),
+  export: () => platformClient.post('/modules/export'),
+  import: () => platformClient.post('/modules/import')
+};
 const fallback: any = new Proxy({}, { get: (_target, namespace: string) => new Proxy({}, { get: (_inner, method: string) => (..._args: unknown[]) => {
   if (['list', 'services', 'queueJobs', 'schedulerLogs', 'apiLogs', 'alerts', 'incidents', 'usage', 'providers', 'tenantIntegrations', 'syncJobs', 'endpoints', 'tickets', 'articles', 'legal'].includes(method)) return Promise.resolve({ data: [], total: 0 });
   return Promise.resolve({ data: null });
@@ -62,7 +77,7 @@ const fallback: any = new Proxy({}, { get: (_target, namespace: string) => new P
 export const platformOperationsApi: any = {
   lifecycle,
   audit,
-  modules: fallback.modules,
+  modules,
   monitoring: fallback.monitoring,
   integrations: fallback.integrations,
   references: fallback.references,

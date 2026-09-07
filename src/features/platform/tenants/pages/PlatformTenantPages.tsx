@@ -6,7 +6,9 @@ import {
   Archive,
   Building2,
   CalendarPlus,
+  ChevronDown,
   CheckCircle2,
+  Download,
   Eye,
   KeyRound,
   Layers3,
@@ -14,7 +16,6 @@ import {
   MoreVertical,
   Pencil,
   Plus,
-  RotateCcw,
   Settings,
   ShieldAlert,
   Trash2,
@@ -390,17 +391,6 @@ export function PlatformTenantsListPage() {
         cell: (row) => <OwnerCell row={row} />
       },
       {
-        id: 'business',
-        header: 'Business',
-        accessor: (row) => row.industry,
-        cell: (row) => (
-          <span className="date-cell">
-            <strong>{textOf(row, ['industry'])}</strong>
-            <small>{textOf(row, ['business_type'])}</small>
-          </span>
-        )
-      },
-      {
         id: 'plan',
         header: 'Plan',
         accessor: (row) => row.current_plan ?? row.plan_name,
@@ -431,16 +421,6 @@ export function PlatformTenantsListPage() {
         cell: (row) => formatDate(row.trial_ends_at)
       },
       {
-        id: 'usage',
-        header: 'Usage',
-        cell: (row) => (
-          <span className="date-cell">
-            <strong>{textOf(row, ['users_count'], '0')} users</strong>
-            <small>{textOf(row, ['storage_used'], '0')} storage</small>
-          </span>
-        )
-      },
-      {
         id: 'created_at',
         header: 'Created',
         accessor: (row) => row.created_at,
@@ -464,13 +444,18 @@ export function PlatformTenantsListPage() {
               setSelectedTenant(row);
               setDrawer(next);
             }}
-            onActivate={() =>
-              actionMutation.mutate({
-                action: 'activate',
-                tenant: row,
-                payload: { reason: 'Tenant activated from list', notify_owner: true }
-              })
-            }
+            onActivate={() => {
+              if (textOf(row, ['status', 'tenant_status']).toLowerCase() === 'active') {
+                setSelectedTenant(row);
+                setModal('suspend');
+              } else {
+                actionMutation.mutate({
+                  action: 'activate',
+                  tenant: row,
+                  payload: { reason: 'Tenant activated from list', notify_owner: true }
+                });
+              }
+            }}
           />
         )
       }
@@ -728,17 +713,11 @@ function TenantView({ tenant }: { tenant: PlatformTenantRecord }) {
   const [drawer, setDrawer] = useState<TenantDrawer>(null);
   const tabs = [
     { id: 'overview', label: 'Overview' },
-    { id: 'users', label: 'Owner/Users' },
-    { id: 'offices', label: 'Offices' },
+    { id: 'office-organization', label: 'Office/Organization' },
     { id: 'subscription', label: 'Subscription' },
-    { id: 'billing', label: 'Billing' },
-    { id: 'usage', label: 'Usage' },
+    { id: 'plan', label: 'Plan' },
+    { id: 'billing', label: 'Billing/Payments' },
     { id: 'modules', label: 'Modules/Features' },
-    { id: 'settings', label: 'Settings' },
-    { id: 'integrations', label: 'Integrations' },
-    { id: 'security', label: 'Security' },
-    { id: 'support', label: 'Support' },
-    { id: 'files', label: 'Files' },
     { id: 'activity', label: 'Activity' }
   ];
   const mutation = useMutation({
@@ -746,6 +725,8 @@ function TenantView({ tenant }: { tenant: PlatformTenantRecord }) {
       if (action === 'archive') return platformTenantsApi.archive(idOf(tenant), payload);
       if (action === 'delete') return platformTenantsApi.delete(idOf(tenant), payload);
       if (action === 'activate') return platformTenantsApi.activate(idOf(tenant), payload);
+      if (action === 'suspend') return platformTenantsApi.suspend(idOf(tenant), payload);
+      if (action === 'reactivate') return platformTenantsApi.reactivate(idOf(tenant), payload);
       return Promise.resolve({ data: null });
     },
     onSuccess: () =>
@@ -781,25 +762,25 @@ function TenantView({ tenant }: { tenant: PlatformTenantRecord }) {
             >
               Back
             </Button>
-            <PermissionButton
-              guard="platform"
-              permission="tenant.edit"
-              type="button"
-              onClick={() => navigate(`${PLATFORM_ROUTES.tenants}/${idOf(tenant)}/edit`)}
-            >
-              <Pencil size={16} aria-hidden />
-              Edit
-            </PermissionButton>
-            <PermissionButton
-              guard="platform"
-              permission="tenant.impersonate"
-              type="button"
-              variant="secondary"
-              onClick={() => setModal('remoteLogin')}
-            >
-              <LogIn size={16} aria-hidden />
-              Remote Login
-            </PermissionButton>
+            <TenantActionsMenu
+              row={tenant}
+              showView={false}
+              label="Actions"
+              onView={() => undefined}
+              onEdit={() => navigate(`${PLATFORM_ROUTES.tenants}/${idOf(tenant)}/edit`)}
+              onModal={(next) => setModal(next)}
+              onDrawer={(next) => setDrawer(next)}
+              onActivate={() => {
+                if (textOf(tenant, ['status', 'tenant_status']).toLowerCase() === 'active') {
+                  setModal('suspend');
+                } else {
+                  mutation.mutate({
+                    action: 'activate',
+                    payload: { reason: 'Tenant activated from view' }
+                  });
+                }
+              }}
+            />
           </>
         }
       />
@@ -823,99 +804,10 @@ function TenantView({ tenant }: { tenant: PlatformTenantRecord }) {
         />
       </section>
 
-      <div className="enterprise-view-actions">
-        <PermissionButton
-          guard="platform"
-          permission="subscription.edit"
-          type="button"
-          size="sm"
-          variant="secondary"
-          onClick={() => setModal('changePlan')}
-        >
-          Change Plan
-        </PermissionButton>
-        <PermissionButton
-          guard="platform"
-          permission="subscription.edit"
-          type="button"
-          size="sm"
-          variant="secondary"
-          onClick={() => setModal('extendTrial')}
-        >
-          Extend Trial
-        </PermissionButton>
-        <PermissionButton
-          guard="platform"
-          permission="tenant.suspend"
-          type="button"
-          size="sm"
-          variant="danger"
-          onClick={() => setModal('suspend')}
-        >
-          Suspend
-        </PermissionButton>
-        <PermissionButton
-          guard="platform"
-          permission="tenant.activate"
-          type="button"
-          size="sm"
-          variant="secondary"
-          onClick={() => setModal('reactivate')}
-        >
-          Reactivate
-        </PermissionButton>
-        <PermissionButton
-          guard="platform"
-          permission="tenant.edit"
-          type="button"
-          size="sm"
-          variant="secondary"
-          onClick={() => setModal('resetOwnerPassword')}
-        >
-          Owner Reset
-        </PermissionButton>
-        <PermissionButton
-          guard="platform"
-          permission="module.edit"
-          type="button"
-          size="sm"
-          variant="secondary"
-          onClick={() => setDrawer('moduleOverride')}
-        >
-          Module Overrides
-        </PermissionButton>
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          onClick={() => setDrawer('usageDetail')}
-        >
-          Usage Detail
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          onClick={() => setDrawer('settingsPreview')}
-        >
-          Settings Preview
-        </Button>
-        <PermissionButton
-          guard="platform"
-          permission="tenant.delete"
-          type="button"
-          size="sm"
-          variant="danger"
-          onClick={() => setModal('delete')}
-        >
-          Delete
-        </PermissionButton>
-      </div>
-
       <article className="enterprise-view-panel">
         {activeTab === 'overview' ? <SafeRecordDetails record={tenant} /> : null}
         {activeTab !== 'overview' ? (
-          <TenantRelationTab tenant={tenant} relation={relationForTab(activeTab)} />
+          <TenantRelationTab tenant={tenant} tab={activeTab} relation={relationForTab(activeTab)} />
         ) : null}
       </article>
 
@@ -934,29 +826,267 @@ function TenantView({ tenant }: { tenant: PlatformTenantRecord }) {
 }
 
 function relationForTab(tab: string) {
-  if (tab === 'users') return 'users';
-  if (tab === 'security') return 'security-events';
+  if (tab === 'office-organization') return 'offices';
+  if (tab === 'plan') return 'subscription';
   return tab;
 }
 
 function TenantRelationTab({
   tenant,
+  tab,
   relation
 }: {
   tenant: PlatformTenantRecord;
+  tab: string;
   relation: string;
 }) {
   const query = useQuery({
     queryKey: platformQueryKeys.related('platform-tenants', idOf(tenant), relation),
     queryFn: () => platformTenantsApi.relation(idOf(tenant), relation)
   });
-  if (query.isLoading) return <div className="surface-state">Loading {relation}...</div>;
+  if (query.isLoading) return <div className="surface-state">Loading {tab}...</div>;
   if (query.isError) return <div className="surface-error">{errorMessage(query.error)}</div>;
+
+  const payload = (query.data?.raw as Record<string, unknown> | undefined)?.[relation];
+  if (tab === 'billing') return <TenantBillingTab payload={payload} />;
+  if (tab === 'subscription') return <TenantSubscriptionTab subscription={payload} />;
+  if (tab === 'plan') {
+    const subscription = payload as Record<string, unknown> | undefined;
+    return <TenantPlanTab plan={subscription?.plan} subscription={subscription} />;
+  }
+  if (tab === 'modules') return <TenantModulesTab rows={Array.isArray(payload) ? payload : []} />;
+  if (tab === 'activity') return <TenantActivityTab rows={Array.isArray(payload) ? payload : []} />;
+  if (tab === 'office-organization') {
+    return <TenantOfficeTab rows={Array.isArray(payload) ? payload : []} />;
+  }
+
   const rows = query.data?.data ?? [];
-  if (rows.length > 0) return <RecordList rows={rows} />;
-  return <SafeRecordDetails record={(query.data?.raw as Record<string, unknown>) ?? {}} />;
+  return rows.length > 0 ? (
+    <RecordList rows={rows} />
+  ) : (
+    <div className="empty-state">No {tab} data returned.</div>
+  );
 }
 
+function TenantOfficeTab({ rows }: { rows: unknown[] }) {
+  if (rows.length === 0)
+    return <div className="empty-state">No offices or organization locations found.</div>;
+  return (
+    <div className="tenant-detail-grid">
+      {rows.map((row, index) => (
+        <article className="enterprise-view-panel" key={idOf(row as PlatformTenantRecord) || index}>
+          <h3>
+            {textOf(
+              row as PlatformTenantRecord,
+              ['name', 'display_name', 'office_name'],
+              `Office ${index + 1}`
+            )}
+          </h3>
+          <SafeRecordDetails record={row as Record<string, unknown>} />
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function TenantSubscriptionTab({ subscription }: { subscription: unknown }) {
+  if (!subscription || typeof subscription !== 'object')
+    return <div className="empty-state">No subscription found.</div>;
+  return (
+    <section className="tenant-detail-section">
+      <div className="section-heading">
+        <div>
+          <h2>Tenant Subscription</h2>
+          <p>Current subscription status, billing cycle, and dates.</p>
+        </div>
+      </div>
+      <SafeRecordDetails record={subscription as Record<string, unknown>} />
+    </section>
+  );
+}
+
+function TenantPlanTab({ plan, subscription }: { plan: unknown; subscription: unknown }) {
+  if (!plan || typeof plan !== 'object')
+    return <div className="empty-state">No plan assigned.</div>;
+  return (
+    <section className="tenant-detail-section">
+      <div className="section-heading">
+        <div>
+          <h2>{textOf(plan as PlatformTenantRecord, ['name'], 'Assigned Plan')}</h2>
+          <p>Plan selected for this tenant and the subscription currently using it.</p>
+        </div>
+      </div>
+      <SafeRecordDetails record={plan as Record<string, unknown>} />
+      {subscription && typeof subscription === 'object' ? (
+        <div className="tenant-detail-subsection">
+          <h3>Subscription assignment</h3>
+          <SafeRecordDetails record={subscription as Record<string, unknown>} />
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function TenantBillingTab({ payload }: { payload: unknown }) {
+  const billing =
+    payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {};
+  const invoices = Array.isArray(billing.invoices)
+    ? (billing.invoices as Record<string, unknown>[])
+    : [];
+  const payments = Array.isArray(billing.payments)
+    ? (billing.payments as Record<string, unknown>[])
+    : [];
+  return (
+    <section className="tenant-detail-section">
+      <div className="section-heading">
+        <div>
+          <h2>Billing & Payments</h2>
+          <p>Invoices and payment records for this tenant.</p>
+        </div>
+      </div>
+      <div className="tenant-detail-subsection">
+        <h3>Invoices</h3>
+        {invoices.length ? (
+          <div className="tenant-record-cards">
+            {invoices.map((invoice, index) => (
+              <TenantInvoiceCard
+                invoice={invoice}
+                key={idOf(invoice as PlatformTenantRecord) || index}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="empty-state">No invoices found.</div>
+        )}
+      </div>
+      <div className="tenant-detail-subsection">
+        <h3>Payments</h3>
+        {payments.length ? (
+          <RecordList rows={payments as PlatformTenantRecord[]} />
+        ) : (
+          <div className="empty-state">No payments found.</div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function TenantInvoiceCard({ invoice }: { invoice: Record<string, unknown> }) {
+  const [downloading, setDownloading] = useState(false);
+  const pdfFile =
+    invoice.pdf_file && typeof invoice.pdf_file === 'object'
+      ? (invoice.pdf_file as Record<string, unknown>)
+      : undefined;
+  const fileUuid = textOf(pdfFile as PlatformTenantRecord | undefined, ['uuid'], '');
+  const download = async () => {
+    if (!fileUuid) return;
+    setDownloading(true);
+    try {
+      const result = await platformTenantsApi.downloadFile(fileUuid);
+      if (result.url) window.open(result.url, '_blank', 'noopener,noreferrer');
+    } finally {
+      setDownloading(false);
+    }
+  };
+  return (
+    <article className="tenant-record-card">
+      <div>
+        <strong>{textOf(invoice as PlatformTenantRecord, ['invoice_number'], 'Invoice')}</strong>
+        <span>{textOf(invoice as PlatformTenantRecord, ['status', 'currency'])}</span>
+      </div>
+      <SafeRecordDetails record={invoice} />
+      {fileUuid ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          onClick={download}
+          disabled={downloading}
+        >
+          {<Download size={15} aria-hidden />}
+          {downloading ? 'Preparing...' : 'Download Invoice'}
+        </Button>
+      ) : (
+        <small>PDF unavailable</small>
+      )}
+    </article>
+  );
+}
+
+function TenantModulesTab({ rows }: { rows: unknown[] }) {
+  if (rows.length === 0)
+    return <div className="empty-state">No modules or feature assignments found.</div>;
+  return (
+    <div className="tenant-record-cards">
+      {rows.map((row, index) => {
+        const record = row as Record<string, unknown>;
+        const module =
+          record.module && typeof record.module === 'object'
+            ? (record.module as Record<string, unknown>)
+            : undefined;
+        return (
+          <article
+            className="tenant-record-card"
+            key={idOf(record as PlatformTenantRecord) || index}
+          >
+            <div>
+              <strong>
+                {textOf(
+                  module as PlatformTenantRecord | undefined,
+                  ['name'],
+                  textOf(record as PlatformTenantRecord, ['module_code'], `Module ${index + 1}`)
+                )}
+              </strong>
+              <StatusBadge tone={record.enabled === false ? 'neutral' : 'success'}>
+                {record.enabled === false ? 'Disabled' : 'Enabled'}
+              </StatusBadge>
+            </div>
+            <SafeRecordDetails record={record} />
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
+function TenantActivityTab({ rows }: { rows: unknown[] }) {
+  if (rows.length === 0)
+    return <div className="empty-state">No activity found for this tenant.</div>;
+  return (
+    <div className="tenant-activity-list">
+      {rows.map((row, index) => {
+        const record = row as Record<string, unknown>;
+        const actor =
+          record.actor_user && typeof record.actor_user === 'object'
+            ? (record.actor_user as Record<string, unknown>)
+            : record.actor_platform_user && typeof record.actor_platform_user === 'object'
+              ? (record.actor_platform_user as Record<string, unknown>)
+              : undefined;
+        return (
+          <article
+            className="tenant-activity-item"
+            key={idOf(record as PlatformTenantRecord) || index}
+          >
+            <div>
+              <strong>
+                {textOf(record as PlatformTenantRecord, ['event'], 'Tenant activity')}
+              </strong>
+              <span>{formatDate(record.created_at)}</span>
+            </div>
+            <p>
+              {textOf(
+                actor as PlatformTenantRecord | undefined,
+                ['display_name', 'name', 'email'],
+                'System'
+              )}
+            </p>
+            <SafeRecordDetails record={record} />
+          </article>
+        );
+      })}
+    </div>
+  );
+}
 function TenantControls({
   modal,
   drawer,
@@ -1253,7 +1383,9 @@ function ChangePlanModal({
         reason: 'Plan changed from tenant lifecycle page'
       }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource('platform-tenants') });
+      await queryClient.invalidateQueries({
+        queryKey: platformQueryKeys.resource('platform-tenants')
+      });
       onClose();
     }
   });
@@ -1284,7 +1416,12 @@ function ChangePlanModal({
           <option value="yearly">Yearly</option>
         </select>
       </label>
-      <SimpleInput label="Effective date" type="date" value={effectiveDate} onChange={setEffectiveDate} />
+      <SimpleInput
+        label="Effective date"
+        type="date"
+        value={effectiveDate}
+        onChange={setEffectiveDate}
+      />
     </TenantModalShell>
   );
 }
@@ -1533,7 +1670,9 @@ function OwnerResetPasswordModal({
         reason: 'Owner password reset from tenant lifecycle page'
       }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: platformQueryKeys.resource('platform-tenants') });
+      await queryClient.invalidateQueries({
+        queryKey: platformQueryKeys.resource('platform-tenants')
+      });
       onClose();
     }
   });
@@ -1557,10 +1696,20 @@ function OwnerResetPasswordModal({
         </select>
       </label>
       {mode === 'temporary_password' ? (
-        <SimpleInput label="Temporary password" value={temporaryPassword} onChange={setTemporaryPassword} type="password" />
+        <SimpleInput
+          label="Temporary password"
+          value={temporaryPassword}
+          onChange={setTemporaryPassword}
+          type="password"
+        />
       ) : null}
       <label className="check-row">
-        <input checked={forceChange} type="checkbox" onChange={(event) => setForceChange(event.target.checked)} /> Force change on login
+        <input
+          checked={forceChange}
+          type="checkbox"
+          onChange={(event) => setForceChange(event.target.checked)}
+        />{' '}
+        Force change on login
       </label>
     </TenantModalShell>
   );
@@ -1726,7 +1875,7 @@ function maskSecrets(value: unknown): unknown {
       return [
         key,
         sensitive
-          ? 'ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¢'
+          ? 'ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢'
           : maskSecrets(entry)
       ];
     })
@@ -1781,6 +1930,8 @@ function TenantModalShell({
 
 function TenantActionsMenu(props: {
   row: PlatformTenantRecord;
+  showView?: boolean;
+  label?: string;
   onView: () => void;
   onEdit: () => void;
   onModal: (modal: TenantModal) => void;
@@ -1793,28 +1944,40 @@ function TenantActionsMenu(props: {
     fn();
     setOpen(false);
   };
+  const isActive = textOf(props.row, ['status', 'tenant_status']).toLowerCase() === 'active';
   return (
     <div className="row-action-menu">
       <button
         ref={ref}
         type="button"
-        className="action-menu-trigger"
+        className={
+          props.label ? 'action-menu-trigger action-menu-trigger--labeled' : 'action-menu-trigger'
+        }
         onClick={() => setOpen((current) => !current)}
-        aria-label="Open tenant actions"
+        aria-label={props.label ?? 'Open tenant actions'}
+        aria-haspopup="menu"
+        aria-expanded={open}
       >
-        <MoreVertical size={16} aria-hidden />
+        {props.label ? <span>{props.label}</span> : null}
+        {props.label ? (
+          <ChevronDown size={16} aria-hidden />
+        ) : (
+          <MoreVertical size={16} aria-hidden />
+        )}
       </button>
       <PortalActionMenu anchorRef={ref} open={open} onClose={() => setOpen(false)}>
         <div className="action-menu tenant-action-menu">
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => run(props.onView)}
-          >
-            <Eye size={15} aria-hidden /> View
-          </Button>
+          {props.showView !== false ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => run(props.onView)}
+            >
+              <Eye size={15} aria-hidden /> View
+            </Button>
+          ) : null}
           <PermissionButton
             guard="platform"
             permission="tenant.edit"
@@ -1833,7 +1996,7 @@ function TenantActionsMenu(props: {
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => run(props.onActivate)}
           >
-            <CheckCircle2 size={15} aria-hidden /> Activate
+            <CheckCircle2 size={15} aria-hidden /> {isActive ? 'Deactivate' : 'Activate'}
           </PermissionButton>
           <PermissionButton
             guard="platform"
@@ -1867,16 +2030,6 @@ function TenantActionsMenu(props: {
           </PermissionButton>
           <PermissionButton
             guard="platform"
-            permission="tenant.activate"
-            type="button"
-            variant="ghost"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => run(() => props.onModal('reactivate'))}
-          >
-            <RotateCcw size={15} aria-hidden /> Reactivate
-          </PermissionButton>
-          <PermissionButton
-            guard="platform"
             permission="tenant.impersonate"
             type="button"
             variant="ghost"
@@ -1903,17 +2056,7 @@ function TenantActionsMenu(props: {
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => run(() => props.onDrawer('moduleOverride'))}
           >
-            <Settings size={15} aria-hidden /> Modules
-          </PermissionButton>
-          <PermissionButton
-            guard="platform"
-            permission="tenant.delete"
-            type="button"
-            variant="ghost"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => run(() => props.onModal('archive'))}
-          >
-            <Archive size={15} aria-hidden /> Archive
+            <Settings size={15} aria-hidden /> Module Overrides
           </PermissionButton>
           <PermissionButton
             guard="platform"
@@ -1930,7 +2073,6 @@ function TenantActionsMenu(props: {
     </div>
   );
 }
-
 function PortalActionMenu({
   anchorRef,
   children,
@@ -1972,7 +2114,10 @@ function PortalActionMenu({
   }, [anchorRef, onClose, open]);
   if (!open) return null;
   return createPortal(
-    <div className="action-menu-portal" style={{ left: position.left + window.scrollX, top: position.top + window.scrollY }}>
+    <div
+      className="action-menu-portal"
+      style={{ left: position.left + window.scrollX, top: position.top + window.scrollY }}
+    >
       <button
         type="button"
         className="action-menu-backdrop"
@@ -2279,7 +2424,11 @@ function FieldLabel({ label, required }: { label: string; required?: boolean }) 
   return (
     <span>
       {label}
-      {required ? <span className="required-mark" aria-hidden="true">*</span> : null}
+      {required ? (
+        <span className="required-mark" aria-hidden="true">
+          *
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -2392,7 +2541,13 @@ function CompactStatus({ status }: { status: string }) {
   );
 }
 
-function TenantStats({ rows, stats }: { rows: PlatformTenantRecord[]; stats?: { total?: number; active?: number; trial?: number; suspended?: number } }) {
+function TenantStats({
+  rows,
+  stats
+}: {
+  rows: PlatformTenantRecord[];
+  stats?: { total?: number; active?: number; trial?: number; suspended?: number };
+}) {
   const value = (key: 'total' | 'active' | 'trial' | 'suspended', fallback: number) =>
     String(stats?.[key] ?? fallback);
   return (
@@ -2474,19 +2629,33 @@ function shouldShowTenantDetail(key: string) {
 }
 
 function tenantDetailLabel(key: string) {
-  const labels: Record<string, string> = { organization_name: 'Organization', display_name: 'Display Name', organization_code: 'Code', current_plan: 'Plan', plan_name: 'Plan', subscription_status: 'Subscription', owner_name: 'Owner', owner_email: 'Owner Email', default_currency: 'Currency', default_timezone: 'Timezone', trial_ends_at: 'Trial Ends' };
+  const labels: Record<string, string> = {
+    organization_name: 'Organization',
+    display_name: 'Display Name',
+    organization_code: 'Code',
+    current_plan: 'Plan',
+    plan_name: 'Plan',
+    subscription_status: 'Subscription',
+    owner_name: 'Owner',
+    owner_email: 'Owner Email',
+    default_currency: 'Currency',
+    default_timezone: 'Timezone',
+    trial_ends_at: 'Trial Ends'
+  };
   return labels[key] ?? key.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function RecordDetails({ record }: { record: Record<string, unknown> }) {
   return (
     <dl className="enterprise-summary-list">
-      {Object.entries(record).filter(([key]) => shouldShowTenantDetail(key)).map(([key, value]) => (
-        <div key={key}>
-          <dt>{tenantDetailLabel(key)}</dt>
-          <dd>{humanValue(value)}</dd>
-        </div>
-      ))}
+      {Object.entries(record)
+        .filter(([key]) => shouldShowTenantDetail(key))
+        .map(([key, value]) => (
+          <div key={key}>
+            <dt>{tenantDetailLabel(key)}</dt>
+            <dd>{humanValue(value)}</dd>
+          </div>
+        ))}
     </dl>
   );
 }
@@ -2496,7 +2665,10 @@ function SafeRecordDetails({ record }: { record: Record<string, unknown> }) {
   return (
     <dl className="enterprise-summary-list">
       {Object.entries(record)
-        .filter(([key]) => shouldShowTenantDetail(key) && !hidden.some((item) => key.toLowerCase().includes(item)))
+        .filter(
+          ([key]) =>
+            shouldShowTenantDetail(key) && !hidden.some((item) => key.toLowerCase().includes(item))
+        )
         .map(([key, value]) => (
           <div key={key}>
             <dt>{tenantDetailLabel(key)}</dt>
@@ -2513,7 +2685,20 @@ function humanValue(value: unknown): string {
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
   if (typeof value === 'object') {
     const payload = value as Record<string, unknown>;
-    return textOf(payload as PlatformTenantRecord, ['display_name', 'organization_name', 'name', 'title', 'email', 'invoice_number', 'payment_number', 'subscription_number'], 'Details available');
+    return textOf(
+      payload as PlatformTenantRecord,
+      [
+        'display_name',
+        'organization_name',
+        'name',
+        'title',
+        'email',
+        'invoice_number',
+        'payment_number',
+        'subscription_number'
+      ],
+      'Details available'
+    );
   }
   return String(value);
 }
@@ -2547,10 +2732,3 @@ function RecordList({ rows, fallback }: { rows: PlatformTenantRecord[]; fallback
     </div>
   );
 }
-
-
-
-
-
-
-

@@ -163,10 +163,10 @@ export type PublicPlan = {
 };
 export type TenantRegistrationRequest = {
   organization_name: string;
+  organization_code?: string;
+  slug?: string;
   legal_name?: string;
   display_name?: string;
-  organization_code?: string;
-  slug: string;
   business_type_id?: number | string;
   industry_id?: number | string;
   company_size: string;
@@ -213,10 +213,9 @@ export type TenantRegistrationResponse = {
   expires_at?: string | null;
   tenant?: {
     uuid?: string;
+    slug?: string;
     organization_name?: string;
     display_name?: string;
-    organization_code?: string;
-    slug?: string;
     default_currency?: string;
     default_timezone?: string;
     status?: string;

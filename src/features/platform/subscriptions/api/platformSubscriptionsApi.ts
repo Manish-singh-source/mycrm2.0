@@ -1,4 +1,4 @@
-﻿import type { ApiQuery, NormalizedApiResponse } from '@/lib/api/apiTypes';
+import type { ApiQuery, NormalizedApiResponse } from '@/lib/api/apiTypes';
 import { platformClient } from '@/lib/api/platformClient';
 
 export type CatalogRecord = {
@@ -29,6 +29,12 @@ export type CatalogRecord = {
   subscriptions?: CatalogRecord[];
   features_limits?: CatalogRecord[];
   activity?: CatalogRecord[];
+  tenant?: CatalogRecord;
+  plan?: CatalogRecord;
+  addonAssignments?: CatalogRecord[];
+  addon_assignments?: CatalogRecord[];
+  platform_invoices?: CatalogRecord[];
+  platform_payments?: CatalogRecord[];
   [key: string]: unknown;
 };
 
@@ -37,6 +43,8 @@ export type SubscriptionRecord = CatalogRecord & {
   tenant_id?: string;
   tenant_uuid?: string;
   tenant_name?: string;
+  tenant?: CatalogRecord;
+  plan?: CatalogRecord;
   organization_name?: string;
   plan_id?: string;
   plan_uuid?: string;
@@ -131,9 +139,9 @@ function unwrapSubscription(
       : record) as SubscriptionRecord;
     return {
       ...subscription,
-      addons: (record.addons as CatalogRecord[] | undefined) ?? subscription.addons,
-      invoices: (record.invoices as CatalogRecord[] | undefined) ?? subscription.invoices,
-      payments: (record.payments as CatalogRecord[] | undefined) ?? subscription.payments,
+      addons: (record.addons as CatalogRecord[] | undefined) ?? subscription.addons ?? (record.addonAssignments as CatalogRecord[] | undefined) ?? (record.addon_assignments as CatalogRecord[] | undefined) ?? (subscription.addonAssignments as CatalogRecord[] | undefined) ?? (subscription.addon_assignments as CatalogRecord[] | undefined),
+      invoices: (record.invoices as CatalogRecord[] | undefined) ?? subscription.invoices ?? (record.platform_invoices as CatalogRecord[] | undefined) ?? (subscription.platform_invoices as CatalogRecord[] | undefined),
+      payments: (record.payments as CatalogRecord[] | undefined) ?? subscription.payments ?? (record.platform_payments as CatalogRecord[] | undefined) ?? (subscription.platform_payments as CatalogRecord[] | undefined),
       coupons: (record.coupons as CatalogRecord[] | undefined) ?? subscription.coupons,
       redemptions: (record.redemptions as CatalogRecord[] | undefined) ?? subscription.redemptions,
       usage: (record.usage as CatalogRecord[] | undefined) ?? subscription.usage,
@@ -147,7 +155,7 @@ function unwrapSubscription(
 async function list<TRecord extends CatalogRecord>(path: string, query?: ApiQuery): Promise<ListResult<TRecord>> {
   const response = await platformClient.get<TRecord[]>(path, { query });
   return {
-    data: Array.isArray(response.data) ? response.data : [],
+    data: (Array.isArray(response.data) ? response.data : []).map((row) => ({ ...row, addons: row.addons ?? row.addonAssignments ?? row.addon_assignments, tenant_name: row.tenant_name ?? row.tenant?.organization_name, organization_name: row.organization_name ?? row.tenant?.organization_name, plan_name: row.plan_name ?? row.plan?.name, plan_uuid: row.plan_uuid ?? row.plan?.uuid, invoices: row.invoices ?? row.platform_invoices, payments: row.payments ?? row.platform_payments })) ,
     total: paginationTotal(response.meta, Array.isArray(response.data) ? response.data.length : 0),
     meta: response.meta
   };

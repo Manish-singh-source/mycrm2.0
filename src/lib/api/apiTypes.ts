@@ -1,4 +1,4 @@
-export type ApiGuard = 'auth' | 'platform' | 'tenant';
+export type ApiGuard = 'auth' | 'common' | 'platform' | 'tenant';
 
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 

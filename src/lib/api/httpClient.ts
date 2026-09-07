@@ -33,6 +33,7 @@ const sensitiveKeys = new Set([
 
 function baseUrlForGuard(guard: ApiGuard) {
   if (guard === 'auth') return env.authApiBaseUrl;
+  if (guard === 'common') return env.commonApiBaseUrl;
   return guard === 'platform' ? env.platformApiBaseUrl : env.tenantApiBaseUrl;
 }
 
@@ -58,7 +59,7 @@ function normalizeHeaders(options: RequestOptions, body: unknown) {
   headers.set('X-Request-Id', createRequestId());
   headers.set('X-Client-Version', env.clientVersion);
 
-  if (options.guard !== 'auth' && token) headers.set('Authorization', `Bearer ${token}`);
+  if (options.guard !== 'auth' && options.guard !== 'common' && token) headers.set('Authorization', `Bearer ${token}`);
   if (options.idempotencyKey) headers.set('Idempotency-Key', options.idempotencyKey);
   if (options.timezone ?? session.timezone) headers.set('X-Timezone', options.timezone ?? session.timezone);
   if (options.locale ?? session.locale) headers.set('X-Locale', options.locale ?? session.locale);
@@ -239,7 +240,7 @@ async function runRequest<TData>(url: string, options: RequestOptions) {
       durationMs: Math.round(performance.now() - startedAt),
       validationErrors: maskValue(error.validationErrors)
     });
-    if (error.status === 401 && options.guard !== 'auth') {
+    if (error.status === 401 && options.guard !== 'auth' && options.guard !== 'common') {
       authStore.clear(options.guard);
     }
     throw error;

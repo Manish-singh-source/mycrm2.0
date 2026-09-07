@@ -20,6 +20,7 @@ import type {
   VerifyLoginTwoFactorRequest
 } from '@/features/auth/types/authTypes';
 import { authClient } from '@/lib/api/authClient';
+import { commonClient } from '@/lib/api/commonClient';
 import { platformClient } from '@/lib/api/platformClient';
 import type { ApiRequestOptions } from '@/lib/api/apiTypes';
 
@@ -40,6 +41,9 @@ type RawTenantContext = {
 };
 
 type RawPermission = string | { name?: string; code?: string };
+
+export type CurrencyOption = { id: number; name: string; code: string; symbol?: string | null; decimal_places?: number };
+export type TimezoneOption = { id: number; name: string; identifier: string; utc_offset?: string | null };
 
 function normalizeNames(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
@@ -237,7 +241,16 @@ function normalizeLoginResult(response: RawLoginResult): LoginResult {
 }
 
 export const authApi = {
-  publicPlans: async () => {
+  publicCurrencies: async () => {
+    const response = await commonClient.get<CurrencyOption[]>('/currencies');
+    return Array.isArray(response.data) ? response.data : [];
+  },
+  publicTimezones: async () => {
+    const response = await commonClient.get<TimezoneOption[]>('/timezones');
+    return Array.isArray(response.data) ? response.data : [];
+  },
+  confirmRegistrationPayment: (body: { tenant_uuid: string; razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) =>
+    authClient.post<{ payment: Record<string, unknown> }, typeof body>('/tenants/register/payment/confirm', body),  publicPlans: async () => {
     const response = await authClient.get<{ plans: PublicPlan[] }>('/tenants/plans');
     return Array.isArray(response.data?.plans) ? response.data.plans : [];
   },

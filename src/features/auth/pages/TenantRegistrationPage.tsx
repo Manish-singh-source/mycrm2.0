@@ -37,13 +37,10 @@ const steps = [
 const registrationSchema = z
   .object({
     organization_name: z.string().min(2, 'Organization name is required.'),
+    organization_code: z.string().optional(),
+    slug: z.string().optional(),
     legal_name: z.string().optional(),
     display_name: z.string().optional(),
-    organization_code: z.string().optional(),
-    slug: z
-      .string()
-      .min(3, 'Workspace slug must be at least 3 characters.')
-      .regex(/^[a-z0-9-]+$/, 'Use lowercase letters, numbers, and hyphens only.'),
     company_size: z.string().min(1, 'Company size is required.'),
     website: z.string().url('Enter a valid website URL.').optional().or(z.literal('')),
     default_currency: z.string().min(3, 'Currency is required.'),
@@ -126,10 +123,10 @@ function loadRazorpayScript() {
 
 const defaultValues: RegistrationFormValues = {
   organization_name: '',
-  legal_name: '',
-  display_name: '',
   organization_code: '',
   slug: '',
+  legal_name: '',
+  display_name: '',
   company_size: 'small',
   website: '',
   default_currency: 'INR',
@@ -159,7 +156,7 @@ const defaultValues: RegistrationFormValues = {
 };
 
 const stepFields: Array<Array<keyof RegistrationFormValues | `owner.${keyof RegistrationFormValues['owner']}` | `office.${keyof RegistrationFormValues['office']}`>> = [
-  ['organization_name', 'slug', 'legal_name', 'display_name', 'organization_code', 'company_size', 'website', 'default_currency', 'default_timezone'],
+  ['organization_name', 'legal_name', 'display_name', 'company_size', 'website', 'default_currency', 'default_timezone'],
   ['owner.first_name', 'owner.last_name', 'owner.display_name', 'owner.email', 'owner.mobile', 'owner.password', 'owner.password_confirmation'],
   ['office.office_name', 'office.address_line_1', 'office.address_line_2', 'office.postal_code', 'office.contact_phone'],
   ['plan_uuid', 'trial_days', 'subscription_type', 'billing_cycle'],
@@ -174,12 +171,11 @@ function errorMessage(error: unknown) {
 }
 
 function cleanPayload(values: RegistrationFormValues): TenantRegistrationRequest {
-  const { accept_terms: _acceptTerms, subscription_type, billing_cycle, payment_method, trial_days, plan_uuid, ...payload } = values;
+  const { accept_terms: _acceptTerms, subscription_type, billing_cycle, payment_method, trial_days, plan_uuid, organization_code: _organizationCode, slug: _slug, ...payload } = values;
   return {
     ...payload,
     display_name: payload.display_name || payload.organization_name,
     legal_name: payload.legal_name || payload.organization_name,
-    organization_code: payload.organization_code || undefined,
     website: payload.website || undefined,
     plan_uuid: plan_uuid || undefined,
     trial_days,
@@ -224,37 +220,38 @@ export function TenantRegistrationPage() {
   });
 
   const organizationName = watch('organization_name');
-  const slug = watch('slug');
   const ownerFirstName = watch('owner.first_name');
   const ownerLastName = watch('owner.last_name');
   const selectedPlanType = watch('subscription_type');
   const selectedPlanUuid = watch('plan_uuid');
   const paymentMethod = watch('payment_method');
 
+  function autofillSlug(value: string) {
+    setValue('organization_name', value);
+    setValue('slug', value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40));
+  }
+
   const plansQuery = useQuery({ queryKey: ['public-tenant-plans'], queryFn: authApi.publicPlans });
+  const currenciesQuery = useQuery({ queryKey: ['public-currencies'], queryFn: authApi.publicCurrencies, staleTime: 300000 });
+  const timezonesQuery = useQuery({ queryKey: ['public-timezones'], queryFn: authApi.publicTimezones, staleTime: 300000 });
   const plans = plansQuery.data ?? [];
+  const currencies = useMemo(() => {
+    const values = currenciesQuery.data ?? [];
+    return [...values].sort((a, b) => Number(b.code === 'INR') - Number(a.code === 'INR'));
+  }, [currenciesQuery.data]);
+  const timezones = useMemo(() => {
+    const values = timezonesQuery.data ?? [];
+    return [...values].sort((a, b) => Number(b.identifier === 'Asia/Kolkata') - Number(a.identifier === 'Asia/Kolkata'));
+  }, [timezonesQuery.data]);
   const selectedPlan = useMemo(
     () => plans.find((plan) => plan.uuid === selectedPlanUuid) ?? null,
     [plans, selectedPlanUuid]
   );
   const selectedPlanPrice = planAmount(selectedPlan);
 
-  const workspaceUrl = useMemo(() => `${slug || 'your-workspace'}.saas-mycrm.local`, [slug]);
+  const workspaceSlugPreview = useMemo(() => organizationName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'your-workspace', [organizationName]);
+  const workspaceUrl = useMemo(() => (success?.tenant?.slug || workspaceSlugPreview) + '.saas-mycrm.local', [success?.tenant?.slug, workspaceSlugPreview]);
   const tenantSlug = success?.tenant?.slug;
-
-  function autofillSlug(value: string) {
-    setValue('organization_name', value);
-    if (!slug) {
-      setValue(
-        'slug',
-        value
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, '-')
-          .replace(/^-|-$/g, '')
-          .slice(0, 40)
-      );
-    }
-  }
 
   function autofillOwnerDisplayName() {
     const displayName = [ownerFirstName, ownerLastName].filter(Boolean).join(' ').trim();
@@ -307,8 +304,19 @@ export function TenantRegistrationPage() {
       notes: {
         tenant_uuid: payload.tenant?.uuid
       },
-      handler: () => {
-        if (payload.tenant?.slug) navigate(TENANT_ROUTES.dashboard(payload.tenant.slug), { replace: true });
+      handler: async (paymentResponse: { razorpay_payment_id: string; razorpay_order_id: string; razorpay_signature: string }) => {
+        try {
+          await authApi.confirmRegistrationPayment({
+            tenant_uuid: payload.tenant?.uuid ?? '',
+            razorpay_order_id: paymentResponse.razorpay_order_id,
+            razorpay_payment_id: paymentResponse.razorpay_payment_id,
+            razorpay_signature: paymentResponse.razorpay_signature
+          });
+          if (payload.tenant?.slug) navigate(TENANT_ROUTES.dashboard(payload.tenant.slug), { replace: true });
+        } catch (error) {
+          setServerError(errorMessage(error));
+          setSuccess(payload);
+        }
       },
       modal: {
         ondismiss: () => setSuccess(payload)
@@ -333,6 +341,8 @@ export function TenantRegistrationPage() {
       setSuccess(response.data);
       if (values.payment_method === 'online' && response.data.payment_order?.id) {
         await openRazorpayCheckout(response.data);
+      } else if (response.data.tenant?.slug) {
+        navigate(TENANT_ROUTES.dashboard(response.data.tenant.slug), { replace: true });
       }
     } catch (error) {
       if (error instanceof ApiError && error.validationErrors) {
@@ -384,17 +394,12 @@ export function TenantRegistrationPage() {
                   <FormField error={errors.organization_name?.message} label="Organization name" required>
                     <input {...register('organization_name')} onChange={(event) => autofillSlug(event.target.value)} placeholder="Acme Pvt Ltd" />
                   </FormField>
-                  <FormField error={errors.slug?.message} label="Workspace slug" required>
-                    <input {...register('slug')} placeholder="acme" />
-                  </FormField>
+                  <div className="registration-inline"><span>Workspace URL is generated automatically</span></div>
                   <FormField error={errors.legal_name?.message} label="Legal name">
                     <input {...register('legal_name')} placeholder={organizationName || 'Acme Private Limited'} />
                   </FormField>
                   <FormField error={errors.display_name?.message} label="Display name">
                     <input {...register('display_name')} placeholder="Acme" />
-                  </FormField>
-                  <FormField error={errors.organization_code?.message} label="Organization code">
-                    <input {...register('organization_code')} placeholder="Generated if blank" />
                   </FormField>
                   <FormField error={errors.company_size?.message} label="Company size" required>
                     <select {...register('company_size')}>
@@ -412,10 +417,16 @@ export function TenantRegistrationPage() {
                 </div>
                 <div className="registration-preferences">
                   <FormField error={errors.default_currency?.message} label="Currency" required>
-                    <select {...register('default_currency')}><option value="INR">INR</option><option value="USD">USD</option><option value="EUR">EUR</option></select>
+                    <select {...register('default_currency')} disabled={currenciesQuery.isLoading}>
+                      <option value="">{currenciesQuery.isLoading ? 'Loading currencies...' : 'Select currency'}</option>
+                      {currencies.map((currency) => <option key={currency.id} value={currency.code}>{currency.code} — {currency.name}{currency.symbol ? ` (${currency.symbol})` : ''}</option>)}
+                    </select>
                   </FormField>
                   <FormField error={errors.default_timezone?.message} label="Timezone" required>
-                    <select {...register('default_timezone')}><option value="Asia/Kolkata">Asia/Kolkata</option><option value="UTC">UTC</option><option value="America/New_York">America/New_York</option><option value="Europe/London">Europe/London</option></select>
+                    <select {...register('default_timezone')} disabled={timezonesQuery.isLoading}>
+                      <option value="">{timezonesQuery.isLoading ? 'Loading timezones...' : 'Select timezone'}</option>
+                      {timezones.map((timezone) => <option key={timezone.id} value={timezone.identifier}>{timezone.identifier}{timezone.name && timezone.name !== timezone.identifier ? ` — ${timezone.name}` : ''}{timezone.utc_offset ? ` (${timezone.utc_offset})` : ''}</option>)}
+                    </select>
                   </FormField>
                 </div>
               </StepPanel>
