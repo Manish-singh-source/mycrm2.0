@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -438,7 +438,7 @@ function CatalogList({ kind }: { kind: CatalogKind }) {
   const [statusFilter, setStatusFilter] = useState('');
   const [hiddenColumnIds, setHiddenColumnIds] = useState<string[]>([]);
   const [perPage, setPerPage] = useState(10);
-  const queryParams = { ...createListQuery({ page, per_page: perPage, search }), status: statusFilter || undefined };
+  const queryParams = { ...createListQuery({ page, per_page: perPage, search }), ...(kind === 'features' ? { filter: statusFilter ? { status: statusFilter } : undefined } : { status: statusFilter || undefined }) };
   const query = useQuery({
     queryKey: platformQueryKeys.list(meta.resourceKey, queryParams),
     queryFn: () => {
@@ -705,7 +705,7 @@ function CatalogForm({ kind, mode }: { kind: CatalogKind; mode: 'create' | 'edit
   });
   const moduleOptionsQuery = useQuery({
     queryKey: platformQueryKeys.list('modules', { per_page: 200 }),
-    queryFn: () => platformSubscriptionsApi.references.modules({ per_page: 200 }),
+    queryFn: () => platformSubscriptionsApi.references.modules({ per_page: 100 }),
     enabled: kind === 'features'
   });
   const moduleOptions = moduleOptionsQuery.data?.data ?? [];
@@ -866,7 +866,7 @@ function catalogColumns(kind: CatalogKind, handlers: {
 }): DataTableColumn<CatalogRecord>[] {
   if (kind === 'features') {
     return [
-      { id: 'module', header: 'Module', accessor: (row) => row.module, enableSorting: true, cell: (row) => textOf(row, ['module']) },
+      { id: 'module', header: 'Module', accessor: (row) => row.module, enableSorting: true, cell: (row) => textOf(row, ['module_name', 'module']) },
       { id: 'name', header: 'Name', accessor: (row) => row.name, enableSorting: true, cell: (row) => <strong>{textOf(row, ['name'])}</strong> },
       { id: 'code', header: 'Code', accessor: (row) => row.code, cell: (row) => textOf(row, ['code']) },
       { id: 'data_type', header: 'Data Type', accessor: (row) => row.data_type, cell: (row) => textOf(row, ['data_type']) },
@@ -1578,7 +1578,6 @@ function fieldsFor(kind: CatalogKind) {
     return [
       { name: 'module', label: 'Module', type: 'select' },
       { name: 'name', label: 'Name' },
-      { name: 'code', label: 'Code' },
       { name: 'data_type', label: 'Data Type', type: 'select', options: ['integer', 'decimal', 'boolean', 'string', 'json'] },
       { name: 'unit', label: 'Unit' },
       { name: 'status', label: 'Status', type: 'select', options: ['active', 'inactive'] },
@@ -1621,7 +1620,7 @@ function FieldLabel({ children, required }: { children: ReactNode; required?: bo
 
 const catalogRequiredFields: Record<CatalogKind, Set<string>> = {
   plans: new Set(['name', 'code', 'billing_cycle', 'base_price']),
-  features: new Set(['module', 'name', 'code', 'data_type']),
+  features: new Set(['module', 'name', 'data_type']),
   addons: new Set(['name', 'pricing_type', 'price'])
 };
 
@@ -1816,7 +1815,6 @@ function defaultCatalogForm(kind: CatalogKind, record?: CatalogRecord): Record<s
     return {
       module: textOf(record, ['module'], ''),
       name: textOf(record, ['name'], ''),
-      code: textOf(record, ['code'], ''),
       data_type: textOf(record, ['data_type'], 'integer'),
       unit: textOf(record, ['unit'], ''),
       description: textOf(record, ['description'], ''),
@@ -1836,7 +1834,6 @@ function defaultCatalogForm(kind: CatalogKind, record?: CatalogRecord): Record<s
   }
   return {
     name: textOf(record, ['name'], ''),
-    code: textOf(record, ['code'], ''),
     description: textOf(record, ['description'], ''),
     billing_cycle: textOf(record, ['billing_cycle'], 'monthly'),
     base_price: textOf(record, ['base_price'], '0.00'),

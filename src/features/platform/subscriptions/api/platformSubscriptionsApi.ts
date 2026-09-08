@@ -72,7 +72,7 @@ export type ListResult<TRecord extends CatalogRecord> = {
 
 export type PlanPayload = {
   name: string;
-  code: string;
+  code?: string;
   description?: string;
   billing_cycle: string;
   base_price: string;
@@ -86,7 +86,7 @@ export type PlanPayload = {
 export type FeaturePayload = {
   module: string;
   name: string;
-  code: string;
+  code?: string;
   data_type: string;
   unit?: string;
   description?: string;
@@ -323,6 +323,6 @@ export const platformSubscriptionsApi = {
   references: {
     tenants: (query?: ApiQuery) => list<CatalogRecord>('/tenants', query),
     coupons: (query?: ApiQuery) => list<CatalogRecord>('/coupons', query),
-    modules: (query?: ApiQuery) => list<CatalogRecord>('/modules', query)
+    modules: (query?: ApiQuery) => list<CatalogRecord>('/features/options/modules', query)
   }
 };

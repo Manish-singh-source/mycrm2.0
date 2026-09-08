@@ -172,14 +172,21 @@ export const platformAccessApi = {
       unwrapRecord(await platformClient.patch(`/platform-teams/${encodeURIComponent(id)}`, body)),
     delete: (id: string, body: { audit_reason: string }) =>
       platformClient.delete(`/platform-teams/${encodeURIComponent(id)}`, { body }),
-    members: (id: string) => platformClient.get<{ members: PlatformRecord[] }>(`/platform-teams/${encodeURIComponent(id)}/members`),
+    members: async (id: string) => {
+      const response = await platformClient.get<PlatformRecord[] | { members?: PlatformRecord[] }>(`/platform-teams/${encodeURIComponent(id)}/members`);
+      const members = Array.isArray(response.data) ? response.data : response.data?.members ?? [];
+      return { ...response, data: { members } };
+    },
     addMembers: (id: string, body: Record<string, unknown>) => platformClient.post(`/platform-teams/${encodeURIComponent(id)}/members`, body),
     updateMember: (id: string, memberId: string, body: Record<string, unknown>) =>
       platformClient.patch(`/platform-teams/${encodeURIComponent(id)}/members/${encodeURIComponent(memberId)}`, body),
+    assignments: async (id: string) => {
+      const response = await platformClient.get<PlatformRecord[] | { assignments?: PlatformRecord[] }>(`/platform-teams/${encodeURIComponent(id)}/assignments`);
+      const assignments = Array.isArray(response.data) ? response.data : response.data?.assignments ?? [];
+      return { ...response, data: { assignments } };
+    },
     removeMember: (id: string, memberId: string, body: Record<string, unknown>) =>
       platformClient.delete(`/platform-teams/${encodeURIComponent(id)}/members/${encodeURIComponent(memberId)}`, { body }),
-    assignments: (id: string) =>
-      platformClient.get<{ assignments: PlatformRecord[] }>(`/platform-teams/${encodeURIComponent(id)}/assignments`),
     assignRecord: (id: string, body: Record<string, unknown>) =>
       platformClient.post(`/platform-teams/${encodeURIComponent(id)}/assignments`, body),
     releaseAssignment: (id: string, assignmentId: string, body: Record<string, unknown>) =>

@@ -29,6 +29,7 @@ import {
   type TeamPayload,
   type TeamRolePayload
 } from '@/features/platform/access-control/api/platformAccessApi';
+import { platformOperationsApi } from '@/features/platform/operations/api/platformOperationsApi';
 import { platformStaffApi } from '@/features/platform/staff/api/platformStaffApi';
 import { platformQueryKeys } from '@/features/platform/api/platformQueryKeys';
 import { PLATFORM_ROUTES } from '@/features/platform/routes/platformRoutes';
@@ -68,7 +69,7 @@ type ModalKind =
   | 'auditHistory'
   | null;
 
-type DrawerKind = 'assignPermissions' | 'permissionDetail' | 'filters' | null;
+type DrawerKind = 'assignPermissions' | 'filters' | null;
 type ListSort = { id: string; direction: 'asc' | 'desc' } | null;
 type AccessSavedView = SavedView & {
   filters: Record<string, string>;
@@ -1332,15 +1333,6 @@ function ResourceActionsMenu({
 
           {kind === 'permissions' ? (
             <>
-              <hr />
-              <button
-                type="button"
-                role="menuitem"
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => run(() => handlers.onDrawer('permissionDetail', row))}
-              >
-                <ShieldCheck size={15} aria-hidden="true" /> Permission Detail
-              </button>
               {!row.is_system ? (
                 <>
                   <hr />
@@ -2258,11 +2250,6 @@ function StandardListControls({
         onClose={onClose}
         onSaved={onClose}
       />
-      <PermissionDetailDrawer
-        open={drawer === 'permissionDetail'}
-        record={selectedRecord}
-        onClose={onClose}
-      />
       <AssignUsersModal open={modal === 'assignUsers'} role={selectedRecord} onClose={onClose} />
       <AppModal
         open={modal === 'auditHistory'}
@@ -2680,7 +2667,6 @@ function AssignUsersModal({
   const [effectiveDate, setEffectiveDate] = useState('');
   const [notifyUsers, setNotifyUsers] = useState(true);
   const [auditReason, setAuditReason] = useState('Role assignment update');
-  const [removeAuditReason, setRemoveAuditReason] = useState('User moved teams');
   const usersQuery = useQuery({
     queryKey: platformQueryKeys.related(resourceMeta.roles.resourceKey, idOf(role), 'users'),
     queryFn: () => platformAccessApi.roles.users(idOf(role)),
@@ -2711,7 +2697,7 @@ function AssignUsersModal({
   });
   const removeMutation = useMutation({
     mutationFn: (userId: string) =>
-      platformAccessApi.roles.removeUser(idOf(role), userId, removeAuditReason),
+      platformAccessApi.roles.removeUser(idOf(role), userId, auditReason),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
         queryKey: platformQueryKeys.resource(resourceMeta.roles.resourceKey)
@@ -2845,13 +2831,6 @@ function AssignUsersModal({
         <label>
           Audit reason
           <textarea value={auditReason} onChange={(event) => setAuditReason(event.target.value)} />
-        </label>
-        <label>
-          Remove audit reason
-          <textarea
-            value={removeAuditReason}
-            onChange={(event) => setRemoveAuditReason(event.target.value)}
-          />
         </label>
       </div>
     </AppModal>
@@ -3211,6 +3190,20 @@ function AssignRecordModal({
   const [assignableType, setAssignableType] = useState('tenant');
   const [assignableId, setAssignableId] = useState('');
   const [assignmentRole, setAssignmentRole] = useState('support_owner');
+  const assignableQuery = useQuery({
+    queryKey: ['platform-team-assignable-options', assignableType],
+    queryFn: () => {
+      if (assignableType === 'tenant') return platformOperationsApi.references.tenants({ per_page: 100 });
+      if (assignableType === 'platform_ticket') return platformOperationsApi.support.tickets.list({ per_page: 100 });
+      if (assignableType === 'system_incident') return platformOperationsApi.monitoring.incidents({ per_page: 100 });
+      return platformOperationsApi.monitoring.alerts({ per_page: 100 });
+    },
+    enabled: open
+  });
+  const assignableRecords = assignableQuery.data?.data ?? [];
+  useEffect(() => {
+    setAssignableId('');
+  }, [assignableType]);
   const mutation = useMutation({
     mutationFn: () =>
       platformAccessApi.teams.assignRecord(idOf(team), {
@@ -3236,14 +3229,14 @@ function AssignRecordModal({
       title="Assign records"
       guard="platform"
       permission="platform_team.assign"
-      loading={mutation.isPending}
-      error={formErrorMessage(mutation.error)}
+      loading={mutation.isPending || assignableQuery.isLoading}
+      error={mutation.error ? formErrorMessage(mutation.error) : assignableQuery.error ? errorMessage(assignableQuery.error) : null}
       footer={
         <>
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="button" onClick={() => mutation.mutate()}>
+          <Button type="button" onClick={() => mutation.mutate()} disabled={mutation.isPending || !assignableId}>
             Assign record
           </Button>
         </>
@@ -3265,12 +3258,20 @@ function AssignRecordModal({
           {assignableTypeError ? <strong role="alert">{assignableTypeError}</strong> : null}
         </label>
         <label className={assignableIdError ? 'form-field-invalid' : undefined}>
-          <span>Record ID</span>
-          <input
+          <span>Record</span>
+          <select
             value={assignableId}
             onChange={(event) => setAssignableId(event.target.value)}
+            disabled={assignableQuery.isLoading}
             aria-invalid={Boolean(assignableIdError)}
-          />
+          >
+            <option value="">{assignableQuery.isLoading ? 'Loading records...' : 'Select record'}</option>
+            {assignableRecords.map((record) => {
+              const recordId = String(record.id ?? '');
+              const label = textOf(record, ['name', 'display_name', 'subject', 'ticket_number', 'incident_number', 'alert_number', 'code'], `Record ${recordId}`);
+              return recordId ? <option key={recordId} value={recordId}>{label}</option> : null;
+            })}
+          </select>
           {assignableIdError ? <strong role="alert">{assignableIdError}</strong> : null}
         </label>
         <label className={assignmentRoleError ? 'form-field-invalid' : undefined}>
@@ -3309,6 +3310,12 @@ function ReleaseAssignmentModal({
   const [releaseDate, setReleaseDate] = useState('');
   const [reason, setReason] = useState('Assignment released');
   const [notifyLead, setNotifyLead] = useState(true);
+  const assignmentsQuery = useQuery({
+    queryKey: platformQueryKeys.related(resourceMeta.teams.resourceKey, idOf(team), 'assignments-options'),
+    queryFn: () => platformAccessApi.teams.assignments(idOf(team)),
+    enabled: open && Boolean(team)
+  });
+  const assignmentOptions = assignmentsQuery.data?.data.assignments ?? [];
   const mutation = useMutation({
     mutationFn: () =>
       platformAccessApi.teams.releaseAssignment(idOf(team), assignmentId, {
@@ -3344,8 +3351,8 @@ function ReleaseAssignmentModal({
       title="Release assignment"
       guard="platform"
       permission="platform_team.assign"
-      loading={mutation.isPending}
-      error={mutation.error ? errorMessage(mutation.error) : null}
+      loading={mutation.isPending || assignmentsQuery.isLoading}
+      error={mutation.error ? errorMessage(mutation.error) : assignmentsQuery.error ? errorMessage(assignmentsQuery.error) : null}
       footer={
         <>
           <Button type="button" variant="secondary" onClick={onClose}>
@@ -3359,8 +3366,15 @@ function ReleaseAssignmentModal({
     >
       <div className="form-grid">
         <label>
-          Assignment ID
-          <input value={assignmentId} onChange={(event) => setAssignmentId(event.target.value)} />
+          Assignment
+          <select value={assignmentId} onChange={(event) => setAssignmentId(event.target.value)} disabled={assignmentsQuery.isLoading}>
+            <option value="">{assignmentsQuery.isLoading ? 'Loading assignments...' : 'Select assignment'}</option>
+            {assignmentOptions.map((item) => {
+              const itemId = String(item.id ?? '');
+              const label = `${textOf(item, ['assignable_type', 'type'], 'Record')} #${textOf(item, ['assignable_id', 'record_id'], itemId)}`;
+              return itemId ? <option key={itemId} value={itemId}>{label}</option> : null;
+            })}
+          </select>
         </label>
         <label>
           Release date
@@ -3498,27 +3512,6 @@ function TeamRoleEditorModal({
   );
 }
 
-function PermissionDetailDrawer({
-  open,
-  record,
-  onClose
-}: {
-  open: boolean;
-  record?: PlatformRecord | null;
-  onClose: () => void;
-}) {
-  return (
-    <AppDrawer
-      open={open}
-      onClose={onClose}
-      title="Permission detail"
-      guard="platform"
-      permission="platform_permission.view"
-    >
-      <RecordDetails record={record ?? {}} />
-    </AppDrawer>
-  );
-}
 
 function FormShell({
   backTo,
@@ -3869,6 +3862,15 @@ function recordListMeta(row: PlatformRecord) {
   return [email, status].filter(Boolean).join(' / ') || '-';
 }
 
+function teamMemberName(member: PlatformRecord | null | undefined): string {
+  const user = member?.user as PlatformRecord | undefined;
+  return textOf(user, ['display_name', 'name', 'email'], textOf(member, ['display_name', 'name', 'platform_user_name', 'email'], 'Unknown user'));
+}
+
+function teamMemberRole(member: PlatformRecord): string {
+  const role = member.team_role as PlatformRecord | undefined;
+  return displayText(member, ['team_role_name', 'role_name'], displayText(role, ['name', 'code'], textOf(member, ['status'], '')));
+}
 function TeamMembersPanel({ team }: { team: PlatformRecord }) {
   const queryClient = useQueryClient();
   const [editingMember, setEditingMember] = useState<PlatformRecord | null>(null);
@@ -3899,7 +3901,7 @@ function TeamMembersPanel({ team }: { team: PlatformRecord }) {
           <article key={idOf(member)}>
             <header>
               <strong>
-                {textOf(member, ['display_name', 'name', 'platform_user_name', 'email'])}
+                {teamMemberName(member)}
               </strong>
               <span className="table-actions">
                 <PermissionButton
@@ -3925,7 +3927,7 @@ function TeamMembersPanel({ team }: { team: PlatformRecord }) {
               </span>
             </header>
             <p>
-              {displayText(member, ['team_role_name', 'role_name', 'status'])} /{' '}
+              {teamMemberRole(member)} /{' '}
               Joined {formatDate(member.joined_at ?? member.effective_from)}
             </p>
           </article>
@@ -4041,7 +4043,7 @@ function TeamMemberEditorModal({
 
   useEffect(() => {
     if (!open || !member) return;
-    setTeamRoleId(textOf(member, ['team_role_uuid'], ''));
+    setTeamRoleId(textOf(member, ['team_role_uuid'], textOf(member?.team_role as PlatformRecord | undefined, ['uuid'], '')));
     setEffectiveFrom(textOf(member, ['effective_from', 'joined_at'], ''));
     setEffectiveTo(textOf(member, ['effective_to', 'left_at'], ''));
     setStatus(textOf(member, ['status'], 'active'));

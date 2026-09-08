@@ -1851,11 +1851,12 @@ function StaffAvatar({
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase())
     .join('');
-  if (staff?.profile_photo_url)
+  const profilePhotoUrl = staff?.profile_photo_url ?? staff?.profile_photo_file?.url;
+  if (profilePhotoUrl)
     return (
       <img
         className={compact ? 'staff-avatar staff-avatar--compact' : 'staff-avatar'}
-        src={staff.profile_photo_url}
+        src={profilePhotoUrl}
         alt=""
       />
     );
@@ -2238,6 +2239,29 @@ function SafeRecordDetails({ record }: { record: PlatformStaffRecord | Record<st
   const hidden = new Set([
     'id',
     'uuid',
+    'profile_photo',
+    'profile_photo_url',
+    'profile_photo_file_id',
+    'profile_photo_file',
+    'designation_id',
+    'department_id',
+    'manager_id',
+    'created_by',
+    'updated_by',
+    'deleted_at',
+    'direct_permissions_count',
+
+    'profile_photo',
+    'profile_photo_url',
+    'profile_photo_file_id',
+    'profile_photo_file',
+    'designation_id',
+    'department_id',
+    'manager_id',
+    'created_by',
+    'updated_by',
+    'deleted_at',
+    'direct_permissions_count',
     'password',
     'token',
     'access_token',
@@ -2246,6 +2270,7 @@ function SafeRecordDetails({ record }: { record: PlatformStaffRecord | Record<st
     'roles',
     'teams',
     'permissions',
+    'profile_photo_file',
     'assignments',
     'activity'
   ]);

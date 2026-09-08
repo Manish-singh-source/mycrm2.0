@@ -12,6 +12,7 @@ export type PlatformStaffRecord = {
   mobile?: string;
   profile_photo_url?: string | null;
   profile_photo_file_id?: string | null;
+  profile_photo_file?: { url?: string | null } | null;
   designation?: string;
   department?: string;
   timezone?: string;
@@ -47,6 +48,7 @@ export type PlatformStaffPayload = {
   mobile?: string;
   password?: string;
   profile_photo_file_id?: string | null;
+  profile_photo_file?: { url?: string | null } | null;
   designation?: string;
   department?: string;
   timezone: string;
