@@ -44,7 +44,9 @@ const lifecycle = {
   trials: (query?: ApiQuery) => list('/trials', query),
   extendTrial: (value: string, body: Record<string, unknown>) => platformClient.post(`/trials/${id(value)}/extend`, body),
   convertTrial: (value: string, body: Record<string, unknown>) => platformClient.post(`/trials/${id(value)}/convert`, body),
-  onboarding: (query?: ApiQuery) => list('/onboarding/tenants', query)
+  onboarding: (query?: ApiQuery) => list('/onboarding/tenants', query),
+  onboardingDetail: (value: string) => detail('/onboarding/tenants/' + id(value), ['tenant']),
+  updateOnboardingStep: (tenantUuid: string, stepCode: string, body: Record<string, unknown>) => platformClient.put('/onboarding/tenants/' + id(tenantUuid) + '/steps/' + id(stepCode), body)
 };
 
 const audit = {
@@ -69,6 +71,75 @@ const modules = {
   export: () => platformClient.post('/modules/export'),
   import: () => platformClient.post('/modules/import')
 };
+const remoteSessions = {
+  list: (query?: ApiQuery) => list('/remote-login-sessions', query),
+  detail: (value: string) => detail('/remote-login-sessions/' + id(value), ['session']),
+  end: (value: string, body?: Record<string, unknown>) => platformClient.post('/remote-login-sessions/' + id(value) + '/end', body)
+};
+const articles = {
+  list: (query?: ApiQuery) => list('/support/knowledge-base/articles', query),
+  detail: (value: string) => detail('/support/knowledge-base/articles/' + id(value), ['article']),
+  create: (body: Record<string, unknown>) => platformClient.post('/support/knowledge-base/articles', body),
+  update: (value: string, body: Record<string, unknown>) => platformClient.patch('/support/knowledge-base/articles/' + id(value), body),
+  publish: (value: string, body?: Record<string, unknown>) => platformClient.post('/support/knowledge-base/articles/' + id(value) + '/publish', body),
+  unpublish: (value: string, body?: Record<string, unknown>) => platformClient.post('/support/knowledge-base/articles/' + id(value) + '/unpublish', body),
+  archive: (value: string, body?: Record<string, unknown>) => platformClient.post('/support/knowledge-base/articles/' + id(value) + '/archive', body)
+};
+const kbCategories = {
+  list: (query?: ApiQuery) => list('/support/knowledge-base/categories', query),
+  create: (body: Record<string, unknown>) => platformClient.post('/support/knowledge-base/categories', body),
+  update: (value: string, body: Record<string, unknown>) => platformClient.patch('/support/knowledge-base/categories/' + id(value), body)
+};
+const support = {
+  tickets: {
+    list: (query?: ApiQuery) => list('/support/tickets', query),
+    detail: (value: string) => detail('/support/tickets/' + id(value), ['ticket']),
+    create: (body: Record<string, unknown>) => platformClient.post('/support/tickets', body),
+    update: (value: string, body: Record<string, unknown>) => platformClient.patch('/support/tickets/' + id(value), body),
+    assign: (value: string, body: Record<string, unknown>) => platformClient.post('/support/tickets/' + id(value) + '/assign', body),
+    comment: (value: string, body: Record<string, unknown>) => platformClient.post('/support/tickets/' + id(value) + '/comments', body),
+    attach: (value: string, body: unknown) => platformClient.post('/support/tickets/' + id(value) + '/attachments', body),
+    close: (value: string, body?: Record<string, unknown>) => platformClient.post('/support/tickets/' + id(value) + '/close', body),
+    reopen: (value: string, body?: Record<string, unknown>) => platformClient.post('/support/tickets/' + id(value) + '/reopen', body),
+    export: (body: Record<string, unknown>) => platformClient.post('/support/tickets/export', body)
+  },
+  remoteSessions,
+  articles,
+  kbCategories
+};
+const integrations = {
+  providers: (_query?: ApiQuery) => Promise.resolve({ data: [], total: 0, meta: {} }),
+  createProvider: (_body: Record<string, unknown>) => Promise.reject(new Error('Integration provider management is not available on this API.')),
+  updateProvider: (_value: string, _body: Record<string, unknown>) => Promise.reject(new Error('Integration provider management is not available on this API.')),
+  tenantIntegrations: (query?: ApiQuery) => list('/tenant-integrations', query),
+  tenantIntegration: (value: string) => detail('/tenant-integrations/' + id(value), ['integration']),
+  mappings: (value: string) => platformClient.get('/tenant-integrations/' + id(value) + '/mappings'),
+  rateLimits: (value: string) => platformClient.get('/tenant-integrations/' + id(value) + '/rate-limits'),
+  syncJobs: (query?: ApiQuery) => list('/sync-jobs', query),
+  update: (value: string, body: Record<string, unknown>) => platformClient.patch('/tenant-integrations/' + id(value), body),
+  test: (value: string) => platformClient.post('/tenant-integrations/' + id(value) + '/test', {}),
+  disconnect: (value: string) => platformClient.post('/tenant-integrations/' + id(value) + '/disconnect', {}),
+  retryJob: (value: string) => platformClient.post('/sync-jobs/' + id(value) + '/retry', {}),
+  detail: (value: string) => detail('/tenant-integrations/' + id(value), ['integration']),
+  createTenantIntegration: (body: Record<string, unknown>) => platformClient.post('/tenant-integrations', body),
+  updateTenantIntegration: (value: string, body: Record<string, unknown>) => platformClient.patch('/tenant-integrations/' + id(value), body),
+  rotateCredentials: (value: string, body: Record<string, unknown>) => platformClient.post('/tenant-integrations/' + id(value) + '/credentials', body),
+  replaceMappings: (value: string, body: Record<string, unknown>) => platformClient.put('/tenant-integrations/' + id(value) + '/mappings', body),
+  retrySyncJob: (value: string) => platformClient.post('/sync-jobs/' + id(value) + '/retry', {}),
+  webhooks: (query?: ApiQuery) => list('/webhooks', query),
+  webhook: (value: string | number) => detail('/webhooks/' + id(value), ['webhook']),
+  updateWebhook: (value: string | number, body: Record<string, unknown>) => platformClient.patch('/webhooks/' + id(value), body),
+  createWebhook: (body: Record<string, unknown>) => platformClient.post('/webhooks', body),
+  disableWebhook: (value: string | number) => platformClient.delete('/webhooks/' + id(value)),
+  webhookLogs: (value: string | number, query?: ApiQuery) => platformClient.get('/webhooks/' + id(value) + '/logs', { query: query as any }),
+  retryWebhookLog: (value: string | number) => platformClient.post('/webhook-logs/' + id(value) + '/retry', {})
+};
+
+const reports = {
+  jobs: (query?: ApiQuery) => list('/reports/export-jobs', query),
+  report: (code: string, query?: ApiQuery) => platformClient.get('/reports/' + id(code), { query: query as any }),
+  export: (code: string, body: Record<string, unknown>) => platformClient.post('/reports/' + id(code) + '/export', body)
+};
 const fallback: any = new Proxy({}, { get: (_target, namespace: string) => new Proxy({}, { get: (_inner, method: string) => (..._args: unknown[]) => {
   if (['list', 'services', 'queueJobs', 'schedulerLogs', 'apiLogs', 'alerts', 'incidents', 'usage', 'providers', 'tenantIntegrations', 'syncJobs', 'endpoints', 'tickets', 'articles', 'legal'].includes(method)) return Promise.resolve({ data: [], total: 0 });
   return Promise.resolve({ data: null });
@@ -79,10 +150,10 @@ export const platformOperationsApi: any = {
   audit,
   modules,
   monitoring: fallback.monitoring,
-  integrations: fallback.integrations,
+  integrations,
   references: fallback.references,
-  reports: fallback.reports,
+  reports,
   settings: fallback.settings,
-  support: fallback.support,
+  support,
   webhooks: fallback.webhooks
 };

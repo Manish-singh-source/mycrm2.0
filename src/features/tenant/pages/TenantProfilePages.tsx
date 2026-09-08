@@ -6,6 +6,7 @@ import { ApiError } from '@/lib/api/apiError';
 import { AppModal } from '@/shared/components/modal';
 import { PageHeader, Tabs } from '@/shared/components/layout';
 import { Button } from '@/shared/components/ui';
+import { applyUserTheme } from '@/shared/utils/userTheme';
 
 type ProfileTab = 'profile' | 'password' | 'preferences' | 'sessions';
 
@@ -105,6 +106,7 @@ function PreferencesPanel() {
     setMessage('');
     try {
       await accountApi.updatePreferences('tenant', { preferences: { general: form } });
+      applyUserTheme(form.theme);
       setMessage('Preferences saved.');
     } catch (err) {
       setError(errorMessage(err));

@@ -48,8 +48,9 @@ export function buildTenantNavigation(tenantSlug: string, badges: TenantNavigati
       label: 'Access Control',
       items: [
         { label: 'Roles', to: TENANT_ROUTES.accessControl.roles(tenantSlug), icon: ShieldCheck, permission: 'role.view' },
+        { label: 'Permissions', to: TENANT_ROUTES.accessControl.permissions(tenantSlug), icon: KeyRound, permission: 'permission.view' },
         { label: 'Teams', to: TENANT_ROUTES.accessControl.teams(tenantSlug), icon: Users, permission: 'team.view' },
-        { label: 'Staffs', to: TENANT_ROUTES.accessControl.users(tenantSlug), icon: Users, permission: 'staff.view' }
+        { label: 'Tenant Users', to: TENANT_ROUTES.accessControl.users(tenantSlug), icon: Users, permission: 'staff.view' }
       ]
     },
     {
@@ -87,6 +88,7 @@ export function buildTenantNavigation(tenantSlug: string, badges: TenantNavigati
       label: 'HRMS',
       moduleCode: 'hrms',
       items: [
+        { label: 'Staff Lifecycle', to: TENANT_ROUTES.hrms.staff(tenantSlug), icon: Users, permission: 'staff.view', moduleCode: 'hrms' },
         { label: 'Attendance', to: TENANT_ROUTES.hrms.attendance(tenantSlug), icon: LayoutList, permission: 'attendance.view', moduleCode: 'hrms' },
         { label: 'Leave Management', to: TENANT_ROUTES.hrms.leave(tenantSlug), icon: ShieldCheck, permission: 'leave.view', moduleCode: 'hrms', badge: badges.pendingApprovals },
         { label: 'Payroll', to: TENANT_ROUTES.hrms.payroll(tenantSlug), icon: Receipt, permission: 'payroll.view', moduleCode: 'hrms', badge: badges.pendingApprovals },
@@ -111,6 +113,11 @@ export function buildTenantNavigation(tenantSlug: string, badges: TenantNavigati
         { label: 'Settings', to: TENANT_ROUTES.settings(tenantSlug), icon: Settings, permission: 'setting.view' },
         { label: 'Integrations', to: TENANT_ROUTES.integrations(tenantSlug), icon: KeyRound, permission: 'setting.view' }
       ]
+    },
+    {
+      id: 'documents',
+      label: 'Documents',
+      items: [{ label: 'Documents', to: TENANT_ROUTES.documents(tenantSlug), icon: Receipt, permission: 'document.view' }]
     },
     {
       id: 'reports',

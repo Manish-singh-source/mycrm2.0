@@ -28,7 +28,8 @@ export function ApiTokensPage({ guard }: ApiTokensPageProps) {
   async function loadTokens() {
     try {
       const response = await accountApi.apiTokens(guard);
-      setTokens(Array.isArray(response.data) ? response.data : []);
+      const payload = response.data as ApiTokenRecord[] | { tokens?: ApiTokenRecord[] };
+      setTokens(Array.isArray(payload) ? payload : (payload.tokens ?? []));
     } catch (err) {
       setError(errorMessage(err));
     }
@@ -52,7 +53,7 @@ export function ApiTokensPage({ guard }: ApiTokensPageProps) {
           .filter(Boolean),
         expires_at: expiresAt || null
       });
-      setRawToken(response.data.token ?? '');
+      setRawToken(response.data.raw_token ?? response.data.token ?? '');
       setName('');
       setMessage('API token created.');
       await loadTokens();
@@ -66,7 +67,7 @@ export function ApiTokensPage({ guard }: ApiTokensPageProps) {
     setMessage('');
     try {
       const response = await accountApi.rotateApiToken(guard, uuid);
-      setRawToken(response.data.token ?? '');
+      setRawToken(response.data.raw_token ?? response.data.token ?? '');
       setMessage('API token rotated.');
       await loadTokens();
     } catch (err) {

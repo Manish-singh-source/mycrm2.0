@@ -68,6 +68,12 @@ export const tenantWorkspaceApi = {
     bulkRead: (ids: Array<string | number>) => tenantClient().post('/notifications/bulk/read', { ids }),
     delete: (id: string | number) => tenantClient().delete(`/notifications/${id}`)
   },
+  reminders: {
+    list: (query?: ApiQuery) => list('/reminders', query, ['reminders']),
+    create: (body: Record<string, unknown>) => tenantClient().post('/reminders', body),
+    update: (id: string, body: Record<string, unknown>) => tenantClient().patch('/reminders/' + encodeURIComponent(id), body),
+    delete: (id: string) => tenantClient().delete('/reminders/' + encodeURIComponent(id))
+  },
   activity: {
     list: (query?: ApiQuery) => list('/activity-logs', query),
     compare: (id: string | number) => tenantClient().get<Record<string, unknown>>(`/activity-logs/${id}/compare`)
@@ -78,7 +84,10 @@ export const tenantWorkspaceApi = {
     faqs: () => tenantClient().get<Record<string, unknown>>('/help/faqs'),
     releaseNotes: () => tenantClient().get<Record<string, unknown>>('/help/release-notes'),
     systemStatus: () => tenantClient().get<Record<string, unknown>>('/help/system-status'),
-    contactSupport: (body: Record<string, unknown>) => tenantClient().post('/help/contact-support', body)
+    contactSupport: (body: Record<string, unknown>) => tenantClient().post('/help/contact-support', body),
+    tickets: (query?: ApiQuery) => list('/help/tickets', query, ['tickets']),
+    ticket: (uuid: string) => tenantClient().get<{ ticket: TenantRecord }>('/help/tickets/' + encodeURIComponent(uuid)),
+    reply: (uuid: string, body: Record<string, unknown>) => tenantClient().post('/help/tickets/' + encodeURIComponent(uuid) + '/comments', body)
   }
 };
 

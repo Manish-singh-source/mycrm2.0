@@ -114,7 +114,11 @@ export const tenantOperationsApi = {
     kanban: () => client().get<{ kanban: Record<string, { total: number; rows: OperationsRecord[] }> }>('/todo-lists/kanban'),
     calendar: () => client().get<{ tasks: OperationsRecord[] }>('/todo-lists/calendar'),
     tasks: (id: string) => client().get<{ tasks: OperationsRecord[] }>(`/todo-lists/${encodeURIComponent(id)}/tasks`),
-    export: (body: Record<string, unknown>) => client().post('/todo-lists/export', body)
+    export: (body: Record<string, unknown>) => client().post('/todo-lists/export', body),
+    reminders: (id: string) => client().get<{ reminders: OperationsRecord[] }>(`/todo-lists/${encodeURIComponent(id)}/reminders`),
+    createReminder: (id: string, body: Record<string, unknown>) => client().post(`/todo-lists/${encodeURIComponent(id)}/reminders`, body),
+    updateReminder: (id: string, reminderId: string, body: Record<string, unknown>) => client().patch(`/todo-lists/${encodeURIComponent(id)}/reminders/${encodeURIComponent(reminderId)}`, body),
+    deleteReminder: (id: string, reminderId: string) => client().delete(`/todo-lists/${encodeURIComponent(id)}/reminders/${encodeURIComponent(reminderId)}`)
   },
   issues: {
     ...crud('/issues'),
@@ -144,6 +148,11 @@ export const tenantOperationsApi = {
     childUpdate: (id: string, resource: string, childId: string | number, body: Record<string, unknown>) =>
       client().patch(`/renewals/${encodeURIComponent(id)}/${resource}/${encodeURIComponent(String(childId))}`, body),
     sendReminder: (id: string, body: Record<string, unknown>) => client().post(`/renewals/${encodeURIComponent(id)}/send-reminder`, body),
+    amc: (id: string) => client().get<{ amc: OperationsRecord | null }>(`/renewals/${encodeURIComponent(id)}/amc`),
+    createAmc: (id: string, body: Record<string, unknown>) => client().post(`/renewals/${encodeURIComponent(id)}/amc`, body),
+    updateAmc: (id: string, body: Record<string, unknown>) => client().patch(`/renewals/${encodeURIComponent(id)}/amc`, body),
+    amcVisits: (id: string) => client().get<{ visits: OperationsRecord[] }>(`/renewals/${encodeURIComponent(id)}/amc/visits`),
+    updateAmcVisit: (id: string, visitId: number | string, body: Record<string, unknown>) => client().patch(`/renewals/${encodeURIComponent(id)}/amc/visits/${encodeURIComponent(String(visitId))}`, body),
     export: (body: Record<string, unknown>) => client().post('/renewals/export', body)
   },
   calendar: {

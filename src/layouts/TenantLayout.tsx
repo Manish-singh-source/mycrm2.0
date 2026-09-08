@@ -1,7 +1,9 @@
+import { useEffect } from 'react';
 import { Outlet, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BellPlus, CalendarPlus2, Plus, ReceiptText } from 'lucide-react';
 
+import { accountApi } from '@/features/auth/api/accountApi';
 import { useAuth } from '@/features/auth/hooks/useAuth';
 import { useSessionPreferences } from '@/features/auth/hooks/useSessionPreferences';
 import { useProfileSession } from '@/features/auth/hooks/useProfileSession';
@@ -16,6 +18,7 @@ import {
 } from '@/shared/components/layout';
 import { AppSidebar } from '@/shared/components/navigation/AppSidebar';
 import { PermissionButton } from '@/shared/components/ui';
+import { applyUserTheme } from '@/shared/utils/userTheme';
 
 export function TenantLayout() {
   const navigate = useNavigate();
@@ -25,6 +28,19 @@ export function TenantLayout() {
   useProfileSession('tenant');
   const { locale, timezone } = useSessionPreferences('tenant');
   const { tenant } = useTenantContext();
+  useEffect(() => {
+    let active = true;
+    accountApi.preferences('tenant').then((response) => {
+      if (!active) return;
+      const preferences = Array.isArray(response.data.preferences) ? response.data.preferences : [];
+      const theme = preferences.find((item) => {
+        const preference = item as Record<string, unknown>;
+        return preference.key === 'theme';
+      }) as Record<string, unknown> | undefined;
+      applyUserTheme(theme?.value == null ? 'light' : String(theme.value));
+    }).catch(() => applyUserTheme('light'));
+    return () => { active = false; };
+  }, []);
   const navigationQuery = useQuery({
     queryKey: tenantQueryKeys.resource(tenant?.slug ?? tenantSlug, 'navigation-sidebar'),
     queryFn: tenantWorkspaceApi.navigation,

@@ -57,7 +57,9 @@ function unwrap(data: unknown, keys: string[]) {
 async function list(path: string, query?: ApiQuery, keys?: string[]): Promise<TenantAccessListResult> {
   const response = await client().get<TenantAccessRecord[] | Record<string, unknown>>(path, { query });
   const data = arrayFrom(response.data, keys);
-  return { data, total: paginationTotal(response.meta, data.length), meta: response.meta };
+  const payload = response.data && typeof response.data === 'object' ? response.data as Record<string, unknown> : {};
+  const meta = { ...(response.meta ?? {}), ...(payload.stats ? { stats: payload.stats } : {}) };
+  return { data, total: paginationTotal(meta, data.length), meta };
 }
 
 async function detail(path: string, keys: string[]) {
@@ -67,39 +69,39 @@ async function detail(path: string, keys: string[]) {
 
 export const tenantAccessApi = {
   roles: {
-    list: (query?: ApiQuery) => list('/access-control/roles', query, ['roles']),
-    detail: (id: string) => detail(`/access-control/roles/${encodeURIComponent(id)}`, ['role']),
-    create: async (body: Record<string, unknown>) => unwrap((await client().post('/access-control/roles', body)).data, ['role']),
+    list: (query?: ApiQuery) => list('/roles', query, ['roles']),
+    detail: (id: string) => detail(`/roles/${encodeURIComponent(id)}`, ['role']),
+    create: async (body: Record<string, unknown>) => unwrap((await client().post('/roles', body)).data, ['role']),
     update: async (id: string, body: Record<string, unknown>) =>
-      unwrap((await client().patch(`/access-control/roles/${encodeURIComponent(id)}`, body)).data, ['role']),
+      unwrap((await client().patch(`/roles/${encodeURIComponent(id)}`, body)).data, ['role']),
     delete: (id: string, body: Record<string, unknown>) =>
-      client().delete(`/access-control/roles/${encodeURIComponent(id)}`, { body }),
+      client().delete(`/roles/${encodeURIComponent(id)}`, { body }),
     bulkDelete: (role_uuids: string[], audit_reason?: string) =>
-      client().delete('/access-control/roles/bulk', { body: { role_uuids, audit_reason } }),
+      client().delete('/roles/bulk', { body: { role_uuids, audit_reason } }),
     clone: (id: string, body: Record<string, unknown>) =>
-      client().post(`/access-control/roles/${encodeURIComponent(id)}/clone`, body),
+      client().post(`/roles/${encodeURIComponent(id)}/clone`, body),
     activate: (id: string, audit_reason: string) =>
-      client().post(`/access-control/roles/${encodeURIComponent(id)}/activate`, { audit_reason }),
+      client().post(`/roles/${encodeURIComponent(id)}/activate`, { audit_reason }),
     deactivate: (id: string, audit_reason: string) =>
-      client().post(`/access-control/roles/${encodeURIComponent(id)}/deactivate`, { audit_reason }),
+      client().post(`/roles/${encodeURIComponent(id)}/deactivate`, { audit_reason }),
     permissions: (id: string) =>
-      client().get<{ permissions: GroupedPermissions }>(`/access-control/roles/${encodeURIComponent(id)}/permissions`),
+      client().get<{ permissions: GroupedPermissions }>(`/roles/${encodeURIComponent(id)}/permissions`),
     replacePermissions: (id: string, body: { permission_ids: string[]; audit_reason?: string }) =>
-      client().put(`/access-control/roles/${encodeURIComponent(id)}/permissions`, body),
-    users: (id: string) => client().get<{ users: TenantAccessRecord[] }>(`/access-control/roles/${encodeURIComponent(id)}/users`),
+      client().put(`/roles/${encodeURIComponent(id)}/permissions`, body),
+    users: (id: string) => client().get<{ users: TenantAccessRecord[] }>(`/roles/${encodeURIComponent(id)}/users`),
     assignUsers: (id: string, body: { user_ids: string[]; audit_reason?: string }) =>
-      client().post(`/access-control/roles/${encodeURIComponent(id)}/users`, body),
+      client().post(`/roles/${encodeURIComponent(id)}/users`, body),
     replaceUsers: (id: string, body: { user_ids: string[]; audit_reason?: string }) =>
-      client().put(`/access-control/roles/${encodeURIComponent(id)}/users`, body),
+      client().put(`/roles/${encodeURIComponent(id)}/users`, body),
     removeUser: (id: string, userId: string, audit_reason?: string) =>
-      client().delete(`/access-control/roles/${encodeURIComponent(id)}/users/${encodeURIComponent(userId)}`, {
+      client().delete(`/roles/${encodeURIComponent(id)}/users/${encodeURIComponent(userId)}`, {
         body: { audit_reason }
       })
   },
   permissions: {
-    list: (query?: ApiQuery) => list('/access-control/permissions', query, ['permissions']),
-    grouped: () => client().get<{ permissions: GroupedPermissions }>('/access-control/permissions/grouped'),
-    detail: (id: string) => detail(`/access-control/permissions/${encodeURIComponent(id)}`, ['permission'])
+    list: (query?: ApiQuery) => list('/permissions', query, ['permissions']),
+    grouped: () => client().get<{ permissions: GroupedPermissions }>('/permissions/grouped'),
+    detail: (id: string) => detail(`/permissions/${encodeURIComponent(id)}`, ['permission'])
   },
   teams: {
     list: (query?: ApiQuery) => list('/teams', query, ['teams']),
@@ -187,5 +189,6 @@ export const tenantAccessApi = {
 };
 
 export type TenantAccessResponse<T> = NormalizedApiResponse<T>;
+
 
 

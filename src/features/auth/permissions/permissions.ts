@@ -47,5 +47,8 @@ export function hasAllPermissions(
 }
 
 export function isModuleEnabled(authState: AuthState, moduleCode: string): boolean {
-  return authState.tenant.tenant?.enabledModules.includes(moduleCode) ?? false;
+  const enabledModules = authState.tenant.tenant?.enabledModules ?? [];
+  // Older tenant sessions do not include entitlement data. In that case permissions
+  // remain the source of access control and modules must not disappear from navigation.
+  return enabledModules.length === 0 || enabledModules.includes(moduleCode);
 }

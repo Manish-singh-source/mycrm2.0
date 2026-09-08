@@ -1,4 +1,4 @@
-﻿import { ApiError } from '@/lib/api/apiError';
+import { ApiError } from '@/lib/api/apiError';
 import type { ApiQuery, NormalizedApiResponse } from '@/lib/api/apiTypes';
 import { platformClient } from '@/lib/api/platformClient';
 
@@ -45,7 +45,7 @@ async function chartEndpoint(
     return { ...response, data: pickArray(response.data, fallbackKeys) };
   } catch (error) {
     if (!(error instanceof ApiError) || error.status !== 404) throw error;
-    const response = await platformClient.get<Record<string, unknown>>('/dashboard/charts', { query: queryFor(range) });
+    const response = await platformClient.get<Record<string, unknown>>('/charts', { query: queryFor(range) });
     return { ...response, data: pickArray(response.data, fallbackKeys) };
   }
 }
@@ -53,7 +53,7 @@ async function chartEndpoint(
 async function tableEndpoint(
   path: string,
   range: DashboardDateRange,
-  fallbackPath: '/dashboard/recent' | '/dashboard/alerts',
+  fallbackPath: '/recent' | '/alerts',
   fallbackKeys: string[]
 ): Promise<NormalizedApiResponse<DashboardTableRow[]>> {
   try {
@@ -68,29 +68,29 @@ async function tableEndpoint(
 
 export const platformDashboardApi = {
   summary: (range: DashboardDateRange) =>
-    platformClient.get<DashboardSummary>('/dashboard/summary', { query: queryFor(range) }),
+    platformClient.get<DashboardSummary>('/summary', { query: queryFor(range) }),
   tenantGrowth: (range: DashboardDateRange) =>
-    chartEndpoint('/dashboard/charts/tenant-growth', range, ['tenant_growth', 'tenantGrowth', 'tenants', 'growth']),
+    chartEndpoint('/charts/tenant-growth', range, ['tenant_growth', 'tenantGrowth', 'tenants', 'growth']),
   revenue: (range: DashboardDateRange) =>
-    chartEndpoint('/dashboard/charts/revenue', range, ['revenue', 'revenue_chart', 'revenueChart']),
+    chartEndpoint('/charts/revenue', range, ['revenue', 'revenue_chart', 'revenueChart']),
   planDistribution: (range: DashboardDateRange) =>
-    chartEndpoint('/dashboard/charts/plan-distribution', range, ['plan_distribution', 'planDistribution', 'plans']),
+    chartEndpoint('/charts/plan-distribution', range, ['plan_distribution', 'planDistribution', 'plans']),
   subscriptionStatus: (range: DashboardDateRange) =>
-    chartEndpoint('/dashboard/charts/subscription-status', range, ['subscription_status', 'subscriptionStatus', 'tenant_status', 'tenantStatus', 'subscriptions']),
+    chartEndpoint('/charts/subscription-status', range, ['subscription_status', 'subscriptionStatus', 'tenant_status', 'tenantStatus', 'subscriptions']),
   usage: (range: DashboardDateRange) =>
-    chartEndpoint('/dashboard/charts/usage', range, ['usage', 'usage_chart', 'usageChart', 'api_usage', 'storage_usage', 'payment_trend']),
+    chartEndpoint('/charts/usage', range, ['usage', 'usage_chart', 'usageChart', 'api_usage', 'storage_usage', 'payment_trend']),
   paymentTrend: (range: DashboardDateRange) =>
-    chartEndpoint('/dashboard/charts/payment-success-failure-trend', range, ['payment_trend', 'paymentTrend', 'revenue', 'revenue_chart']),
+    chartEndpoint('/charts/payment-success-failure-trend', range, ['payment_trend', 'paymentTrend', 'revenue', 'revenue_chart']),
   recentTenants: (range: DashboardDateRange) =>
-    tableEndpoint('/dashboard/recent-tenants', range, '/dashboard/recent', ['recent_tenants', 'recentTenants', 'tenants']),
+    tableEndpoint('/recent-tenants', range, '/recent', ['recent_tenants', 'recentTenants', 'tenants']),
   recentPayments: (range: DashboardDateRange) =>
-    tableEndpoint('/dashboard/recent-payments', range, '/dashboard/recent', ['recent_payments', 'recentPayments', 'payments']),
+    tableEndpoint('/recent-payments', range, '/recent', ['recent_payments', 'recentPayments', 'payments']),
   overdueInvoices: (range: DashboardDateRange) =>
-    tableEndpoint('/dashboard/overdue-invoices', range, '/dashboard/recent', ['overdue_invoices', 'overdueInvoices', 'invoices']),
+    tableEndpoint('/overdue-invoices', range, '/recent', ['overdue_invoices', 'overdueInvoices', 'invoices']),
   activeAlerts: (range: DashboardDateRange) =>
-    tableEndpoint('/dashboard/active-alerts', range, '/dashboard/alerts', ['active_alerts', 'activeAlerts', 'alerts']),
+    tableEndpoint('/active-alerts', range, '/alerts', ['active_alerts', 'activeAlerts', 'alerts']),
   securityEvents: (range: DashboardDateRange) =>
-    tableEndpoint('/dashboard/security-events', range, '/dashboard/alerts', ['security_events', 'securityEvents', 'events']),
+    tableEndpoint('/security-events', range, '/alerts', ['security_events', 'securityEvents', 'events']),
   failedJobs: (range: DashboardDateRange) =>
     platformClient.get<DashboardTableRow[]>('/monitoring/queue-jobs', {
       query: { ...queryFor(range), status: 'failed' }

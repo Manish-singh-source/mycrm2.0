@@ -42,6 +42,7 @@ import { PLATFORM_ROUTES } from '@/features/platform/routes/platformRoutes';
 import { platformOperationsApi, type PlatformRecord } from '@/features/platform/operations/api/platformOperationsApi';
 import type { ApiQuery, NormalizedApiResponse } from '@/lib/api/apiTypes';
 import { ApiError } from '@/lib/api/apiError';
+import { isTechnicalKey, relationshipValue } from '@/shared/utils/relationshipDisplay';
 import { createListQuery } from '@/lib/api/listQuery';
 import { DataTable, type DataTableColumn } from '@/shared/components/data-table';
 import { AppDrawer } from '@/shared/components/drawer';
@@ -794,9 +795,9 @@ function buildColumns(
       id: key,
       header: label(key),
       enableSorting: true,
-      accessor: (row: PlatformRecord) => printable(row[key]),
+      accessor: (row: PlatformRecord) => printable(relationshipValue(row, key, row[key])),
       cell: (row: PlatformRecord) => {
-        const value = row[key];
+        const value = relationshipValue(row, key, row[key]);
         if (key.includes('status') || key === 'severity' || key === 'priority') return <StatusBadge tone={tone(String(value ?? 'neutral'))}>{printable(value)}</StatusBadge>;
         if (primary.includes(key)) return <strong>{printable(value)}</strong>;
         return printable(value);
@@ -1494,7 +1495,7 @@ const configs: Record<OperationArea, AreaConfig> = {
     description: 'Review tenant impersonation history and end active support sessions.',
     permission: 'tenant.impersonate',
     tabs: [
-      { id: 'sessions', label: 'Sessions', resource: 'remote-login-sessions', query: platformOperationsApi.support.remoteSessions.list, columns: ['uuid', 'tenant_id', 'platform_user_id', 'reason', 'status', 'started_at', 'ended_at'], primary: ['uuid'], actions: [{ key: 'remoteEnd', label: 'End', icon: <Ban size={14} aria-hidden /> }] }
+      { id: 'sessions', label: 'Sessions', resource: 'remote-login-sessions', query: platformOperationsApi.support.remoteSessions.list, columns: ['tenant_name', 'platform_user_name', 'target_user_name', 'reason', 'status', 'expires_at', 'ended_at'], primary: ['reason'], actions: [{ key: 'remoteEnd', label: 'End', icon: <Ban size={14} aria-hidden /> }] }
     ]
   },
   reports: {
@@ -1527,7 +1528,7 @@ const configs: Record<OperationArea, AreaConfig> = {
     tabs: [
       { id: 'providers', label: 'Providers', resource: 'integration-providers', query: platformOperationsApi.integrations.providers, columns: ['name', 'code', 'category', 'auth_type', 'status'], primary: ['name'], actions: [{ key: 'providerEditor', label: 'Edit', icon: <Pencil size={14} aria-hidden /> }] },
       { id: 'tenant', label: 'Tenant Integrations', resource: 'tenant-integrations', query: platformOperationsApi.integrations.tenantIntegrations, columns: ['uuid', 'tenant_name', 'provider_code', 'name', 'status', 'connected_at'], primary: ['name'], actions: [{ key: 'integrationEditor', label: 'Edit', icon: <Pencil size={14} aria-hidden /> }, { key: 'integrationTest', label: 'Test', icon: <CheckCircle2 size={14} aria-hidden /> }, { key: 'rotateCredentials', label: 'Rotate', icon: <LockKeyhole size={14} aria-hidden /> }, { key: 'fieldMapping', label: 'Mappings', icon: <Split size={14} aria-hidden /> }, { key: 'integrationRateLimits', label: 'Rate Limits', icon: <Clock size={14} aria-hidden /> }, { key: 'integrationDisconnect', label: 'Disconnect', icon: <Ban size={14} aria-hidden /> }] },
-      { id: 'sync', label: 'Sync Jobs', resource: 'integration-sync-jobs', query: platformOperationsApi.integrations.syncJobs, columns: ['id', 'tenant_integration_id', 'sync_type', 'entity', 'status', 'started_at', 'finished_at'], actions: [{ key: 'retry', label: 'Retry', icon: <RotateCw size={14} aria-hidden /> }, { key: 'payload', label: 'Payload', icon: <FileJson2 size={14} aria-hidden /> }] }
+      { id: 'sync', label: 'Sync Jobs', resource: 'integration-sync-jobs', query: platformOperationsApi.integrations.syncJobs, columns: ['tenant_name', 'integration_name', 'sync_type', 'entity', 'status', 'started_at', 'finished_at'], actions: [{ key: 'retry', label: 'Retry', icon: <RotateCw size={14} aria-hidden /> }, { key: 'payload', label: 'Payload', icon: <FileJson2 size={14} aria-hidden /> }] }
     ]
   },
   settings: {
@@ -2001,14 +2002,14 @@ function printable(value: unknown) {
 
 function DetailGrid({ record }: { record: unknown }) {
   if (!record || typeof record !== 'object') return <div className="empty-state">No details returned.</div>;
-  const entries = Object.entries(record as Record<string, unknown>).filter(([key, value]) => value !== null && value !== undefined && value !== '' && !['id'].includes(key));
+  const entries = Object.entries(record as Record<string, unknown>).filter(([key, value]) => value !== null && value !== undefined && value !== '' && !isTechnicalKey(key));
   if (entries.length === 0) return <div className="empty-state">No displayable details returned.</div>;
   return (
     <dl className="detail-grid">
       {entries.map(([key, value]) => (
         <div key={key}>
           <dt>{label(key)}</dt>
-          <dd>{displayValue(value)}</dd>
+          <dd>{displayValue(relationshipValue(record as PlatformRecord, key, value))}</dd>
         </div>
       ))}
     </dl>

@@ -36,6 +36,7 @@ export type ApiTokenRecord = {
   name: string;
   abilities?: string[];
   token?: string;
+  raw_token?: string;
   expires_at?: string | null;
   revoked_at?: string | null;
   last_used_at?: string | null;

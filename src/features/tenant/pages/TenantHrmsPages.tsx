@@ -1,4 +1,4 @@
-﻿import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -14,7 +14,7 @@ import {
   XCircle
 } from 'lucide-react';
 
-import { ApiError } from '@/lib/api/apiError';
+import { ApiError } from '@/lib/api/apiError'; import { isTechnicalKey, relationshipValue } from '@/shared/utils/relationshipDisplay';
 import type { ApiQuery } from '@/lib/api/apiTypes';
 import { tenantHrmsApi, type HrmsRecord } from '@/features/tenant/api/tenantHrmsApi';
 import { tenantQueryKeys } from '@/features/tenant/api/tenantQueryKeys';
@@ -305,13 +305,22 @@ function Payslips() {
   const query = usePagedQuery('payslips', tenantHrmsApi.payroll.payslips);
   const [selected, setSelected] = useState<HrmsRecord | null>(null);
   const [modal, setModal] = useState<ModalState>(null);
+  const download = useMutation({
+    mutationFn: (id: string | number) => tenantHrmsApi.payroll.downloadPayslip(id),
+    onSuccess: (response) => {
+      const payload = response.data as Record<string, unknown> | undefined;
+      const info = payload?.download as Record<string, unknown> | undefined;
+      const url = info?.url ?? payload?.url;
+      if (typeof url === 'string' && url) window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  });
   return (
     <>
       <SectionActions>
         <Button type="button" onClick={() => setModal('payslipPreview')}><Plus size={16} aria-hidden />Generate</Button>
         <Button type="button" variant="secondary" onClick={() => setModal('emailPayslips')}><Mail size={16} aria-hidden />Bulk Email</Button>
       </SectionActions>
-      <DataTable columns={[...columns(['payslip_number', 'staff_name', 'employee_code', 'generated_at', 'emailed_at']), actionColumn((row) => <RowMenu items={[['Preview', () => setSelected(row)]]} />)]} data={query.rows} getRowId={idOf} loading={query.isLoading} error={query.error} searchValue={query.search} onSearchChange={query.setSearch} page={query.page} perPage={25} total={query.total} onPageChange={query.setPage} />
+      <DataTable columns={[...columns(['payslip_number', 'staff_name', 'employee_code', 'generated_at', 'emailed_at']), actionColumn((row) => <RowMenu items={[['Preview', () => setSelected(row)], ['Download', () => download.mutate(String(row.id ?? row.payslip_id ?? ''))]]} />)]} data={query.rows} getRowId={idOf} loading={query.isLoading} error={query.error} searchValue={query.search} onSearchChange={query.setSearch} page={query.page} perPage={25} total={query.total} onPageChange={query.setPage} />
       <PayrollActionModal action={modal} onClose={() => setModal(null)} />
       <RecordDrawer open={Boolean(selected)} title="Payslip Preview" record={selected} onClose={() => setSelected(null)} />
     </>
@@ -331,10 +340,10 @@ function PayrollComponents() {
   );
 }
 
-function PayrollAssignments() { return <SimplePayrollPanel title="Component Assignments" queryKey="payroll-assignments" queryFn={tenantHrmsApi.payroll.assignments} dataKey="assignments" action="assignment" columnsList={['staff_id', 'component_id', 'amount', 'effective_from', 'effective_to']} />; }
-function PayrollLoans() { return <SimplePayrollPanel title="Loans" queryKey="payroll-loans" queryFn={tenantHrmsApi.payroll.loans} dataKey="loans" action="loan" columnsList={['staff_id', 'loan_number', 'principal_amount', 'installment_amount', 'remaining_amount', 'status']} />; }
-function PayrollReimbursements() { return <SimplePayrollPanel title="Reimbursements" queryKey="payroll-reimbursements" queryFn={tenantHrmsApi.payroll.reimbursements} dataKey="reimbursements" action="reimbursement" columnsList={['staff_id', 'amount', 'approval_status']} />; }
-function PayrollBankTransfers() { return <SimplePayrollPanel title="Bank Transfers" queryKey="payroll-bank-transfers" queryFn={tenantHrmsApi.payroll.bankTransfers} dataKey="bank_transfers" action="bankTransfer" columnsList={['payroll_id', 'reference', 'amount', 'transfer_date', 'status']} />; }
+function PayrollAssignments() { return <SimplePayrollPanel title="Component Assignments" queryKey="payroll-assignments" queryFn={tenantHrmsApi.payroll.assignments} dataKey="assignments" action="assignment" columnsList={['staff_name', 'employee_code', 'component_name', 'amount', 'effective_from', 'effective_to']} />; }
+function PayrollLoans() { return <SimplePayrollPanel title="Loans" queryKey="payroll-loans" queryFn={tenantHrmsApi.payroll.loans} dataKey="loans" action="loan" columnsList={['staff_name', 'employee_code', 'loan_number', 'principal_amount', 'installment_amount', 'remaining_amount', 'status']} />; }
+function PayrollReimbursements() { return <SimplePayrollPanel title="Reimbursements" queryKey="payroll-reimbursements" queryFn={tenantHrmsApi.payroll.reimbursements} dataKey="reimbursements" action="reimbursement" columnsList={['staff_name', 'employee_code', 'amount', 'approval_status']} />; }
+function PayrollBankTransfers() { return <SimplePayrollPanel title="Bank Transfers" queryKey="payroll-bank-transfers" queryFn={tenantHrmsApi.payroll.bankTransfers} dataKey="bank_transfers" action="bankTransfer" columnsList={['staff_name', 'employee_code', 'payroll_uuid', 'reference', 'amount', 'transfer_date', 'status']} />; }
 
 function SimplePayrollPanel({ title, queryKey, queryFn, dataKey, action, columnsList }: { title: string; queryKey: string; queryFn: () => Promise<{ data: Record<string, HrmsRecord[]> }>; dataKey: string; action: ModalState; columnsList: string[] }) {
   const query = useQuery({ queryKey: tenantQueryKeys.resource(tenantKey, queryKey), queryFn });
@@ -650,7 +659,7 @@ function ModalFooter({ onClose, onSubmit, loading, submitLabel }: { onClose: () 
 
 function DetailGrid({ record }: { record: HrmsRecord }) {
   const entries = Object.entries(record).filter(([, value]) => value !== null && value !== undefined && typeof value !== 'object');
-  return <dl className="detail-grid">{entries.map(([key, value]) => <div key={key}><dt>{label(key)}</dt><dd>{renderValue(value)}</dd></div>)}</dl>;
+  return <dl className="detail-grid">{entries.map(([key, value]) => <div key={key}><dt>{label(key)}</dt><dd>{renderValue(relationshipValue(record, key, value))}</dd></div>)}</dl>;
 }
 
 function columns(keys: string[]): DataTableColumn<HrmsRecord>[] {
@@ -674,10 +683,10 @@ function fieldsFor(action: ModalState): string[] {
     case 'cycle': return ['cycle_name', 'payroll_month', 'payroll_year', 'period_start', 'period_end', 'payment_date', 'status', 'remarks'];
     case 'generatePayroll': return ['cycle_uuid', 'salary_effective_date', 'include_overtime', 'include_reimbursements', 'include_loan_deductions', 'attendance_source', 'leave_source'];
     case 'component': return ['component_type_id', 'name', 'code', 'calculation_method', 'default_value', 'formula', 'taxable', 'affects_pf', 'affects_esi', 'status'];
-    case 'assignment': return ['staff_id', 'component_id', 'amount', 'effective_from', 'effective_to'];
+    case 'assignment': return ['staff_name', 'employee_code', 'component_name', 'amount', 'effective_from', 'effective_to'];
     case 'loan': return ['staff_id', 'loan_number', 'principal_amount', 'interest_rate', 'installment_amount', 'remaining_amount', 'total_installments', 'issued_date', 'status'];
-    case 'reimbursement': return ['staff_id', 'amount', 'approval_status'];
-    case 'bankTransfer': return ['payroll_id', 'reference', 'amount', 'transfer_date', 'status'];
+    case 'reimbursement': return ['staff_name', 'employee_code', 'amount', 'approval_status'];
+    case 'bankTransfer': return ['staff_name', 'employee_code', 'payroll_uuid', 'reference', 'amount', 'transfer_date', 'status'];
     case 'taxSettings': return ['employee_rate', 'employer_rate', 'wage_limit', 'effective_from'];
     case 'holiday': return ['holiday_calendar_id', 'name', 'holiday_date', 'start_date', 'end_date', 'total_days', 'is_half_day', 'recurring_yearly', 'optional_holiday', 'applicable_to_all', 'description', 'color'];
     case 'holidayApplicability': return ['applicabilities'];

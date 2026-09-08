@@ -86,7 +86,6 @@ import {
 import {
   PlatformAnnouncementsPage,
   PlatformAuditPage,
-  PlatformIntegrationsPage,
   PlatformKnowledgeBasePage,
   PlatformLegalPage,
   PlatformModuleCreatePage,
@@ -94,15 +93,14 @@ import {
   PlatformModulesPage,
   PlatformModuleViewPage,
   PlatformMonitoringPage,
-  PlatformOnboardingPage,
-  PlatformRemoteLoginPage,
-  PlatformReportsPage,
   PlatformSettingsPage,
   PlatformSupportTicketViewPage,
   PlatformSupportTicketsPage,
-  PlatformTrialsPage,
   PlatformWebhooksPage
 } from '@/features/platform/operations/pages/PlatformOperationsPages';
+import { PlatformOnboardingPage, PlatformTrialsPage } from '@/features/platform/operations/pages/PlatformLifecyclePages';
+import { PlatformIntegrationsPage } from '@/features/platform/operations/pages/PlatformIntegrationsPage';
+import { PlatformRemoteLoginPage, PlatformReportsPage } from '@/features/platform/operations/pages/PlatformSupportReportsPages';
 import { ForbiddenPage } from '@/pages/ForbiddenPage';
 import { PlatformNotificationDetailPage, PlatformNotificationsPage } from '@/features/platform/notifications/pages/PlatformNotificationsPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';

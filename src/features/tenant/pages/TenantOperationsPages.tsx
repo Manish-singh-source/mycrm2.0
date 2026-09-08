@@ -4,7 +4,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, CalendarPlus, Clock, Copy, Download, GitBranch, MoreVertical, Paperclip, Plus, RefreshCw, Reply, Timer, Upload, UserPlus } from 'lucide-react';
 
-import { ApiError } from '@/lib/api/apiError';
+import { ApiError } from '@/lib/api/apiError'; import { isTechnicalKey, relationshipValue } from '@/shared/utils/relationshipDisplay';
 import type { ApiQuery } from '@/lib/api/apiTypes';
 import { tenantAccessApi } from '@/features/tenant/api/tenantAccessApi';
 import { tenantCrmApi } from '@/features/tenant/api/tenantCrmApi';
@@ -151,7 +151,7 @@ function OperationalPage({ resource, mode }: { resource: Exclude<Resource, 'rene
       <PageHeader title={title} description={`Live ${resourceLabels[resource].toLowerCase()} ${mode} view.`} actions={<><ModuleLinks resource={resource} /><PermissionButton guard="tenant" permission={`${permissionBase(resource)}.create`} type="button" onClick={() => setModal('create')}><Plus size={16} aria-hidden />Create</PermissionButton></>} />
       {mode === 'grid' ? <RecordGrid rows={query.rows} loading={query.isLoading} onOpen={open} /> : null}
       {mode === 'kanban' ? <KanbanBoard resource={resource} onOpen={open} onMove={(row) => { setSelected(row); setModal('status'); }} /> : null}
-      {mode === 'calendar' ? <CalendarGrid rows={query.rows} dateKey={resource === 'projects' ? 'due_date' : 'due_at'} onOpen={open} onMove={(row) => { setSelected(row); setModal('drag'); }} /> : null}
+      {mode === 'calendar' ? <CalendarGrid rows={query.rows} dateKey={resource === 'projects' ? 'due_date' : resource === 'todo' ? 'scheduled_at' : 'due_at'} onOpen={open} onMove={(row) => { setSelected(row); setModal('drag'); }} /> : null}
       {mode === 'gantt' && resource === 'projects' ? <GanttView onDependency={() => setModal('dependency')} /> : null}
       {!['grid', 'kanban', 'calendar', 'gantt'].includes(mode) ? (
         <DataTable
@@ -244,7 +244,8 @@ function RecordViewPage({ resource }: { resource: Exclude<Resource, 'calendar'> 
 function ViewTab({ resource, tab, bundle, loading, onModal }: { resource: Exclude<Resource, 'calendar'>; tab: string; bundle?: OperationsRecord; loading?: boolean; onModal: (modal: ModalState) => void }) {
   if (loading) return <div className="surface-state">Loading details...</div>;
   if (tab === 'details') return <DetailGrid record={scrub(rootRecord(resource, bundle))} />;
-  const rows = asRows((bundle as Record<string, unknown> | undefined)?.[tab]);
+  if (resource === 'renewals' && tab === 'amc') { const amc = (bundle as Record<string, any> | undefined)?.amc; return <RecordList title="AMC Visits" rows={asRows(amc?.visits)} />; }
+  const rows = asRows((resource === 'todo' ? rootRecord(resource, bundle)?.[tab] : (bundle as Record<string, unknown> | undefined)?.[tab]));
   const actions: Record<string, ModalState> = {
     members: 'member', phases: 'phase', milestones: 'milestone', time_logs: 'logTime', expenses: 'expense',
     checklists: 'checklist', dependencies: 'dependency', watchers: 'watcher', reminders: 'reminder', items: 'quick',
@@ -358,7 +359,7 @@ function GanttView({ onDependency }: { onDependency: () => void }) {
 
 function RecordGrid({ rows, loading, onOpen }: { rows: OperationsRecord[]; loading?: boolean; onOpen: (row: OperationsRecord) => void }) {
   if (loading) return <div className="surface-state">Loading records...</div>;
-  return <div className="settings-grid">{rows.length === 0 ? <div className="empty-state">No records found.</div> : rows.map((row) => <article className="settings-panel" key={idOf(row)}><h2>{recordTitle(row, 'Record')}</h2><p>{recordSubtitle(row)}</p><StatusBadge tone={statusTone(row.status)}>{displayValue(row.status ?? row.status_id ?? 'active')}</StatusBadge><Button type="button" size="sm" variant="secondary" onClick={() => onOpen(row)}>Open</Button></article>)}</div>;
+  return <div className="settings-grid">{rows.length === 0 ? <div className="empty-state">No records found.</div> : rows.map((row) => <article className="settings-panel" key={idOf(row)}><h2>{recordTitle(row, 'Record')}</h2><p>{recordSubtitle(row)}</p><StatusBadge tone={statusTone(row.status)}>{displayValue(relationshipValue(row, 'status_id', row.status ?? row.status_id ?? 'active'))}</StatusBadge><Button type="button" size="sm" variant="secondary" onClick={() => onOpen(row)}>Open</Button></article>)}</div>;
 }
 
 type RowActionItem = { label: string; action?: ModalState; onClick?: () => void; danger?: boolean; separatorBefore?: boolean };
@@ -410,6 +411,10 @@ function rowActionsFor(resource: Resource): RowActionItem[] {
     { label: 'Schedule Reminder', action: 'reminder' },
     { label: 'Send Reminder', action: 'sendReminder' },
     { label: 'History', action: 'history' }
+  ];
+  if (resource === 'todo') return [
+    { label: 'Change Status', action: 'status', separatorBefore: true },
+    { label: 'Schedule Reminder', action: 'reminder' }
   ];
   if (resource === 'calendar') return [
     { label: 'Attendees', action: 'attendees', separatorBefore: true },
@@ -519,7 +524,7 @@ function renderField(field: Field, form: Record<string, string>, setForm: (form:
 type Field = { name: string; label: string; type?: string; options?: string; labelKeys?: string[] };
 const projectFields: Field[] = [{ name: 'project_number', label: 'Project Number (unique)' }, { name: 'name', label: 'Name' }, { name: 'client_party_id', label: 'Client', type: 'select', options: 'clients', labelKeys: ['display_name', 'client_code', 'email'] }, { name: 'project_manager_id', label: 'Project Manager', type: 'select', options: 'users' }, { name: 'start_date', label: 'Start Date', type: 'date' }, { name: 'due_date', label: 'Due Date', type: 'date' }, { name: 'budget_amount', label: 'Budget Amount', type: 'number' }, { name: 'progress', label: 'Progress', type: 'number' }, { name: 'description', label: 'Description', type: 'textarea' }];
 const taskFields: Field[] = [{ name: 'task_number', label: 'Task Number' }, { name: 'title', label: 'Title' }, { name: 'project_id', label: 'Project', type: 'select', options: 'projects', labelKeys: ['name', 'project_number'] }, { name: 'assigned_to', label: 'Assignee', type: 'select', options: 'users' }, { name: 'assigned_team_id', label: 'Team', type: 'select', options: 'teams' }, { name: 'start_at', label: 'Start At', type: 'datetime-local' }, { name: 'due_at', label: 'Due At', type: 'datetime-local' }, { name: 'estimated_minutes', label: 'Estimated Minutes', type: 'number' }, { name: 'progress', label: 'Progress', type: 'number' }, { name: 'description', label: 'Description', type: 'textarea' }];
-const todoFields: Field[] = [{ name: 'name', label: 'Name' }, { name: 'owner_user_id', label: 'Owner', type: 'select', options: 'users' }, { name: 'team_id', label: 'Team', type: 'select', options: 'teams' }, { name: 'visibility', label: 'Visibility' }, { name: 'color', label: 'Color' }, { name: 'is_default', label: 'Default List', type: 'checkbox' }, { name: 'description', label: 'Description', type: 'textarea' }];
+const todoFields: Field[] = [{ name: 'title', label: 'Title' }, { name: 'description', label: 'Description', type: 'textarea' }, { name: 'status', label: 'Status' }, { name: 'priority', label: 'Priority' }, { name: 'scheduled_at', label: 'Scheduled At', type: 'datetime-local' }, { name: 'due_at', label: 'Due At', type: 'datetime-local' }, { name: 'is_recurring', label: 'Recurring', type: 'checkbox' }, { name: 'recurrence_rule', label: 'Recurrence Rule' }];
 const issueFields: Field[] = [{ name: 'issue_number', label: 'Issue Number' }, { name: 'client_party_id', label: 'Client', type: 'select', options: 'clients', labelKeys: ['display_name', 'client_code', 'email'] }, { name: 'project_id', label: 'Project', type: 'select', options: 'projects', labelKeys: ['name', 'project_number'] }, { name: 'title', label: 'Title' }, { name: 'assigned_to', label: 'Assignee', type: 'select', options: 'users' }, { name: 'assigned_team_id', label: 'Team', type: 'select', options: 'teams' }, { name: 'due_at', label: 'Due At', type: 'datetime-local' }, { name: 'description', label: 'Description', type: 'textarea' }];
 const renewalFields: Field[] = [{ name: 'renewal_number', label: 'Renewal Number' }, { name: 'party_id', label: 'Client/Vendor', type: 'select', options: 'parties', labelKeys: ['display_name', 'email'] }, { name: 'renewal_type', label: 'Renewal Type' }, { name: 'title', label: 'Title' }, { name: 'start_date', label: 'Start Date', type: 'date' }, { name: 'end_date', label: 'End Date', type: 'date' }, { name: 'renewal_date', label: 'Renewal Date', type: 'date' }, { name: 'amount', label: 'Amount', type: 'number' }, { name: 'owner_user_id', label: 'Owner', type: 'select', options: 'users' }, { name: 'auto_renew', label: 'Auto Renew', type: 'checkbox' }, { name: 'description', label: 'Description', type: 'textarea' }];
 const calendarFields: Field[] = [{ name: 'calendar_id', label: 'Calendar', type: 'select', options: 'calendars', labelKeys: ['name', 'calendar_type'] }, { name: 'title', label: 'Title' }, { name: 'location', label: 'Location' }, { name: 'starts_at', label: 'Starts At', type: 'datetime-local' }, { name: 'ends_at', label: 'Ends At', type: 'datetime-local' }, { name: 'timezone', label: 'Timezone' }, { name: 'all_day', label: 'All Day', type: 'checkbox' }, { name: 'status', label: 'Status' }, { name: 'description', label: 'Description', type: 'textarea' }];
@@ -527,6 +532,7 @@ const calendarFields: Field[] = [{ name: 'calendar_id', label: 'Calendar', type:
 function fieldsFor(resource: Exclude<Resource, 'calendar'>) { return ({ projects: projectFields, tasks: taskFields, todo: todoFields, issues: issueFields, renewals: renewalFields } as const)[resource]; }
 function actionFields(action: ModalState, resource: Resource): Field[] {
   if (action === 'assign' || action === 'bulk') return [{ name: 'assigned_to', label: 'Assignee', type: 'select', options: 'users' }, { name: 'assigned_team_id', label: 'Team', type: 'select', options: 'teams' }];
+  if ((action === 'status' || action === 'drag') && resource === 'todo') return [{ name: 'status', label: 'Target Status' }];
   if (action === 'status' || action === 'drag') return [{ name: 'status_id', label: 'Target Status', type: 'select', options: 'lookups' }, { name: 'progress', label: 'Progress', type: 'number' }];
   if (action === 'member') return [{ name: 'user_id', label: 'User', type: 'select', options: 'users' }, { name: 'team_id', label: 'Team', type: 'select', options: 'teams' }, { name: 'allocation_percent', label: 'Allocation %', type: 'number' }];
   if (action === 'phase') return [{ name: 'name', label: 'Phase Name' }, { name: 'start_date', label: 'Start Date', type: 'date' }, { name: 'due_date', label: 'Due Date', type: 'date' }];
@@ -598,7 +604,8 @@ function runAction(resource: Resource, action: ModalState, id: string, form: Rec
     if (action === 'video') return tenantOperationsApi.calendar.events.videoMeeting(id, body);
     if (action === 'drag') return tenantOperationsApi.calendar.events.reschedule(id, body);
   }
-  if (resource === 'todo' && action === 'share') return tenantOperationsApi.todo.update(id, body);
+  if (resource === 'todo' && action === 'status') return tenantOperationsApi.todo.update(id, body);
+  if (resource === 'todo' && action === 'reminder') return tenantOperationsApi.todo.createReminder(id, body);
   return Promise.resolve({});
 }
 
@@ -613,14 +620,14 @@ function listFor(resource: Exclude<Resource, 'renewals' | 'calendar'>, mode: Vie
 function exportFor(resource: Exclude<Resource, 'calendar'>) { return ({ projects: tenantOperationsApi.projects.export, tasks: tenantOperationsApi.tasks.export, todo: tenantOperationsApi.todo.export, issues: tenantOperationsApi.issues.export, renewals: tenantOperationsApi.renewals.export } as const)[resource]; }
 
 function columnsFor(resource: Resource, open: (row: OperationsRecord) => void): DataTableColumn<OperationsRecord>[] {
-  const keys = { projects: ['project_number', 'name', 'client_name', 'manager_name', 'due_date', 'progress'], tasks: ['task_number', 'title', 'project_name', 'assignee_name', 'due_at', 'progress'], todo: ['name', 'owner_name', 'team_name', 'visibility', 'status'], issues: ['issue_number', 'title', 'client_name', 'assignee_name', 'due_at', 'resolved_at'], renewals: ['renewal_number', 'title', 'party_name', 'renewal_type', 'renewal_date', 'amount'], calendar: ['title', 'calendar_name', 'starts_at', 'ends_at', 'location', 'status'] }[resource];
+  const keys = { projects: ['project_number', 'name', 'client_name', 'manager_name', 'due_date', 'progress'], tasks: ['task_number', 'title', 'project_name', 'assignee_name', 'due_at', 'progress'], todo: ['title', 'description', 'status', 'priority', 'scheduled_at', 'due_at'], issues: ['issue_number', 'title', 'client_name', 'assignee_name', 'due_at', 'resolved_at'], renewals: ['renewal_number', 'title', 'party_name', 'renewal_type', 'renewal_date', 'amount'], calendar: ['title', 'calendar_name', 'starts_at', 'ends_at', 'location', 'status'] }[resource];
   return genericColumns(keys).map((column) => ['name', 'title'].includes(column.id) ? { ...column, cell: (row) => <button type="button" className="link-button" onClick={() => open(row)}>{textOf(row, [column.id], 'Open')}</button> } : column);
 }
 function genericColumns(keys: string[]): DataTableColumn<OperationsRecord>[] { return keys.map((key) => ({ id: key, header: label(key), accessor: (row) => printable(row[key]), cell: (row) => key.includes('status') ? <StatusBadge tone={statusTone(row[key])}>{displayValue(row[key])}</StatusBadge> : formatValue(key, row[key]) })); }
 function actionColumn(cell: (row: OperationsRecord) => ReactNode): DataTableColumn<OperationsRecord> { return { id: 'actions', header: 'Actions', enableHiding: false, cell }; }
 
 function RecordList({ title, rows, action }: { title: string; rows: OperationsRecord[]; action?: ReactNode }) { return <section className="settings-panel"><div className="surface-actions"><h2>{title}</h2>{action}</div>{rows.length === 0 ? <div className="empty-state">No records returned.</div> : <DataTable columns={genericColumns(visibleKeys(rows[0]))} data={rows} getRowId={idOf} total={rows.length} />}</section>; }
-function DetailGrid({ record }: { record: Record<string, unknown> }) { const entries = Object.entries(record).filter(([key, value]) => value !== null && value !== undefined && value !== '' && !['id', 'tenant_id', 'deleted_at'].includes(key)); return entries.length === 0 ? <div className="empty-state">No details returned.</div> : <dl className="detail-grid">{entries.map(([key, value]) => <div key={key}><dt>{label(key)}</dt><dd>{displayValue(value)}</dd></div>)}</dl>; }
+function DetailGrid({ record }: { record: Record<string, unknown> }) { const entries = Object.entries(record).filter(([key, value]) => value !== null && value !== undefined && value !== '' && !isTechnicalKey(key) && key !== 'deleted_at'); return entries.length === 0 ? <div className="empty-state">No details returned.</div> : <dl className="detail-grid">{entries.map(([key, value]) => <div key={key}><dt>{label(key)}</dt><dd>{displayValue(relationshipValue(record, key, value))}</dd></div>)}</dl>; }
 function SimpleInput({ label: inputLabel, value, onChange, type = 'text' }: { label: string; value: string; onChange: (value: string) => void; type?: string }) { return <label><span>{inputLabel}</span><input type={type} value={value} onChange={(event) => onChange(event.target.value)} /></label>; }
 function SelectInput({ label: inputLabel, value, onChange, options, labelKeys }: { label: string; value: string; onChange: (value: string) => void; options: OperationsRecord[]; labelKeys: string[] }) { return <label><span>{inputLabel}</span><select value={value} onChange={(event) => onChange(event.target.value)}><option value="">Select {inputLabel.toLowerCase()}</option>{options.map((option) => <option key={idOf(option)} value={idOf(option)}>{recordLabel(option, labelKeys)}</option>)}</select></label>; }
 function HistoryDrawer({ open, record, bundle, onClose }: { open: boolean; record?: OperationsRecord | null; bundle?: OperationsRecord; onClose: () => void }) { return <AppDrawer open={open} onClose={onClose} title="Renewal History" size="lg"><RecordList title="History" rows={asRows((bundle as Record<string, unknown> | undefined)?.history ?? record?.history)} /></AppDrawer>; }
@@ -637,7 +644,7 @@ function formPayload(resource: Exclude<Resource, 'calendar'>, form: Record<strin
 function eventPayload(form: Record<string, string>) { return normalize(Object.fromEntries(calendarFields.map((field) => [field.name, form[field.name] ?? '']))); }
 function normalize(form: Record<string, string>) { return Object.fromEntries(Object.entries(form).map(([key, value]) => [key, value === '' ? null : ['auto_renew', 'is_default', 'is_recurring', 'all_day', 'billable'].includes(key) ? value === 'true' : value])); }
 function rootRecord(resource: Exclude<Resource, 'calendar'>, bundle?: OperationsRecord): OperationsRecord { const key = resource === 'todo' ? 'todo_list' : singular(resource); return ((bundle as Record<string, unknown> | undefined)?.[key] ?? bundle ?? {}) as OperationsRecord; }
-function tabsFor(resource: Exclude<Resource, 'calendar'>) { return ({ projects: [['details', 'Details'], ['members', 'Members'], ['phases', 'Phases'], ['milestones', 'Milestones'], ['tasks', 'Tasks'], ['time_logs', 'Time Logs'], ['expenses', 'Expenses'], ['activity', 'Activity']], tasks: [['details', 'Details'], ['checklists', 'Checklists'], ['comments', 'Comments'], ['dependencies', 'Dependencies'], ['watchers', 'Watchers'], ['time_logs', 'Time Logs'], ['activity', 'Activity']], todo: [['details', 'Details'], ['tasks', 'Tasks']], issues: [['details', 'Details'], ['linked_tasks', 'Linked Tasks'], ['time_logs', 'Time Logs'], ['activity', 'Activity']], renewals: [['details', 'Details'], ['items', 'Items'], ['reminders', 'Reminders'], ['history', 'History']] } as const)[resource]; }
+function tabsFor(resource: Exclude<Resource, 'calendar'>) { return ({ projects: [['details', 'Details'], ['members', 'Members'], ['phases', 'Phases'], ['milestones', 'Milestones'], ['tasks', 'Tasks'], ['time_logs', 'Time Logs'], ['expenses', 'Expenses'], ['activity', 'Activity']], tasks: [['details', 'Details'], ['checklists', 'Checklists'], ['comments', 'Comments'], ['dependencies', 'Dependencies'], ['watchers', 'Watchers'], ['time_logs', 'Time Logs'], ['activity', 'Activity']], todo: [['details', 'Details'], ['tasks', 'Items'], ['reminders', 'Reminders']], issues: [['details', 'Details'], ['linked_tasks', 'Linked Tasks'], ['time_logs', 'Time Logs'], ['activity', 'Activity']], renewals: [['details', 'Details'], ['items', 'Items'], ['reminders', 'Reminders'], ['amc', 'AMC'], ['history', 'History']] } as const)[resource]; }
 function modulePath(resource: Resource, tenantSlug?: string) { if (resource === 'projects') return TENANT_ROUTES.projects.projects(tenantSlug); if (resource === 'tasks') return TENANT_ROUTES.projects.tasks(tenantSlug); if (resource === 'todo') return TENANT_ROUTES.projects.todo(tenantSlug); if (resource === 'issues') return TENANT_ROUTES.support.issues(tenantSlug); if (resource === 'renewals') return TENANT_ROUTES.crm.renewals(tenantSlug); return TENANT_ROUTES.projects.calendar(tenantSlug); }
 function permissionBase(resource: Resource) { return resource === 'todo' ? 'todo' : resource === 'issues' ? 'issue' : resource === 'renewals' ? 'renewal' : resource === 'projects' ? 'project' : resource === 'calendar' ? 'calendar' : 'task'; }
 function modeTitle(mode: ViewMode) { return ['list'].includes(mode) ? '' : label(mode); }

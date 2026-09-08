@@ -110,7 +110,8 @@ export const tenantBusinessApi = {
     report: (code: string, query?: ApiQuery) => client().get<Record<string, unknown>>(`/reports/${encodeURIComponent(code)}`, { query }),
     export: (code: string, body: Record<string, unknown>) => client().post(`/reports/${encodeURIComponent(code)}/export`, body),
     custom: () => client().get<Record<string, unknown>>('/reports/custom'),
-    saveCustom: (body: Record<string, unknown>) => client().post('/reports/custom', body)
+    saveCustom: (body: Record<string, unknown>) => client().post('/reports/custom', body),
+    runCustom: (id: string) => client().post('/reports/custom/' + encodeURIComponent(id) + '/run')
   },
   communication: {
     logs: (query?: ApiQuery) => list('/communication/logs', query, ['logs', 'communication_logs']),

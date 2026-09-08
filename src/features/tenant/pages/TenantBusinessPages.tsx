@@ -31,7 +31,7 @@ import {
 
 import { tenantBusinessApi, type BusinessRecord } from '@/features/tenant/api/tenantBusinessApi';
 import { tenantQueryKeys } from '@/features/tenant/api/tenantQueryKeys';
-import { ApiError } from '@/lib/api/apiError';
+import { ApiError } from '@/lib/api/apiError'; import { isTechnicalKey, relationshipValue } from '@/shared/utils/relationshipDisplay';
 import type { ApiQuery } from '@/lib/api/apiTypes';
 import { DataTable, RowActionMenu, type DataTableColumn } from '@/shared/components/data-table';
 import { AppDrawer } from '@/shared/components/drawer';
@@ -904,7 +904,7 @@ function RecordList({ title, rows }: { title: string; rows: BusinessRecord[] }) 
 function DetailGrid({ record }: { record: BusinessRecord }) {
   const entries = Object.entries(record).filter(([key, value]) => value !== null && value !== undefined && value !== '' && !['id', 'tenant_id', 'deleted_at', 'encrypted_value', 'account_number_encrypted', 'routing_number_encrypted'].includes(key));
   if (entries.length === 0) return <div className="empty-state">No details returned.</div>;
-  return <dl className="detail-grid">{entries.map(([key, value]) => <div key={key}><dt>{label(key)}</dt><dd>{renderValue(value)}</dd></div>)}</dl>;
+  return <dl className="detail-grid">{entries.map(([key, value]) => <div key={key}><dt>{label(key)}</dt><dd>{renderValue(relationshipValue(record, key, value))}</dd></div>)}</dl>;
 }
 
 function RowMenu({ items }: { items: [string, () => void][] }) {

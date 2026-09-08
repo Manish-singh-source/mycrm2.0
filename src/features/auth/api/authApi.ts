@@ -22,6 +22,7 @@ import type {
 import { authClient } from '@/lib/api/authClient';
 import { commonClient } from '@/lib/api/commonClient';
 import { platformClient } from '@/lib/api/platformClient';
+import { createTenantClient } from '@/lib/api/tenantClient';
 import type { ApiRequestOptions } from '@/lib/api/apiTypes';
 
 type RawTenantContext = {
@@ -220,6 +221,12 @@ function authenticatedAuthOptions(guard: AuthGuard): ApiRequestOptions {
   return { headers: { Authorization: 'Bearer ' + session.accessToken } };
 }
 
+
+function tenantAuthClient() {
+  const tenant = authStore.getSnapshot().tenant.tenant;
+  return createTenantClient(tenant?.uuid ?? tenant?.slug ?? '');
+}
+
 function isTwoFactorChallenge(response: RawLoginResult): response is TwoFactorChallenge {
   return 'requires_2fa' in response && response.requires_2fa === true;
 }
@@ -297,6 +304,20 @@ export const authApi = {
     ),
   resetPassword: (body: ResetPasswordRequest) =>
     authClient.post<{ reset: boolean }, ResetPasswordRequest>('/password/reset', body),
+  tenantForgotPassword: (tenant: string, body: { email: string }) =>
+    createTenantClient(tenant).post<{ reset_token?: string }, { tenant: string; email: string }>('/forgot-password', { tenant, ...body }),
+  tenantResetPassword: (tenant: string, body: ResetPasswordRequest) =>
+    createTenantClient(tenant).post<null, ResetPasswordRequest & { tenant: string }>('/reset-password', { tenant, ...body }),
+  tenantProfile: () => tenantAuthClient().get<{ user: Record<string, unknown> }>('/profile'),
+  updateTenantProfile: (body: Record<string, unknown>) => tenantAuthClient().patch<{ user: Record<string, unknown> }>('/profile', body),
+  tenantChangePassword: (body: { current_password: string; password: string; password_confirmation: string }) => tenantAuthClient().put('/profile/password', body),
+  tenantPreferences: () => tenantAuthClient().get<{ preferences: Record<string, unknown>[] }>('/profile/preferences'),
+  updateTenantPreferences: (preferences: Record<string, unknown>) => tenantAuthClient().put('/profile/preferences', { preferences }),
+  tenantSessions: () => tenantAuthClient().get<{ sessions: Record<string, unknown>[] }>('/profile/sessions'),
+  revokeTenantSession: (sessionId: number) => tenantAuthClient().delete('/profile/sessions/' + sessionId),
+  tenantEnable2fa: () => tenantAuthClient().post<{ secret: string; provisioning_uri: string }>('/2fa/enable'),
+  tenantConfirm2fa: (code: string) => tenantAuthClient().post<{ recovery_codes: string[] }>('/2fa/confirm', { code }),
+  tenantDisable2fa: (password: string) => tenantAuthClient().post('/2fa/disable', { password }),
   registerTenant: async (body: TenantRegistrationRequest) => {
     const response = await authClient.post<TenantRegistrationResponse, TenantRegistrationRequest>('/tenants/register', body);
     const payload = response.data;
@@ -346,20 +367,20 @@ export const authApi = {
   },
   logout: async (guard: AuthGuard) => {
     try {
-      await authClient.post('/logout', undefined, authenticatedAuthOptions(guard));
+      if (guard === 'tenant') await tenantAuthClient().post('/logout'); else await authClient.post('/logout', undefined, authenticatedAuthOptions(guard));
     } finally {
       authStore.clear(guard);
     }
   },
   refresh: async (guard: AuthGuard) => {
-    const response = await authClient.post<{ access_token: string; token_type?: string }>('/refresh', undefined, authenticatedAuthOptions(guard));
+    const response = guard === 'tenant' ? await tenantAuthClient().post<{ access_token: string; token_type?: string }>('/refresh') : await authClient.post<{ access_token: string; token_type?: string }>('/refresh', undefined, authenticatedAuthOptions(guard));
     const session = guard === 'platform' ? authStore.getSnapshot().platform : authStore.getSnapshot().tenant;
     if (guard === 'platform') authStore.setPlatformSession({ accessToken: response.data.access_token, expiresAt: null });
     else authStore.setTenantSession({ accessToken: response.data.access_token, expiresAt: null });
     return { ...response, data: { ...session, accessToken: response.data.access_token, expiresAt: null } };
   },
   me: async (guard: AuthGuard) => {
-    const response = await authClient.get<RawLoginResponse>('/me', authenticatedAuthOptions(guard));
+    const response = guard === 'tenant' ? await tenantAuthClient().get<RawLoginResponse>('/me') : await authClient.get<RawLoginResponse>('/me', authenticatedAuthOptions(guard));
     const normalized = normalizeLoginResponse(response.data);
     const session = guard === 'platform' ? authStore.getSnapshot().platform : authStore.getSnapshot().tenant;
     const tenantSession = authStore.getSnapshot().tenant;
@@ -384,6 +405,3 @@ export const authApi = {
     return { ...response, data: hydrated };
   }
 };
-
-
-

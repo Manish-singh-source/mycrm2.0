@@ -5539,3 +5539,19 @@ input[name=organization_code] { display: none; }
   display: grid;
   gap: 12px;
 }
+:root[data-theme='dark'] {
+  --crm-bg: #0f172a;
+  --crm-panel: #172033;
+  --crm-panel-soft: #1e293b;
+  --crm-text: #e5edf8;
+  --crm-muted: #a8b4c7;
+  --crm-line: #334155;
+  --crm-line-soft: #263449;
+  --crm-primary-soft: #172554;
+  --crm-shadow: 0 14px 36px rgb(0 0 0 / 24%);
+  --crm-shadow-soft: 0 1px 2px rgb(0 0 0 / 20%);
+}
+
+:root[data-theme='dark'] body {
+  background: linear-gradient(180deg, #111c31 0, var(--crm-bg) 280px), var(--crm-bg);
+}
