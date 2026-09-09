@@ -5364,7 +5364,6 @@ textarea:focus-visible {
   0% { background-position: 100% 0; }
   100% { background-position: -100% 0; }
 }
-
 /* Directory forms do not use the optional RBAC side panel. Keep the form full width. */
 .organization-form-shell {
   grid-template-columns: minmax(0, 1fr);

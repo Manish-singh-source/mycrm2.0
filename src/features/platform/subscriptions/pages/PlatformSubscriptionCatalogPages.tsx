@@ -446,7 +446,7 @@ function CatalogList({ kind }: { kind: CatalogKind }) {
   const [statusFilter, setStatusFilter] = useState('');
   const [hiddenColumnIds, setHiddenColumnIds] = useState<string[]>([]);
   const [perPage, setPerPage] = useState(10);
-  const queryParams = { ...createListQuery({ page, per_page: perPage, search }), status: statusFilter || undefined };
+  const queryParams = { ...createListQuery({ page, per_page: perPage, search }), ...(kind === 'features' ? { filter: statusFilter ? { status: statusFilter } : undefined } : { status: statusFilter || undefined }) };
   const query = useQuery({
     queryKey: platformQueryKeys.list(meta.resourceKey, queryParams),
     queryFn: () => {
@@ -892,7 +892,7 @@ function catalogColumns(kind: CatalogKind, handlers: {
 }): DataTableColumn<CatalogRecord>[] {
   if (kind === 'features') {
     return [
-      { id: 'module', header: 'Module', accessor: (row) => row.module, enableSorting: true, cell: (row) => textOf(row, ['module']) },
+      { id: 'module', header: 'Module', accessor: (row) => row.module, enableSorting: true, cell: (row) => textOf(row, ['module_name', 'module']) },
       { id: 'name', header: 'Name', accessor: (row) => row.name, enableSorting: true, cell: (row) => <strong>{textOf(row, ['name'])}</strong> },
       { id: 'code', header: 'Code', accessor: (row) => row.code, cell: (row) => textOf(row, ['code']) },
       { id: 'data_type', header: 'Data Type', accessor: (row) => row.data_type, cell: (row) => textOf(row, ['data_type']) },
