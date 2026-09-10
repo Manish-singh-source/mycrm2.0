@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   Camera,
   Download,
+  KeyRound,
   Plus,
   Edit3,
   RefreshCw,
@@ -244,27 +245,211 @@ export function TenantRoleViewPage() {
 }
 
 export function TenantPermissionsPage() {
-  const query = usePagedQuery('permissions', tenantAccessApi.permissions.list);
-  const groupedQuery = useQuery({ queryKey: tenantQueryKeys.resource(tenantKey, 'permissions-grouped'), queryFn: tenantAccessApi.permissions.grouped });
+  const [moduleFilter, setModuleFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [hiddenColumnIds, setHiddenColumnIds] = useState<string[]>([]);
+  const [modal, setModal] = useState<'filters' | 'columns' | null>(null);
+  const query = usePagedQuery('permissions', tenantAccessApi.permissions.list, 10, {
+    ...(moduleFilter ? { module: moduleFilter } : {}),
+    ...(statusFilter ? { status: statusFilter } : {})
+  });
+  const stats = (query.meta?.stats as Record<string, unknown> | undefined) ?? {};
+  const modules = Array.from(new Set(query.rows.map((row) => String(row.module ?? '')).filter(Boolean))).sort();
+
   return (
-    <section className="enterprise-module-page">
-      <PageHeader title="Permissions" description="Grouped tenant permission catalog from the permissions table." />
-      <PermissionGroups groups={groupedQuery.data?.data.permissions ?? {}} />
+    <section className="enterprise-module-page platform-access-page">
+      <PageHeader
+        title="Permissions"
+        description="Review tenant permissions grouped by module and status."
+      />
+      <TenantPermissionSummaryCards stats={stats} fallbackTotal={query.total} rows={query.rows} />
       <DataTable
-        columns={genericColumns(['module', 'display_name', 'name', 'guard_name', 'roles_count', 'status'])}
+        columns={tenantPermissionColumns()}
         data={query.rows}
         getRowId={idOf}
         loading={query.isLoading}
         error={query.error}
         searchValue={query.search}
+        searchPlaceholder="Search permissions..."
         onSearchChange={query.setSearch}
+        hiddenColumnIds={hiddenColumnIds}
+        onHiddenColumnIdsChange={setHiddenColumnIds}
+        onOpenFilters={() => setModal('filters')}
+        onOpenColumns={() => setModal('columns')}
         page={query.page}
         perPage={query.perPage}
         total={query.total}
         onPageChange={query.setPage}
-        onPerPageChange={(value) => { query.setPerPage(value); query.setPage(1); }}
+        onPerPageChange={(value) => {
+          query.setPerPage(value);
+          query.setPage(1);
+        }}
+      />
+      <TenantPermissionFiltersModal
+        open={modal === 'filters'}
+        module={moduleFilter}
+        status={statusFilter}
+        modules={modules}
+        onModuleChange={(value) => {
+          setModuleFilter(value);
+          query.setPage(1);
+        }}
+        onStatusChange={(value) => {
+          setStatusFilter(value);
+          query.setPage(1);
+        }}
+        onClose={() => setModal(null)}
+      />
+      <TenantPermissionColumnsModal
+        open={modal === 'columns'}
+        columns={tenantPermissionColumns()}
+        hiddenColumnIds={hiddenColumnIds}
+        onChange={setHiddenColumnIds}
+        onClose={() => setModal(null)}
       />
     </section>
+  );
+}
+
+function TenantPermissionSummaryCards({
+  stats,
+  fallbackTotal,
+  rows
+}: {
+  stats: Record<string, unknown>;
+  fallbackTotal: number;
+  rows: TenantAccessRecord[];
+}) {
+  const assigned = rows.reduce((sum, row) => sum + Number(row.roles_count ?? 0), 0);
+  return (
+    <section className="platform-access-summary">
+      <SummaryCard icon={<ShieldCheck />} label="Total Permissions" value={String(stats.total ?? fallbackTotal ?? rows.length)} />
+      <SummaryCard icon={<RefreshCw />} label="Active" value={String(stats.active ?? rows.filter((row) => row.status === 'active').length)} />
+      <SummaryCard icon={<KeyRound />} label="System" value={String(stats.system ?? rows.filter((row) => Boolean(row.is_system)).length)} />
+      <SummaryCard icon={<Users />} label="Assigned Roles" value={String(stats.assignments ?? assigned)} />
+    </section>
+  );
+}
+
+function tenantPermissionColumns(): DataTableColumn<TenantAccessRecord>[] {
+  return [
+    {
+      id: 'module',
+      header: 'Module',
+      accessor: (row) => String(row.module ?? ''),
+      enableSorting: true,
+      cell: (row) => label(String(row.module ?? ""))
+    },
+    {
+      id: 'name',
+      header: 'Permission Name',
+      accessor: (row) => String(row.name ?? ''),
+      enableSorting: true,
+      cell: (row) => <span className="muted-cell">{String(row.name ?? '-')}</span>
+    },
+    {
+      id: 'display_name',
+      header: 'Display Name',
+      accessor: (row) => String(row.display_name ?? ''),
+      enableSorting: true,
+      cell: (row) => String(row.display_name ?? row.name ?? '-')
+    },
+    {
+      id: 'guard_name',
+      header: 'Guard',
+      accessor: (row) => String(row.guard_name ?? 'tenant'),
+      cell: (row) => String(row.guard_name ?? 'tenant')
+    },
+    {
+      id: 'roles_count',
+      header: 'Roles',
+      accessor: (row) => Number(row.roles_count ?? 0),
+      cell: (row) => String(row.roles_count ?? 0)
+    },
+    {
+      id: 'status',
+      header: 'Status',
+      accessor: (row) => String(row.status ?? 'inactive'),
+      enableSorting: true,
+      cell: (row) => <StatusBadge tone={statusTone(row.status)}>{String(row.status ?? 'inactive')}</StatusBadge>
+    }
+  ];
+}
+
+function TenantPermissionFiltersModal({
+  open,
+  module,
+  status,
+  modules,
+  onModuleChange,
+  onStatusChange,
+  onClose
+}: {
+  open: boolean;
+  module: string;
+  status: string;
+  modules: string[];
+  onModuleChange: (value: string) => void;
+  onStatusChange: (value: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <AppModal
+      open={open}
+      onClose={onClose}
+      title="Permission Filters"
+      footer={<Button type="button" variant="secondary" onClick={() => { onModuleChange(''); onStatusChange(''); }}>Reset</Button>}
+    >
+      <label>
+        <span>Module</span>
+        <select value={module} onChange={(event) => onModuleChange(event.target.value)}>
+          <option value="">All modules</option>
+          {modules.map((item) => <option key={item} value={item}>{label(item)}</option>)}
+        </select>
+      </label>
+      <label>
+        <span>Status</span>
+        <select value={status} onChange={(event) => onStatusChange(event.target.value)}>
+          <option value="">All statuses</option>
+          <option value="active">Active</option>
+          <option value="inactive">Inactive</option>
+        </select>
+      </label>
+    </AppModal>
+  );
+}
+
+function TenantPermissionColumnsModal({
+  open,
+  columns,
+  hiddenColumnIds,
+  onChange,
+  onClose
+}: {
+  open: boolean;
+  columns: DataTableColumn<TenantAccessRecord>[];
+  hiddenColumnIds: string[];
+  onChange: (ids: string[]) => void;
+  onClose: () => void;
+}) {
+  return (
+    <AppModal open={open} onClose={onClose} title="Permission Columns">
+      <div className="settings-list">
+        {columns.map((column) => (
+          <label className="check-row" key={column.id}>
+            <input
+              type="checkbox"
+              checked={!hiddenColumnIds.includes(column.id)}
+              onChange={() => onChange(hiddenColumnIds.includes(column.id)
+                ? hiddenColumnIds.filter((id) => id !== column.id)
+                : [...hiddenColumnIds, column.id])}
+              disabled={column.enableHiding === false}
+            />
+            <span>{column.header}</span>
+          </label>
+        ))}
+      </div>
+    </AppModal>
   );
 }
 
