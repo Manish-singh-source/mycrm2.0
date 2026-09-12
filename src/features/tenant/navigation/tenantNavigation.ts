@@ -50,6 +50,7 @@ export function buildTenantNavigation(tenantSlug: string, badges: TenantNavigati
         { label: 'Roles', to: TENANT_ROUTES.accessControl.roles(tenantSlug), icon: ShieldCheck, permission: 'role.view' },
         { label: 'Permissions', to: TENANT_ROUTES.accessControl.permissions(tenantSlug), icon: KeyRound, permission: 'permission.view' },
         { label: 'Teams', to: TENANT_ROUTES.accessControl.teams(tenantSlug), icon: Users, permission: 'team.view' },
+        { label: 'Team Roles', to: TENANT_ROUTES.accessControl.teamRoles(tenantSlug), icon: ShieldCheck, permission: 'team.view' },
         { label: 'Tenant Users', to: TENANT_ROUTES.accessControl.users(tenantSlug), icon: Users, permission: 'staff.view' }
       ]
     },

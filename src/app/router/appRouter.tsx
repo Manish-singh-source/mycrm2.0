@@ -130,7 +130,9 @@ import {
   TenantTeamCreatePage,
   TenantTeamEditPage,
   TenantTeamsListPage,
+  TenantTeamRolesListPage,
   TenantTeamViewPage,
+  TenantUserCreatePage,
   TenantUsersPage
 } from '@/features/tenant/pages/TenantAccessStaffPages';
 import {
@@ -1198,6 +1200,13 @@ export const appRouter = createBrowserRouter([
         )
       },
       {
+        path: 'access-control/team-roles',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['team.view']}>
+            <TenantTeamRolesListPage />
+          </RequirePermission>
+        )
+      },      {
         path: 'access-control/teams',
         element: (
           <RequirePermission guard="tenant" anyOf={['team.view']}>
@@ -1230,10 +1239,17 @@ export const appRouter = createBrowserRouter([
         )
       },
       {
+        path: 'access-control/users/create',
+        element: (
+          <RequirePermission guard="tenant" anyOf={['staff.create']}>
+            <TenantUserCreatePage />
+          </RequirePermission>
+        )
+      },      {
         path: 'access-control/users',
         element: (
           <RequirePermission guard="tenant" anyOf={['staff.view']}>
-            <TenantStaffListPage />
+            <TenantUsersPage />
           </RequirePermission>
         )
       },
@@ -1257,7 +1273,7 @@ export const appRouter = createBrowserRouter([
         path: 'hrms/staff',
         element: (
           <RequirePermission guard="tenant" anyOf={['staff.view']}>
-            <TenantStaffListPage />
+            <TenantUsersPage />
           </RequirePermission>
         )
       },
@@ -1337,7 +1353,6 @@ export const appRouter = createBrowserRouter([
     element: <NotFoundPage />
   }
 ]);
-
 
 
 

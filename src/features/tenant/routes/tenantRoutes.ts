@@ -12,7 +12,9 @@ export const TENANT_ROUTES = {
     roles: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/access-control/roles`,
     permissions: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/access-control/permissions`,
     users: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/access-control/users`,
-    teams: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/access-control/teams`
+    usersCreate: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/access-control/users/create`,
+    teams: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/access-control/teams`,
+    teamRoles: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/access-control/team-roles`
   },
   crm: {
     leads: (tenantSlug?: string) => `${tenantBase(tenantSlug)}/crm/leads`,

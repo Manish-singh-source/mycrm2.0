@@ -3193,7 +3193,7 @@ function AssignRecordModal({
     },
     enabled: open
   });
-  const assignableRecords = assignableQuery.data?.data ?? [];
+  const assignableRecords: PlatformRecord[] = assignableQuery.data?.data ?? [];
   useEffect(() => {
     setAssignableId('');
   }, [assignableType]);
@@ -4170,29 +4170,28 @@ function ResourceStats({ kind, rows, kpis }: { kind: ResourceKind; rows: Platfor
       sum + Number(kind === 'permissions' ? row.roles_count ?? 0 : row.users_count ?? row.members_count ?? 0),
     0
   );
+  const teamMembers = rows.reduce((sum, row) => sum + Number(row.members_count ?? 0), 0);
+  const teamAssignments = rows.reduce((sum, row) => sum + Number(row.assignments_count ?? 0), 0);
+  const tiles = kind === 'teams'
+    ? [
+        { icon: <ShieldCheck />, label: 'Total Platform Teams', value: kpis?.total ?? rows.length },
+        { icon: <CheckCircle2 />, label: 'Active', value: kpis?.active ?? rows.filter((row) => row.status === 'active').length },
+        { icon: <KeyRound />, label: 'Internal', value: kpis?.internal ?? rows.filter((row) => row.visibility === 'internal').length },
+        { icon: <Users />, label: 'Members', value: kpis?.members ?? teamMembers },
+        { icon: <Users />, label: 'Assignments', value: kpis?.assignments ?? teamAssignments }
+      ]
+    : [
+        { icon: <ShieldCheck />, label: `Total ${resourceMeta[kind].label}`, value: kpis?.total ?? rows.length },
+        { icon: <CheckCircle2 />, label: 'Active', value: kpis?.active ?? rows.filter((row) => row.status === 'active').length },
+        { icon: <KeyRound />, label: 'System', value: kpis?.system ?? rows.filter((row) => row.is_system).length },
+        { icon: <Users />, label: kind === 'roles' ? 'Assigned Users' : kind === 'teamRoles' ? 'Assigned Members' : 'Assignments', value: kpis?.assignments ?? assigned }
+      ];
 
   return (
     <section className="platform-access-summary">
-      <SummaryTile
-        icon={<ShieldCheck />}
-        label={`Total ${resourceMeta[kind].label}`}
-        value={String(kpis?.total ?? rows.length)}
-      />
-      <SummaryTile
-        icon={<CheckCircle2 />}
-        label="Active"
-        value={String(kpis?.active ?? rows.filter((row) => row.status === 'active').length)}
-      />
-      <SummaryTile
-        icon={<KeyRound />}
-        label="System"
-        value={String(kpis?.system ?? rows.filter((row) => row.is_system).length)}
-      />
-      <SummaryTile
-        icon={<Users />}
-        label={kind === 'roles' ? 'Assigned Users' : 'Assignments'}
-        value={String(kpis?.assignments ?? assigned)}
-      />
+      {tiles.map((tile) => (
+        <SummaryTile key={tile.label} icon={tile.icon} label={tile.label} value={String(tile.value)} />
+      ))}
     </section>
   );
 }

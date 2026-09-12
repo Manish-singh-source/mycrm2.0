@@ -26,6 +26,7 @@ import {
 } from '@/features/platform/access-control/api/platformAccessApi';
 import {
   platformStaffApi,
+  type PlatformStaffListKpis,
   type PlatformStaffPayload,
   type PlatformStaffRecord
 } from '@/features/platform/staff/api/platformStaffApi';
@@ -395,7 +396,7 @@ export function PlatformStaffListPage() {
         }
       />
 
-      <StaffStats rows={rows} />
+      <StaffStats rows={rows} kpis={listQuery.data?.kpis} />
 
       <DataTable
         columns={columns}
@@ -1887,24 +1888,24 @@ function CompactStatus({ status }: { status: string }) {
   );
 }
 
-function StaffStats({ rows }: { rows: PlatformStaffRecord[] }) {
+function StaffStats({ rows, kpis }: { rows: PlatformStaffRecord[]; kpis?: PlatformStaffListKpis }) {
   return (
     <section className="platform-access-summary">
-      <SummaryTile icon={<Users />} label="Total Staff" value={String(rows.length)} />
+      <SummaryTile icon={<Users />} label="Total Staff" value={String(kpis?.total ?? rows.length)} />
       <SummaryTile
         icon={<CheckCircle2 />}
         label="Active Staff"
-        value={String(rows.filter((row) => row.status === 'active').length)}
+        value={String(kpis?.active ?? rows.filter((row) => row.status === 'active').length)}
       />
       <SummaryTile
         icon={<ShieldCheck />}
         label="2FA Enabled"
-        value={String(rows.filter((row) => row.two_factor_enabled).length)}
+        value={String(kpis?.two_factor_enabled ?? rows.filter((row) => row.two_factor_enabled).length)}
       />
       <SummaryTile
         icon={<KeyRound />}
         label="Suspended"
-        value={String(rows.filter((row) => row.status === 'suspended').length)}
+        value={String(kpis?.suspended ?? rows.filter((row) => row.status === 'suspended').length)}
       />
     </section>
   );

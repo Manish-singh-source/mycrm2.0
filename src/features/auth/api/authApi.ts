@@ -30,6 +30,8 @@ type RawTenantContext = {
   slug?: string;
   organization_name?: string;
   organizationName?: string;
+  display_name?: string;
+  displayName?: string;
   enabled_modules?: string[];
   enabledModules?: string[];
   status?: string;
@@ -126,7 +128,7 @@ function normalizeAccount(raw: RawAccount): DiscoveredAccount {
     displayName,
     email: raw.email ?? '',
     avatarUrl: raw.avatarUrl ?? raw.avatar_url ?? null,
-    organization: raw.organization ?? null,
+    organization: raw.organization ?? raw.tenant?.organizationName ?? raw.tenant?.organization_name ?? raw.tenant?.displayName ?? raw.tenant?.display_name ?? null,
     tenant: raw.tenant
       ? {
           uuid: raw.tenant.uuid ?? raw.tenant.slug ?? '',

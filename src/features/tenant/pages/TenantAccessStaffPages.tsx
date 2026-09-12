@@ -80,7 +80,9 @@ export function TenantRolesListPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [hiddenColumnIds, setHiddenColumnIds] = useState<string[]>(['guard_name']);
   const [modal, setModal] = useState<ModalState>(null);
-  const stats = (query.meta?.stats as Record<string, unknown> | undefined) ?? {};
+  const stats = (query.meta?.kpis as Record<string, unknown> | undefined)
+    ?? (query.meta?.stats as Record<string, unknown> | undefined)
+    ?? {};
   const deleteMutation = useMutation({
     mutationFn: ({ ids, reason }: { ids: string[]; reason?: string }) => ids.length === 1
       ? tenantAccessApi.roles.delete(ids[0], { audit_reason: reason })
@@ -551,6 +553,84 @@ export function TenantTeamsListPage() {
   );
 }
 
+export function TenantTeamRolesListPage() {
+  const { tenantSlug } = useParams();
+  const queryClient = useQueryClient();
+  const query = usePagedQuery('team-roles', tenantAccessApi.teamRoles.list, 10);
+  const [editing, setEditing] = useState<TenantAccessRecord | null | undefined>(undefined);
+  const [deleteTarget, setDeleteTarget] = useState<TenantAccessRecord | null>(null);
+  const deleteMutation = useMutation({
+    mutationFn: (role: TenantAccessRecord) => tenantAccessApi.teamRoles.delete(idOf(role)),
+    onSuccess: async () => {
+      setDeleteTarget(null);
+      await queryClient.invalidateQueries({ queryKey: tenantQueryKeys.resource(tenantKey, 'team-roles') });
+    }
+  });
+
+  return (
+    <section className="enterprise-module-page">
+      <PageHeader
+        title="Team Roles"
+        description="Manage roles available when assigning members to tenant teams."
+        actions={<PermissionButton guard="tenant" permission="team.create" type="button" onClick={() => setEditing(null)}><Plus size={16} aria-hidden />Team role</PermissionButton>}
+      />
+      <DataTable
+        columns={[...genericColumns(['name', 'code', 'status']), actionColumn((row) => (
+          <RowActionMenu label={`Open actions for ${textOf(row, ['name', 'code'], 'team role')}`} items={[
+            { label: 'Edit', onClick: () => setEditing(row) },
+            { label: 'Delete team role', danger: true, separatorBefore: true, onClick: () => setDeleteTarget(row) }
+          ]} />
+        ))]}
+        data={query.rows}
+        getRowId={idOf}
+        loading={query.isLoading}
+        error={query.error}
+        searchValue={query.search}
+        searchPlaceholder="Search team roles..."
+        onSearchChange={query.setSearch}
+        page={query.page}
+        perPage={query.perPage}
+        total={query.total}
+        onPageChange={query.setPage}
+        onPerPageChange={(value) => { query.setPerPage(value); query.setPage(1); }}
+      />
+      {editing !== undefined ? <TenantTeamRoleEditor role={editing} onClose={() => setEditing(undefined)} /> : null}
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        onClose={() => setDeleteTarget(null)}
+        title="Delete team role?"
+        description={`This deletes ${textOf(deleteTarget, ['name', 'code'], 'this team role')}. Assigned team roles must be removed first.`}
+        confirmLabel="Delete"
+        confirmTone="danger"
+        typedConfirmation="delete"
+        guard="tenant"
+        permission="team.edit"
+        loading={deleteMutation.isPending}
+        error={deleteMutation.error ? errorMessage(deleteMutation.error) : null}
+        onConfirm={() => { if (deleteTarget) deleteMutation.mutate(deleteTarget); }}
+      />
+    </section>
+  );
+}
+
+function TenantTeamRoleEditor({ role, onClose }: { role: TenantAccessRecord | null; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState(() => ({
+    name: textOf(role, ['name']),
+    code: textOf(role, ['code']),
+    description: textOf(role, ['description']),
+    status: textOf(role, ['status'], 'active')
+  }));
+  const mutation = useMutation({
+    mutationFn: () => role?.uuid ? tenantAccessApi.teamRoles.update(role.uuid, form) : tenantAccessApi.teamRoles.create(form),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: tenantQueryKeys.resource(tenantKey, 'team-roles') });
+      onClose();
+    }
+  });
+
+  return <AppModal open onClose={onClose} title={role ? 'Edit Team Role' : 'Create Team Role'} guard="tenant" permission={role ? 'team.edit' : 'team.create'} footer={<ModalFooter onCancel={onClose} onSave={() => mutation.mutate()} loading={mutation.isPending} />}><SimpleForm form={form} fields={['name', 'code', 'description', 'status']} onChange={setForm} error={mutation.error} /></AppModal>;
+}
 export function TenantTeamCreatePage() {
   return <TeamEditorPage mode="create" />;
 }
@@ -632,6 +712,22 @@ export function TenantTeamViewPage() {
         error={deleteMutation.error ? errorMessage(deleteMutation.error) : null}
         onConfirm={({ reason }) => deleteMutation.mutate(reason)}
       />
+    </section>
+  );
+}
+export function TenantUserCreatePage() {
+  const { tenantSlug } = useParams();
+  const navigate = useNavigate();
+  const backToUsers = () => navigate(TENANT_ROUTES.accessControl.users(tenantSlug));
+
+  return (
+    <section className="enterprise-module-page">
+      <PageHeader
+        title="Invite User"
+        description="Create a tenant login and assign initial access."
+        actions={<Button type="button" variant="secondary" onClick={backToUsers}><ArrowLeft size={16} aria-hidden />Back</Button>}
+      />
+      <InviteUserModal open onClose={backToUsers} />
     </section>
   );
 }
@@ -920,12 +1016,14 @@ function usePagedQuery(resource: string, queryFn: (query?: ApiQuery) => Promise<
 function RoleSummaryCards({ stats, fallbackTotal, rows }: { stats: Record<string, unknown>; fallbackTotal: number; rows: TenantAccessRecord[] }) {
   const total = Number(stats.total ?? fallbackTotal ?? rows.length);
   const active = Number(stats.active ?? rows.filter((row) => row.status === 'active').length);
-  const inactive = Number(stats.inactive ?? rows.filter((row) => row.status === 'inactive').length);
+  const system = Number(stats.system ?? rows.filter((row) => Boolean(row.is_system)).length);
+  const assigned = Number(stats.assignments ?? rows.reduce((sum, row) => sum + Number(row.users_count ?? 0), 0));
   return (
     <div className="summary-grid">
       <SummaryCard icon={<ShieldCheck />} label="Total Roles" value={String(total)} />
       <SummaryCard icon={<RefreshCw />} label="Active" value={String(active)} />
-      <SummaryCard icon={<Users />} label="Inactive" value={String(inactive)} />
+      <SummaryCard icon={<KeyRound />} label="System" value={String(system)} />
+      <SummaryCard icon={<Users />} label="Assigned Users" value={String(assigned)} />
     </div>
   );
 }
@@ -1140,7 +1238,7 @@ function RoleForm({ role, onSaved, onCancel }: { role?: TenantAccessRecord; onSa
   });
 
   return (
-    <form className="form-grid form-grid--two" onSubmit={(event) => { event.preventDefault(); mutation.mutate(); }}>
+    <form className="tenant-role-editor-form rbac-form-shell" onSubmit={(event) => { event.preventDefault(); mutation.mutate(); }}><article className="enterprise-form form-grid form-grid--two">
       <SimpleInput label="Name" value={form.name} onChange={(name) => setForm({ ...form, name })} />
       <SimpleInput label="Display Name" value={form.display_name} onChange={(display_name) => setForm({ ...form, display_name })} />
       <label>
@@ -1167,10 +1265,11 @@ function RoleForm({ role, onSaved, onCancel }: { role?: TenantAccessRecord; onSa
       <div className="form-span-2">
         <h2>Permissions</h2>
         {permissions.isLoading ? <div className="surface-state">Loading permissions...</div> : null}
+        {permissions.isError ? <div className="surface-error">Unable to load permissions.</div> : null}
         <PermissionChecklist groups={permissions.data?.data.permissions ?? {}} selectedIds={permissionIds} onChange={setPermissionIds} />
       </div>
       {mutation.error ? <div className="surface-error form-span-2">{errorMessage(mutation.error)}</div> : null}
-      <div className="surface-footer form-span-2"><Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button><Button type="submit" disabled={mutation.isPending}>{mutation.isPending ? 'Saving...' : 'Save'}</Button></div>
+      </article><aside className="rbac-side-panel"><h2>{role ? 'Edit role' : 'New role'}</h2><p className="muted-cell">Review access before saving this tenant role.</p><div className="role-editor-summary"><strong>{permissionIds.length}</strong><span>Permissions selected</span><strong>{form.status === 'active' ? 'Active' : 'Inactive'}</strong><span>Current status</span></div></aside><footer className="enterprise-form__footer rbac-sticky-footer"><Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button><Button type="submit" disabled={mutation.isPending}>{mutation.isPending ? 'Saving...' : 'Save'}</Button></footer>
     </form>
   );
 }
@@ -1208,9 +1307,11 @@ function PermissionAssignDrawer({ open, target, record, onClose }: { open: boole
     onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: tenantQueryKeys.all(tenantKey) }); onClose(); }
   });
   return (
-    <AppDrawer open={open} onClose={onClose} title="Assign Permissions" guard="tenant" permission={target === 'role' ? 'role.assign_permissions' : 'team.edit'} size="lg" footer={<ModalFooter onCancel={onClose} onSave={() => mutation.mutate()} loading={mutation.isPending} />}>
+    <AppDrawer open={open} onClose={onClose} title="Assign Permissions" guard="tenant" permission={target === 'role' ? 'role.assign_permissions' : 'team.edit'} size="lg" footer={<div className="permission-drawer-actions"><ModalFooter onCancel={onClose} onSave={() => mutation.mutate()} loading={mutation.isPending} /></div>}>
       <p className="surface-state">Current assigned permissions are checked. Update the selection and save to apply changes.</p>
       {assignedPermissions.isLoading ? <div className="surface-state">Loading assigned permissions...</div> : null}
+      {permissions.isLoading ? <div className="surface-state">Loading permissions...</div> : null}
+      {permissions.isError ? <div className="surface-error">Unable to load permissions.</div> : null}
       <PermissionChecklist groups={permissions.data?.data.permissions ?? {}} selectedIds={selectedIds} onChange={setSelectedIds} />
       {mutation.error ? <div className="surface-error">{errorMessage(mutation.error)}</div> : null}
     </AppDrawer>
@@ -1267,7 +1368,13 @@ function TeamMemberModal({ open, team, onClose }: { open: boolean; team: TenantA
         <SelectInput label="Team role" value={form.team_role_id} onChange={(team_role_id) => setForm({ ...form, team_role_id })} options={teamRoles.data?.data ?? []} labelKeys={['name', 'code']} />
         <SimpleInput label="Member Type" value={form.member_type} onChange={(member_type) => setForm({ ...form, member_type })} />
         <SimpleInput label="Allocation Percent" value={form.allocation_percent} onChange={(allocation_percent) => setForm({ ...form, allocation_percent })} />
-        <SimpleInput label="Status" value={form.status} onChange={(status) => setForm({ ...form, status })} />
+                <label>
+          <span>Status</span>
+          <select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+        </label>
       </div>
       {mutation.error ? <div className="surface-error">{errorMessage(mutation.error)}</div> : null}
       {removeMutation.error ? <div className="surface-error">{errorMessage(removeMutation.error)}</div> : null}
@@ -1377,7 +1484,7 @@ function InviteUserModal({ open, onClose }: { open: boolean; onClose: () => void
   const roles = useQuery({ queryKey: tenantQueryKeys.list(tenantKey, 'roles-selector'), queryFn: () => tenantAccessApi.roles.list({ per_page: 100 }), enabled: open });
   const [form, setForm] = useState({ first_name: '', last_name: '', display_name: '', email: '', mobile: '', account_type: 'staff', status: 'invited' });
   const [roleIds, setRoleIds] = useState<string[]>([]);
-  const mutation = useMutation({ mutationFn: () => tenantAccessApi.users.invite({ ...form, role_ids: roleIds }), onSuccess: async () => queryClient.invalidateQueries({ queryKey: tenantQueryKeys.resource(tenantKey, 'users') }) });
+  const mutation = useMutation({ mutationFn: () => tenantAccessApi.users.invite({ ...form, role_ids: roleIds }), onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: tenantQueryKeys.resource(tenantKey, 'users') }); onClose(); } });
   return <AppModal open={open} onClose={onClose} title="Invite User" guard="tenant" permission="staff.create" footer={<ModalFooter onCancel={onClose} onSave={() => mutation.mutate()} loading={mutation.isPending} />}><SimpleForm form={form} fields={['first_name', 'last_name', 'display_name', 'email', 'mobile', 'account_type', 'status']} onChange={setForm} error={mutation.error} /><MultiRecordPicker label="Roles" rows={roles.data?.data ?? []} selectedIds={roleIds} onChange={setRoleIds} labelKeys={['display_name', 'name']} />{mutation.data ? <TokenPreview label="Temporary password" value={String((mutation.data.data as Record<string, unknown>).temporary_password ?? 'Only returned in local environment.')} /> : null}</AppModal>;
 }
 
@@ -1603,7 +1710,15 @@ function SimpleForm<T extends Record<string, unknown>>({ form, fields, onChange,
   const submit = (event: FormEvent) => { event.preventDefault(); onSubmit?.(); };
   return (
     <form className="form-grid form-grid--two" onSubmit={submit}>
-      {fields.map((field) => <SimpleInput key={field} label={label(field)} value={String(form[field] ?? '')} onChange={(value) => onChange({ ...form, [field]: value })} />)}
+      {fields.map((field) => field === 'status' ? (
+        <label key={field}>
+          <span>Status</span>
+          <select value={String(form[field] ?? 'active')} onChange={(event) => onChange({ ...form, [field]: event.target.value })}>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+        </label>
+      ) : <SimpleInput key={field} label={label(field)} value={String(form[field] ?? '')} onChange={(value) => onChange({ ...form, [field]: value })} />)}
       {error ? <div className="surface-error">{errorMessage(error)}</div> : null}
       {onSubmit ? <div className="surface-footer">{onCancel ? <Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button> : null}<Button type="submit" disabled={loading}>{loading ? 'Saving...' : 'Save'}</Button></div> : null}
     </form>
@@ -1692,11 +1807,29 @@ function PermissionChecklist({ groups, selectedIds, onChange }: { groups: Groupe
   const entries = Object.entries(groups);
   if (entries.length === 0) return <div className="empty-state">No permissions returned.</div>;
   const toggle = (id: string) => onChange(selectedIds.includes(id) ? selectedIds.filter((item) => item !== id) : [...selectedIds, id]);
+  const toggleModule = (permissions: unknown[]) => {
+    const moduleIds = permissions.map((permission) => idOf(permission as TenantAccessRecord));
+    const allSelected = moduleIds.length > 0 && moduleIds.every((id) => selectedIds.includes(id));
+    const next = new Set(selectedIds);
+
+    moduleIds.forEach((id) => (allSelected ? next.delete(id) : next.add(id)));
+    onChange([...next]);
+  };
   return (
-    <section className="settings-grid">
+    <section className="permission-checklist settings-grid">
       {entries.map(([module, permissions]) => (
         <article className="settings-panel" key={module}>
-          <h2>{label(module)}</h2>
+          <div className="permission-module-header">
+            <h2>{label(module)}</h2>
+            <button
+              type="button"
+              className="permission-module-toggle"
+              onClick={() => toggleModule(permissions)}
+              aria-label={`${permissions.every((permission) => selectedIds.includes(idOf(permission))) ? 'Unselect' : 'Select'} all ${label(module)} permissions`}
+            >
+              {permissions.length > 0 && permissions.every((permission) => selectedIds.includes(idOf(permission))) ? 'Unselect all' : 'Select all'}
+            </button>
+          </div>
           <div className="settings-list">
             {permissions.map((permission) => (
               <label key={idOf(permission)} className="check-row">

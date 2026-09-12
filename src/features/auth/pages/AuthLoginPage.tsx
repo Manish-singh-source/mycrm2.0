@@ -56,10 +56,12 @@ export function AuthLoginPage() {
 
   const accounts = useMemo(() => {
     const list = discovery?.accounts ?? [];
-    const guarded = requestedGuard ? list.filter((account) => account.authGuard === requestedGuard) : list;
+    const ordered = requestedGuard
+      ? [...list].sort((left, right) => Number(right.authGuard === requestedGuard) - Number(left.authGuard === requestedGuard))
+      : list;
     const query = accountSearch.trim().toLowerCase();
-    if (!query) return guarded;
-    return guarded.filter((account) =>
+    if (!query) return ordered;
+    return ordered.filter((account) =>
       [account.label, account.displayName, account.email, account.organization, account.roles.join(' ')]
         .filter(Boolean)
         .join(' ')
@@ -82,11 +84,8 @@ export function AuthLoginPage() {
     try {
       const response = await authApi.discoverAccounts({ email, device_name: deviceName() });
       setDiscovery(response.data);
-      const nextAccounts = requestedGuard
-        ? response.data.accounts.filter((account) => account.authGuard === requestedGuard)
-        : response.data.accounts;
       setSelectedRef('');
-      if (nextAccounts.length === 0) {
+      if (response.data.accounts.length === 0) {
         setMessage('No active account found for this email.');
       }
     } catch (err) {

@@ -5554,3 +5554,159 @@ input[name=organization_code] { display: none; }
 :root[data-theme='dark'] body {
   background: linear-gradient(180deg, #111c31 0, var(--crm-bg) 280px), var(--crm-bg);
 }
+
+/* Tenant role permission selector */
+.permission-checklist {
+  display: block;
+}
+
+.permission-checklist .settings-panel {
+  gap: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+.permission-checklist .settings-panel h2 {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.permission-checklist .settings-list {
+  display: grid;
+  gap: 0;
+}
+
+.permission-checklist .check-row {
+  border-top: 1px solid var(--crm-line-soft, #edf1f5);
+  gap: 10px;
+  min-height: 42px;
+  padding: 9px 14px;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.permission-checklist .check-row:hover {
+  background: #f7f9fc;
+}
+
+.permission-checklist .check-row input[type='checkbox'] {
+  accent-color: #2457d6;
+  height: 17px;
+  width: 17px;
+}
+
+.permission-checklist .check-row span {
+  color: #24324a;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+@media (max-width: 760px) {
+  .permission-checklist.settings-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.permission-drawer-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-right: auto;
+  max-width: 800px;
+  width: 100%;
+}
+
+@media (max-width: 760px) {
+  .permission-drawer-actions {
+    max-width: none;
+  }
+}
+.tenant-role-editor-form .rbac-side-panel {
+  align-content: start;
+}
+
+.tenant-role-editor-form .rbac-side-panel > p {
+  margin: 0;
+}
+
+.role-editor-summary {
+  border-top: 1px solid var(--crm-line-soft, #edf1f5);
+  display: grid;
+  gap: 6px 12px;
+  grid-template-columns: auto 1fr;
+  margin-top: 4px;
+  padding-top: 14px;
+}
+
+.role-editor-summary strong {
+  color: var(--crm-ink, #162238);
+  font-size: 20px;
+  line-height: 1.1;
+}
+
+.role-editor-summary span {
+  align-self: center;
+  color: var(--crm-muted, #64748b);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+@media (max-width: 900px) {
+  .tenant-role-editor-form.rbac-form-shell {
+    grid-template-columns: 1fr;
+  }
+}
+/* Tenant role permission module controls */
+.permission-checklist {
+  align-items: start;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.permission-checklist .permission-module-header {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-height: 52px;
+  padding: 10px 14px;
+}
+.permission-checklist .permission-module-header h2 {
+  margin: 0;
+}
+.permission-module-toggle {
+  background: transparent;
+  border: 0;
+  color: #2457d6;
+  cursor: pointer;
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 750;
+  padding: 5px 0;
+}
+.permission-module-toggle:hover {
+  color: #173ea5;
+  text-decoration: underline;
+}
+@media (max-width: 760px) {
+  .permission-checklist {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Tenant role permissions occupy the full editor width. */
+.tenant-role-editor-form .form-span-2 {
+  grid-column: 1 / -1;
+}
+.tenant-role-editor-form .permission-checklist {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+@media (max-width: 1100px) {
+  .tenant-role-editor-form .permission-checklist {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 760px) {
+  .tenant-role-editor-form .permission-checklist {
+    grid-template-columns: 1fr;
+  }
+}

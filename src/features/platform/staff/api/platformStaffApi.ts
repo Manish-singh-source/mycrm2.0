@@ -49,9 +49,23 @@ export type PlatformStaffRelation = {
   [key: string]: unknown;
 };
 
+export type PlatformStaffListKpis = {
+  total?: number;
+  active?: number;
+  inactive?: number;
+  suspended?: number;
+  two_factor_enabled?: number;
+  two_factor_required?: number;
+  role_assignments?: number;
+  team_assignments?: number;
+  direct_permissions?: number;
+  [key: string]: unknown;
+};
+
 export type PlatformStaffListResult = {
   data: PlatformStaffRecord[];
   total: number;
+  kpis?: PlatformStaffListKpis;
 };
 
 export type PlatformStaffPayload = {
@@ -113,7 +127,8 @@ export const platformStaffApi = {
     const response = await platformClient.get<PlatformStaffRecord[]>('/platform-users', { query });
     return {
       data: Array.isArray(response.data) ? response.data : [],
-      total: paginationTotal(response.meta, Array.isArray(response.data) ? response.data.length : 0)
+      total: paginationTotal(response.meta, Array.isArray(response.data) ? response.data.length : 0),
+      kpis: ((response.meta?.kpis ?? response.meta?.kpi) as PlatformStaffListKpis | undefined)
     };
   },
   detail: async (id: string) => {
