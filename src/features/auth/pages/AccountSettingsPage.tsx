@@ -35,6 +35,7 @@ export function AccountSettingsPage({ guard }: AccountSettingsPageProps) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [twoFactorCode, setTwoFactorCode] = useState('');
   const [twoFactorSecret, setTwoFactorSecret] = useState('');
+  const [twoFactorSetupToken, setTwoFactorSetupToken] = useState('');
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -106,6 +107,7 @@ export function AccountSettingsPage({ guard }: AccountSettingsPageProps) {
     try {
       const response = await accountApi.enableTwoFactor(guard);
       setTwoFactorSecret(response.data.secret);
+      setTwoFactorSetupToken(response.data.setup_token ?? '');
       setMessage('Enter a code from your authenticator to confirm 2FA.');
     } catch (err) {
       setError(errorMessage(err));
@@ -116,9 +118,13 @@ export function AccountSettingsPage({ guard }: AccountSettingsPageProps) {
     setError('');
     setMessage('');
     try {
-      await accountApi.confirmTwoFactor(guard, twoFactorCode);
+      await accountApi.confirmTwoFactor(guard, {
+        code: twoFactorCode,
+        ...(twoFactorSetupToken ? { setup_token: twoFactorSetupToken } : {})
+      });
       setTwoFactorCode('');
       setTwoFactorSecret('');
+      setTwoFactorSetupToken('');
       setMessage('Two-factor authentication enabled.');
     } catch (err) {
       setError(errorMessage(err));

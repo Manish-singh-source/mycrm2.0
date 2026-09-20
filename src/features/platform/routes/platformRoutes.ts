@@ -36,6 +36,7 @@ export const PLATFORM_ROUTES = {
   monitoring: `${platformBase}/monitoring`,
   integrations: `${platformBase}/integrations`,
   settings: `${platformBase}/settings`,
+  profile: `${platformBase}/profile`,
   audit: `${platformBase}/audit`,
   onboarding: `${platformBase}/onboarding`,
   trials: `${platformBase}/trials`,

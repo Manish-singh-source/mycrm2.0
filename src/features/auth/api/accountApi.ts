@@ -25,6 +25,12 @@ export type PreferencesPatch = {
   [key: string]: unknown;
 };
 
+export type TwoFactorSetup = {
+  setup_token?: string;
+  secret: string;
+  provisioning_uri: string;
+};
+
 export type ApiTokenPayload = {
   name: string;
   abilities: string[];
@@ -60,6 +66,10 @@ function apiTokensPath(guard: AuthGuard) {
   return guard === 'platform' ? '/api-tokens' : '/profile/api-tokens';
 }
 
+function preferencesPayload(preferences: PreferencesPatch) {
+  return { preferences: { profile: preferences } };
+}
+
 export const accountApi = {
   profile: (guard: AuthGuard) => clientFor(guard).get<Record<string, unknown>>('/profile'),
   updateProfile: (guard: AuthGuard, body: ProfilePatch) =>
@@ -68,18 +78,18 @@ export const accountApi = {
     clientFor(guard).put<Record<string, unknown>, PasswordChange>('/profile/password', body),
   preferences: (guard: AuthGuard) => clientFor(guard).get<Record<string, unknown>>(preferencesPath(guard)),
   updatePreferences: (guard: AuthGuard, body: PreferencesPatch) =>
-    clientFor(guard).put<Record<string, unknown>, PreferencesPatch>(preferencesPath(guard), body),
+    clientFor(guard).put<Record<string, unknown>, ReturnType<typeof preferencesPayload>>(preferencesPath(guard), preferencesPayload(body)),
   sessions: (guard: AuthGuard) => clientFor(guard).get<unknown[]>('/profile/sessions'),
   revokeSession: (guard: AuthGuard, sessionId: string) =>
     clientFor(guard).delete<Record<string, unknown>>(`/profile/sessions/${encodeURIComponent(sessionId)}`),
   enableTwoFactor: (guard: AuthGuard) =>
-    clientFor(guard).post<{ secret: string; provisioning_uri: string }>('/auth/2fa/enable'),
-  confirmTwoFactor: (guard: AuthGuard, code: string) =>
-    clientFor(guard).post<Record<string, unknown>, { code: string }>('/auth/2fa/confirm', { code }),
+    clientFor(guard).post<TwoFactorSetup>('/2fa/enable'),
+  confirmTwoFactor: (guard: AuthGuard, body: { code: string; setup_token?: string }) =>
+    clientFor(guard).post<Record<string, unknown>, { code: string; setup_token?: string }>('/2fa/confirm', body),
   disableTwoFactor: (guard: AuthGuard, password: string) =>
-    clientFor(guard).post<Record<string, unknown>, { password: string }>('/auth/2fa/disable', { password }),
+    clientFor(guard).post<Record<string, unknown>, { password: string }>('/2fa/disable', { password }),
   resendVerification: (guard: AuthGuard) =>
-    clientFor(guard).post<Record<string, unknown>>('/auth/verify-email/resend'),
+    clientFor(guard).post<Record<string, unknown>>('/verify-email/resend'),
   apiTokens: (guard: AuthGuard) => clientFor(guard).get<ApiTokenRecord[]>(apiTokensPath(guard)),
   createApiToken: (guard: AuthGuard, body: ApiTokenPayload) =>
     clientFor(guard).post<ApiTokenRecord, ApiTokenPayload>(apiTokensPath(guard), body),

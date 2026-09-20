@@ -126,6 +126,8 @@ export const platformNavigation: NavGroup[] = [
     id: 'settings',
     label: 'Settings',
     items: [
+      { label: 'Profile', to: PLATFORM_ROUTES.profile, icon: UserRoundCog, permission: 'profile.view' },
+      { label: 'API Tokens', to: PLATFORM_ROUTES.apiTokens, icon: KeyRound, permission: 'api_token.view' },
       { label: 'Settings', to: PLATFORM_ROUTES.settings, icon: Settings, permission: 'setting.view' },
       { label: 'Integrations', to: PLATFORM_ROUTES.integrations, icon: Plug, permission: 'integration.view' }
     ]
@@ -138,7 +140,6 @@ export const platformNavigation: NavGroup[] = [
       { label: 'Trials', to: PLATFORM_ROUTES.trials, icon: Bell, permission: 'subscription.view' },
       { label: 'Legal', to: PLATFORM_ROUTES.legal, icon: Gavel, permission: 'setting.view' },
       { label: 'Announcements', to: PLATFORM_ROUTES.announcements, icon: Bell, permission: 'announcement.view' },
-      { label: 'API Tokens', to: PLATFORM_ROUTES.apiTokens, icon: FileBadge2, permission: 'setting.view' },
       { label: 'Webhooks', to: PLATFORM_ROUTES.webhooks, icon: Users, permission: 'integration.view' }
     ]
   }

@@ -5,6 +5,7 @@ import { PlatformLayout } from '@/layouts/PlatformLayout';
 import { TenantLayout } from '@/layouts/TenantLayout';
 import { PublicAuthRoute } from '@/features/auth/guards/PublicAuthRoute';
 import {
+  AccountSettingsPage,
   ApiTokensPage,
   AuthLoginPage,
   ForgotPasswordPage,
@@ -899,6 +900,14 @@ export const appRouter = createBrowserRouter([
         element: (
           <RequirePermission guard="platform" anyOf={['integration.view']}>
             <PlatformWebhooksPage />
+          </RequirePermission>
+        )
+      },
+      {
+        path: 'profile',
+        element: (
+          <RequirePermission guard="platform" anyOf={["profile.view"]}>
+            <AccountSettingsPage guard="platform" />
           </RequirePermission>
         )
       },
