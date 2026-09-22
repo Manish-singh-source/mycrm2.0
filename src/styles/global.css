@@ -3370,6 +3370,28 @@ textarea:focus-visible {
   box-shadow: inset -1px 0 0 var(--crm-sidebar-line);
   color: #e7edf6;
   padding: 16px 12px 22px;
+  scrollbar-color: #607b9a transparent;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+
+.app-sidebar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.app-sidebar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.app-sidebar::-webkit-scrollbar-thumb {
+  background: #607b9a;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background-clip: padding-box;
+}
+
+.app-sidebar::-webkit-scrollbar-thumb:hover {
+  background-color: #8ba7c5;
 }
 
 .app-sidebar__brand {

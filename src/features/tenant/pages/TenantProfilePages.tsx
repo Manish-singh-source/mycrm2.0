@@ -134,7 +134,7 @@ function SecurityPanel() {
   }
   async function confirm() {
     try {
-      await accountApi.confirmTwoFactor('tenant', code);
+      await accountApi.confirmTwoFactor('tenant', { code });
       setSecret('');
       setCode('');
       setMessage('Two-factor authentication enabled.');

@@ -246,7 +246,7 @@ function LeaveBalances() {
 }
 
 function LeaveCalendar() {
-  const query = useQuery({ queryKey: tenantQueryKeys.resource(tenantKey, 'leave-calendar'), queryFn: tenantHrmsApi.leave.calendar });
+  const query = useQuery({ queryKey: tenantQueryKeys.resource(tenantKey, 'leave-calendar'), queryFn: () => tenantHrmsApi.leave.calendar() });
   return <CalendarList rows={query.data?.data.events ?? []} dateKey="start_date" titleKey="staff_name" />;
 }
 
