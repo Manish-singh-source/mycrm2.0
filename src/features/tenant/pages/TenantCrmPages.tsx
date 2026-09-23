@@ -1,4 +1,4 @@
-﻿import { useMemo, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Banknote, Copy, Download, Mail, Merge, Plus, Star, Upload, UserCheck } from 'lucide-react';
@@ -319,8 +319,10 @@ function PartyForm({ resource, record, onSaved }: { resource: PartyResource; rec
   const lookups = useLookupOptions();
   const initial = useMemo(() => bundleToForm(resource, record), [record, resource]);
   const [form, setForm] = useState(initial);
+  const [formError, setFormError] = useState('');
+  useEffect(() => { setForm(initial); setFormError(''); }, [initial]);
   const mutation = useMutation({
-    mutationFn: () => record ? tenantCrmApi[resource].update(idOf(record.party as CrmRecord), formToPayload(resource, form)) : tenantCrmApi[resource].create(formToPayload(resource, form)),
+    mutationFn: () => record ? tenantCrmApi[resource].update(idOf((record.party as CrmRecord | undefined) ?? record), formToPayload(resource, form)) : tenantCrmApi[resource].create(formToPayload(resource, form)),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: tenantQueryKeys.resource(tenantKey, resource) });
       onSaved();
@@ -328,12 +330,14 @@ function PartyForm({ resource, record, onSaved }: { resource: PartyResource; rec
   });
   function submit(event: FormEvent) {
     event.preventDefault();
+    if (!form.display_name.trim()) { setFormError('Display name is required.'); return; }
+    setFormError('');
     mutation.mutate();
   }
   return (
-    <form className="settings-panel" onSubmit={submit}>
+    <form className="settings-panel" onSubmit={submit} noValidate>
       <div className="form-grid form-grid--two">
-        <SimpleInput label="Display Name" value={form.display_name} onChange={(display_name) => setForm({ ...form, display_name })} required />
+        <SimpleInput label="Display Name" value={form.display_name} onChange={(display_name) => { setFormError(''); setForm({ ...form, display_name }); }} required />
         <SimpleInput label="Legal Name" value={form.legal_name} onChange={(legal_name) => setForm({ ...form, legal_name })} />
         <SimpleInput label="Email" type="email" value={form.email} onChange={(email) => setForm({ ...form, email })} />
         <SimpleInput label="Phone" value={form.phone} onChange={(phone) => setForm({ ...form, phone })} />
@@ -343,7 +347,8 @@ function PartyForm({ resource, record, onSaved }: { resource: PartyResource; rec
         {resource === 'vendors' ? <VendorFields form={form} setForm={(next) => setForm({ ...form, ...next })} users={users.data?.data ?? []} categories={lookups.vendorCategories} /> : null}
         {resource === 'leads' ? <LeadFields form={form} setForm={(next) => setForm({ ...form, ...next })} stages={lookups.leadStages} priorities={lookups.leadPriorities} /> : null}
       </div>
-      {mutation.error ? <div className="surface-error">{errorMessage(mutation.error)}</div> : null}
+      {formError ? <div className="surface-error" role="alert">{formError}</div> : null}
+      {mutation.error ? <div className="surface-error" role="alert">{mutation.error instanceof ApiError && Object.keys(mutation.error.validationErrors).length ? Object.entries(mutation.error.validationErrors).map(([field, messages]) => <div key={field}>{label(field)}: {Array.isArray(messages) ? messages.join(' ') : String(messages)}</div>) : errorMessage(mutation.error)}</div> : null}
       <div className="surface-footer"><Button type="submit" disabled={mutation.isPending}>{mutation.isPending ? 'Saving...' : 'Save'}</Button></div>
     </form>
   );
@@ -360,29 +365,33 @@ function ContactModal({ resource, parentId, open, onClose }: { resource: PartyRe
     mutationFn: () => tenantCrmApi[resource].contacts.create(parentId, normalizeForm(form)),
     onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: tenantQueryKeys.detail(tenantKey, resource, parentId) }); setForm(contactForm()); onClose(); }
   });
+  const submit = () => {
+    if (!form.first_name.trim()) return;
+    mutation.mutate();
+  };
   return (
-    <AppModal open={open} onClose={onClose} title="Add Contact" footer={<ModalFooter onCancel={onClose} onSave={() => mutation.mutate()} loading={mutation.isPending} />}>
-      <FormFields form={form} fields={['first_name', 'last_name', 'email', 'mobile', 'phone', 'designation', 'department', 'is_primary']} onChange={(next) => setForm({ ...form, ...next })} />
-      {mutation.error ? <div className="surface-error">{errorMessage(mutation.error)}</div> : null}
+    <AppModal open={open} onClose={onClose} title="Add Contact" footer={<ModalFooter onCancel={onClose} onSave={submit} loading={mutation.isPending} />}>
+      <div className="form-grid form-grid--two">
+        <SimpleInput label="First Name" value={form.first_name} onChange={(first_name) => setForm({ ...form, first_name })} required />
+        <SimpleInput label="Last Name" value={form.last_name} onChange={(last_name) => setForm({ ...form, last_name })} />
+        <SimpleInput label="Email" type="email" value={form.email} onChange={(email) => setForm({ ...form, email })} />
+        <SimpleInput label="Mobile" type="tel" value={form.mobile} onChange={(mobile) => setForm({ ...form, mobile })} />
+        <SimpleInput label="Phone" type="tel" value={form.phone} onChange={(phone) => setForm({ ...form, phone })} />
+      </div>
+      <label className="check-row"><input type="checkbox" checked={form.is_primary === 'true'} onChange={(event) => setForm({ ...form, is_primary: String(event.target.checked) })} /><span>Primary contact</span></label>
+      {mutation.error ? <div className="surface-error" role="alert">{errorMessage(mutation.error)}</div> : null}
     </AppModal>
   );
 }
-
 function AddressModal({ resource, parentId, open, onClose }: { resource: PartyResource; parentId: string; open: boolean; onClose: () => void }) {
   const queryClient = useQueryClient();
-  const [form, setForm] = useState(addressForm());
+  const [form, setForm] = useState({ address_type: 'business', address_line_1: '', address_line_2: '', postal_code: '', is_default: 'false' });
   const mutation = useMutation({
     mutationFn: () => tenantCrmApi[resource].addresses.create(parentId, normalizeForm(form)),
-    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: tenantQueryKeys.detail(tenantKey, resource, parentId) }); setForm(addressForm()); onClose(); }
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: tenantQueryKeys.detail(tenantKey, resource, parentId) }); setForm({ address_type: 'business', address_line_1: '', address_line_2: '', postal_code: '', is_default: 'false' }); onClose(); }
   });
-  return (
-    <AppModal open={open} onClose={onClose} title="Add Address" footer={<ModalFooter onCancel={onClose} onSave={() => mutation.mutate()} loading={mutation.isPending} />}>
-      <FormFields form={form} fields={['address_type', 'address_line_1', 'address_line_2', 'postal_code', 'is_default']} onChange={(next) => setForm({ ...form, ...next })} />
-      {mutation.error ? <div className="surface-error">{errorMessage(mutation.error)}</div> : null}
-    </AppModal>
-  );
+  return <AppModal open={open} onClose={onClose} title="Add Address" footer={<ModalFooter onCancel={onClose} onSave={() => mutation.mutate()} loading={mutation.isPending} />}><FormFields form={form} fields={['address_type', 'address_line_1', 'address_line_2', 'postal_code']} onChange={(next) => setForm({ ...form, ...next })} /><label className="check-row"><input type="checkbox" checked={form.is_default === 'true'} onChange={(event) => setForm({ ...form, is_default: String(event.target.checked) })} /><span>Default address</span></label>{mutation.error ? <div className="surface-error">{errorMessage(mutation.error)}</div> : null}</AppModal>;
 }
-
 function PortalModal({ parentId, contacts, open, onClose }: { parentId: string; contacts: CrmRecord[]; open: boolean; onClose: () => void }) {
   const queryClient = useQueryClient();
   const [contactId, setContactId] = useState('');
@@ -465,7 +474,7 @@ function LeadActionModal({ action, lead, leadId, onClose }: { action: ModalState
         {action === 'stage' ? <SelectInput label="Stage" value={form.stage_id ?? ''} onChange={(stage_id) => setForm({ ...form, stage_id })} options={lookups.leadStages} labelKeys={['name', 'code']} /> : null}
         {action === 'lost' ? <SimpleInput label="Lost Reason" value={form.lost_reason ?? ''} onChange={(lost_reason) => setForm({ ...form, lost_reason })} required /> : null}
         {action === 'duplicate' ? <SimpleInput label="New Lead Number" value={form.lead_number ?? ''} onChange={(lead_number) => setForm({ ...form, lead_number })} /> : null}
-        {action === 'convert' ? <><SelectInput label="Existing Client" value={form.client_id ?? ''} onChange={(client_id) => setForm({ ...form, client_id })} options={clients.data?.data ?? []} labelKeys={['display_name', 'client_code', 'email']} /><SimpleInput label="New Client Code" value={form.client_code ?? ''} onChange={(client_code) => setForm({ ...form, client_code })} /><SelectInput label="Account Manager" value={form.account_manager_id ?? ''} onChange={(account_manager_id) => setForm({ ...form, account_manager_id })} options={users.data?.data ?? []} labelKeys={['display_name', 'email']} /><SimpleInput label="Conversion Note" value={form.conversion_note ?? ''} onChange={(conversion_note) => setForm({ ...form, conversion_note })} /></> : null}
+        {action === 'convert' ? <><SelectInput label="Existing Client" value={form.client_id ?? ''} onChange={(client_id) => setForm({ ...form, client_id })} options={clients.data?.data ?? []} labelKeys={['display_name', 'client_code', 'email']} /><SelectInput label="Account Manager" value={form.account_manager_id ?? ''} onChange={(account_manager_id) => setForm({ ...form, account_manager_id })} options={users.data?.data ?? []} labelKeys={['display_name', 'email']} /><SimpleInput label="Conversion Note" value={form.conversion_note ?? ''} onChange={(conversion_note) => setForm({ ...form, conversion_note })} /></> : null}
         {action === 'activity' || action === 'meeting' ? <><SimpleInput label="Subject" value={form.subject ?? ''} onChange={(subject) => setForm({ ...form, subject })} required /><SimpleInput label="Activity Type" value={action === 'meeting' ? 'meeting' : form.activity_type ?? 'follow_up'} onChange={(activity_type) => setForm({ ...form, activity_type })} /><SimpleInput label="Scheduled At" type="datetime-local" value={form.scheduled_at ?? ''} onChange={(scheduled_at) => setForm({ ...form, scheduled_at })} /><SelectInput label="Assigned To" value={form.assigned_to ?? ''} onChange={(assigned_to) => setForm({ ...form, assigned_to })} options={users.data?.data ?? []} labelKeys={['display_name', 'email']} /></> : null}
       </div>
       {action === 'stage' ? <p className="surface-state">Confirming this change updates the lead stage immediately.</p> : null}
@@ -576,9 +585,8 @@ function ImplementationPlaceholder({ title, description }: { title: string; desc
 }
 
 function ClientFields({ form, setForm, users }: { form: Record<string, string>; setForm: (form: Record<string, string>) => void; users: CrmRecord[] }) {
-  return <><SimpleInput label="Client Code" value={form.client_code} onChange={(client_code) => setForm({ ...form, client_code })} required /><SimpleInput label="Client Type" value={form.client_type} onChange={(client_type) => setForm({ ...form, client_type })} /><SimpleInput label="Credit Limit" type="number" value={form.credit_limit} onChange={(credit_limit) => setForm({ ...form, credit_limit })} /><SimpleInput label="Payment Terms Days" type="number" value={form.payment_terms_days} onChange={(payment_terms_days) => setForm({ ...form, payment_terms_days })} /><SimpleInput label="Onboarding Date" type="date" value={form.onboarding_date} onChange={(onboarding_date) => setForm({ ...form, onboarding_date })} /><SelectInput label="Account Manager" value={form.account_manager_id} onChange={(account_manager_id) => setForm({ ...form, account_manager_id })} options={users} labelKeys={['display_name', 'email']} /></>;
+  return <><SimpleInput label="Client Type" value={form.client_type} onChange={(client_type) => setForm({ ...form, client_type })} /><SimpleInput label="Credit Limit" type="number" value={form.credit_limit} onChange={(credit_limit) => setForm({ ...form, credit_limit })} /><SimpleInput label="Payment Terms Days" type="number" value={form.payment_terms_days} onChange={(payment_terms_days) => setForm({ ...form, payment_terms_days })} /><SimpleInput label="Onboarding Date" type="date" value={form.onboarding_date.slice(0, 10)} onChange={(onboarding_date) => setForm({ ...form, onboarding_date })} /><SelectInput label="Account Manager" value={form.account_manager_id} onChange={(account_manager_id) => setForm({ ...form, account_manager_id })} options={users} labelKeys={['display_name', 'email']} /></>;
 }
-
 function VendorFields({ form, setForm, users, categories }: { form: Record<string, string>; setForm: (form: Record<string, string>) => void; users: CrmRecord[]; categories: CrmRecord[] }) {
   return <><SimpleInput label="Vendor Code" value={form.vendor_code} onChange={(vendor_code) => setForm({ ...form, vendor_code })} required /><SelectInput label="Vendor Category" value={form.vendor_category_id} onChange={(vendor_category_id) => setForm({ ...form, vendor_category_id })} options={categories} labelKeys={['name', 'code']} /><SimpleInput label="Payment Terms Days" type="number" value={form.payment_terms_days} onChange={(payment_terms_days) => setForm({ ...form, payment_terms_days })} /><SimpleInput label="Rating" type="number" value={form.rating} onChange={(rating) => setForm({ ...form, rating })} /><SelectInput label="Account Manager" value={form.account_manager_id} onChange={(account_manager_id) => setForm({ ...form, account_manager_id })} options={users} labelKeys={['display_name', 'email']} /></>;
 }
@@ -592,7 +600,7 @@ function FormFields({ form, fields, onChange }: { form: Record<string, string>; 
 }
 
 function SimpleInput({ label: inputLabel, value, onChange, type = 'text', required }: { label: string; value: string; onChange: (value: string) => void; type?: string; required?: boolean }) {
-  return <label><span>{inputLabel}</span><input type={type} value={value} onChange={(event) => onChange(event.target.value)} required={required} /></label>;
+  return <label><span>{inputLabel}{required ? ' *' : ''}</span><input type={type} value={value} onChange={(event) => onChange(event.target.value)} required={required} /></label>;
 }
 
 function SelectInput({ label: inputLabel, value, onChange, options, labelKeys }: { label: string; value: string; onChange: (value: string) => void; options: CrmRecord[]; labelKeys: string[] }) {
@@ -647,13 +655,12 @@ function bundleToForm(resource: PartyResource, record?: CrmRecord) {
     email: textOf(party, ['email']),
     phone: textOf(party, ['phone']),
     website: textOf(party, ['website']),
-    owner_user_id: textOf(party, ['owner_user_uuid', 'owner_user_id']),
-    client_code: textOf(profile, ['client_code']),
+    owner_user_id: String((party.owner_user as CrmRecord | undefined)?.uuid ?? ''),
     client_type: textOf(profile, ['client_type']),
     credit_limit: textOf(profile, ['credit_limit']),
     payment_terms_days: textOf(profile, ['payment_terms_days']),
     onboarding_date: textOf(profile, ['onboarding_date']),
-    account_manager_id: textOf(profile, ['account_manager_uuid', 'account_manager_id']),
+    account_manager_id: textOf(record, ['account_manager_uuid']),
     vendor_code: textOf(profile, ['vendor_code']),
     vendor_category_id: textOf(profile, ['vendor_category_uuid', 'vendor_category_id']),
     rating: textOf(profile, ['rating']),
@@ -668,12 +675,12 @@ function bundleToForm(resource: PartyResource, record?: CrmRecord) {
 
 function formToPayload(resource: PartyResource, form: Record<string, string>) {
   const partyKeys = ['display_name', 'legal_name', 'email', 'phone', 'website', 'owner_user_id'];
-  const profileKeys = resource === 'clients' ? ['client_code', 'client_type', 'credit_limit', 'payment_terms_days', 'onboarding_date', 'account_manager_id'] : resource === 'vendors' ? ['vendor_code', 'vendor_category_id', 'payment_terms_days', 'rating', 'account_manager_id'] : ['lead_number', 'stage_id', 'priority_id', 'expected_value', 'probability', 'expected_close_date'];
+  const profileKeys = resource === 'clients' ? ['client_type', 'credit_limit', 'payment_terms_days', 'onboarding_date', 'account_manager_id'] : resource === 'vendors' ? ['vendor_code', 'vendor_category_id', 'payment_terms_days', 'rating', 'account_manager_id'] : ['lead_number', 'stage_id', 'priority_id', 'expected_value', 'probability', 'expected_close_date'];
   return { party: pick(form, partyKeys), profile: pick(form, profileKeys) };
 }
 
 function contactForm() {
-  return { first_name: '', last_name: '', email: '', mobile: '', phone: '', designation: '', department: '', is_primary: 'false' };
+  return { first_name: '', last_name: '', email: '', mobile: '', phone: '', is_primary: 'false' };
 }
 
 function addressForm() {

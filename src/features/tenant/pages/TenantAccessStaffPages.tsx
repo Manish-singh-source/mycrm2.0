@@ -617,7 +617,6 @@ function TenantTeamRoleEditor({ role, onClose }: { role: TenantAccessRecord | nu
   const queryClient = useQueryClient();
   const [form, setForm] = useState(() => ({
     name: textOf(role, ['name']),
-    code: textOf(role, ['code']),
     description: textOf(role, ['description']),
     status: textOf(role, ['status'], 'active')
   }));
@@ -629,7 +628,7 @@ function TenantTeamRoleEditor({ role, onClose }: { role: TenantAccessRecord | nu
     }
   });
 
-  return <AppModal open onClose={onClose} title={role ? 'Edit Team Role' : 'Create Team Role'} guard="tenant" permission={role ? 'team.edit' : 'team.create'} footer={<ModalFooter onCancel={onClose} onSave={() => mutation.mutate()} loading={mutation.isPending} />}><SimpleForm form={form} fields={['name', 'code', 'description', 'status']} onChange={setForm} error={mutation.error} /></AppModal>;
+  return <AppModal open onClose={onClose} title={role ? 'Edit Team Role' : 'Create Team Role'} guard="tenant" permission={role ? 'team.edit' : 'team.create'} footer={<ModalFooter onCancel={onClose} onSave={() => mutation.mutate()} loading={mutation.isPending} />}><SimpleForm form={form} fields={['name', 'description', 'status']} onChange={setForm} error={mutation.error} /></AppModal>;
 }
 export function TenantTeamCreatePage() {
   return <TeamEditorPage mode="create" />;
@@ -651,7 +650,7 @@ function TeamEditorPage({ mode }: { mode: 'create' | 'edit' }) {
         actions={<Button type="button" variant="secondary" onClick={backToTeams}><ArrowLeft size={16} aria-hidden />Back</Button>}
       />
       {mode === 'edit' && query.isLoading ? <div className="surface-state">Loading team...</div> : null}
-      <TeamForm team={query.data} onSaved={backToTeams} onCancel={backToTeams} />
+      {mode === 'create' || query.data ? <TeamForm team={query.data} onSaved={backToTeams} onCancel={backToTeams} /> : null}
     </section>
   );
 }
@@ -733,6 +732,7 @@ export function TenantUserCreatePage() {
 }
 export function TenantUsersPage() {
   const { tenantSlug } = useParams();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState('');
   const query = usePagedQuery('users', tenantAccessApi.users.list, 10, statusFilter ? { status: statusFilter } : undefined);
@@ -752,7 +752,7 @@ export function TenantUsersPage() {
 
   return (
     <section className="enterprise-module-page">
-      <PageHeader title="Tenant Users" description="Invite, update access, roles, account status, sessions, and 2FA." actions={<><Link className="button button--secondary button--md" to={TENANT_ROUTES.hrms.staff(tenantSlug)}>Staff Lifecycle</Link><PermissionButton guard="tenant" permission="staff.create" type="button" onClick={() => setModal('inviteUser')}><UserPlus size={16} aria-hidden />Invite</PermissionButton></>} />
+      <PageHeader title="Tenant Users" description="Invite, update access, roles, account status, sessions, and 2FA." actions={<><Link className="button button--secondary button--md" to={TENANT_ROUTES.hrms.staff(tenantSlug)}>Staff Lifecycle</Link><PermissionButton guard="tenant" permission="staff.create" type="button" variant="secondary" onClick={() => navigate(TENANT_ROUTES.hrms.staff(tenantSlug) + '/create')}><Plus size={16} aria-hidden />Create staff</PermissionButton><PermissionButton guard="tenant" permission="staff.create" type="button" onClick={() => setModal('inviteUser')}><UserPlus size={16} aria-hidden />Invite</PermissionButton></>} />
       <UserSummaryCards stats={stats} fallbackTotal={query.total} rows={query.rows} />
       <DataTable
         columns={userColumns((row, action) => { setSelected(row); setModal(action); }, (row, action) => statusMutation.mutate({ id: idOf(row), action }))}
@@ -776,6 +776,7 @@ export function TenantUsersPage() {
       <UserFiltersModal open={modal === 'userFilters'} status={statusFilter} onStatusChange={(value) => { setStatusFilter(value); query.setPage(1); }} onClose={() => setModal(null)} />
       <UserColumnsModal open={modal === 'userColumns'} hiddenColumnIds={hiddenColumnIds} onChange={setHiddenColumnIds} onClose={() => setModal(null)} />
 
+      <InviteUserModal open={modal === 'inviteUser'} onClose={() => setModal(null)} />
       <AssignUserRoleModal open={modal === 'assignRole'} user={selected} onClose={() => setModal(null)} />
       <ResetPasswordModal open={modal === 'resetPassword'} user={selected} onClose={() => setModal(null)} />
       <ConfirmDialog open={modal === 'forceLogout'} onClose={() => setModal(null)} title="Force logout user?" description={`This revokes active sessions for ${textOf(selected, ['display_name', 'email'], 'this user')}.`} confirmLabel="Force logout" guard="tenant" permission="staff.edit" loading={actionMutation.isPending} error={actionMutation.error ? errorMessage(actionMutation.error) : null} onConfirm={() => selected && actionMutation.mutate({ id: idOf(selected), action: 'forceLogout' })} />
@@ -1341,11 +1342,29 @@ function AssignUsersModal({ open, role, onClose }: { open: boolean; role: Tenant
 
 function TeamForm({ team, onSaved, onCancel }: { team?: TenantAccessRecord; onSaved: () => void; onCancel?: () => void }) {
   const queryClient = useQueryClient();
-  const [form, setForm] = useState(() => ({ name: textOf(team, ['name']), code: textOf(team, ['code']), description: textOf(team, ['description']), email: textOf(team, ['email']), phone: textOf(team, ['phone']), visibility: textOf(team, ['visibility'], 'tenant'), status: textOf(team, ['status'], 'active') }));
+  const [form, setForm] = useState(() => ({ name: textOf(team, ['name']), description: textOf(team, ['description']), email: textOf(team, ['email']), phone: textOf(team, ['phone']), visibility: textOf(team, ['visibility'], 'tenant'), status: textOf(team, ['status'], 'active') }));
+  const [nameError, setNameError] = useState('');
   const mutation = useMutation({ mutationFn: () => team?.uuid ? tenantAccessApi.teams.update(team.uuid, form) : tenantAccessApi.teams.create(form), onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: tenantQueryKeys.resource(tenantKey, 'teams') }); onSaved(); } });
-  return <SimpleForm form={form} fields={['name', 'code', 'description', 'email', 'phone', 'visibility', 'status']} onChange={setForm} onSubmit={() => mutation.mutate()} onCancel={onCancel} loading={mutation.isPending} error={mutation.error} />;
+  const fieldErrors = mutation.error instanceof ApiError ? mutation.error.validationErrors : {};
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (!form.name.trim()) { setNameError('Team name is required.'); return; }
+    setNameError('');
+    mutation.mutate();
+  };
+  return (
+    <form className="form-grid form-grid--two" onSubmit={submit} noValidate>
+      <label><span>Team name <span aria-hidden="true">*</span></span><input required maxLength={150} value={form.name} aria-invalid={Boolean(nameError || fieldErrors.name)} onChange={(event) => { setNameError(''); setForm({ ...form, name: event.target.value }); }} />{nameError || fieldErrors.name?.[0] ? <span className="surface-error" role="alert">{nameError || fieldErrors.name?.[0]}</span> : null}</label>
+      <label><span>Description</span><textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
+      <label><span>Email</span><input type="email" value={form.email} aria-invalid={Boolean(fieldErrors.email)} onChange={(event) => setForm({ ...form, email: event.target.value })} />{fieldErrors.email?.[0] ? <span className="surface-error" role="alert">{fieldErrors.email[0]}</span> : null}</label>
+      <label><span>Phone</span><input type="tel" maxLength={20} value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></label>
+      <label><span>Visibility</span><select value={form.visibility} onChange={(event) => setForm({ ...form, visibility: event.target.value })}><option value="tenant">Tenant</option><option value="private">Private</option><option value="public">Public</option></select></label>
+      <label><span>Status</span><select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}><option value="active">Active</option><option value="inactive">Inactive</option></select></label>
+      {mutation.error ? <div className="surface-error" role="alert">{errorMessage(mutation.error)}</div> : null}
+      <div className="surface-footer"><Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button><Button type="submit" disabled={mutation.isPending}>{mutation.isPending ? 'Saving...' : 'Save'}</Button></div>
+    </form>
+  );
 }
-
 function TeamMemberModal({ open, team, onClose }: { open: boolean; team: TenantAccessRecord | null; onClose: () => void }) {
   const queryClient = useQueryClient();
   const teamId = idOf(team);
@@ -1440,7 +1459,6 @@ function InviteStaffModal({ open, onClose }: { open: boolean; onClose: () => voi
     enabled: open
   });
   const [form, setForm] = useState({
-    employee_code: '',
     first_name: '',
     last_name: '',
     display_name: '',
@@ -1452,7 +1470,7 @@ function InviteStaffModal({ open, onClose }: { open: boolean; onClose: () => voi
     mutationFn: () => tenantAccessApi.staff.create({ ...form, create_user: true, role_ids: roleIds }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: tenantQueryKeys.resource(tenantKey, 'staff') });
-      setForm({ employee_code: '', first_name: '', last_name: '', display_name: '', work_email: '', mobile: '' });
+      setForm({ first_name: '', last_name: '', display_name: '', work_email: '', mobile: '' });
       setRoleIds([]);
       onClose();
     }
@@ -1471,7 +1489,8 @@ function InviteStaffModal({ open, onClose }: { open: boolean; onClose: () => voi
       <p className="surface-state">This creates the staff record and its linked tenant login together.</p>
       <SimpleForm
         form={form}
-        fields={['employee_code', 'first_name', 'last_name', 'display_name', 'work_email', 'mobile']}
+        fields={['first_name', 'last_name', 'display_name', 'work_email', 'mobile']}
+        requiredFields={['first_name', 'work_email']}
         onChange={setForm}
         error={mutation.error}
       />
@@ -1485,7 +1504,7 @@ function InviteUserModal({ open, onClose }: { open: boolean; onClose: () => void
   const [form, setForm] = useState({ first_name: '', last_name: '', display_name: '', email: '', mobile: '', account_type: 'staff', status: 'invited' });
   const [roleIds, setRoleIds] = useState<string[]>([]);
   const mutation = useMutation({ mutationFn: () => tenantAccessApi.users.invite({ ...form, role_ids: roleIds }), onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: tenantQueryKeys.resource(tenantKey, 'users') }); onClose(); } });
-  return <AppModal open={open} onClose={onClose} title="Invite User" guard="tenant" permission="staff.create" footer={<ModalFooter onCancel={onClose} onSave={() => mutation.mutate()} loading={mutation.isPending} />}><SimpleForm form={form} fields={['first_name', 'last_name', 'display_name', 'email', 'mobile', 'account_type', 'status']} onChange={setForm} error={mutation.error} /><MultiRecordPicker label="Roles" rows={roles.data?.data ?? []} selectedIds={roleIds} onChange={setRoleIds} labelKeys={['display_name', 'name']} />{mutation.data ? <TokenPreview label="Temporary password" value={String((mutation.data.data as Record<string, unknown>).temporary_password ?? 'Only returned in local environment.')} /> : null}</AppModal>;
+  return <AppModal open={open} onClose={onClose} title="Invite User" guard="tenant" permission="staff.create" footer={<ModalFooter onCancel={onClose} onSave={() => mutation.mutate()} loading={mutation.isPending} />}><SimpleForm form={form} fields={['first_name', 'last_name', 'display_name', 'email', 'mobile', 'account_type', 'status']} requiredFields={['first_name', 'email']} onChange={setForm} error={mutation.error} /><MultiRecordPicker label="Roles" rows={roles.data?.data ?? []} selectedIds={roleIds} onChange={setRoleIds} labelKeys={['display_name', 'name']} />{mutation.data ? <TokenPreview label="Temporary password" value={String((mutation.data.data as Record<string, unknown>).temporary_password ?? 'Only returned in local environment.')} /> : null}</AppModal>;
 }
 
 function AssignUserRoleModal({ open, user, onClose }: { open: boolean; user: TenantAccessRecord | null; onClose: () => void }) {
@@ -1576,8 +1595,8 @@ function StaffModal({ open, staff, onClose }: { open: boolean; staff: TenantAcce
 function StaffForm({ staff, onSaved }: { staff?: TenantAccessRecord; onSaved: () => void }) {
   const queryClient = useQueryClient();
   const roles = useQuery({ queryKey: tenantQueryKeys.list(tenantKey, 'roles-selector'), queryFn: () => tenantAccessApi.roles.list({ per_page: 100 }), enabled: !staff });
+  const options = useQuery({ queryKey: tenantQueryKeys.resource(tenantKey, 'staff-form-options'), queryFn: tenantAccessApi.staff.formOptions });
   const initialForm = (record?: TenantAccessRecord) => ({
-    employee_code: textOf(record, ['employee_code']),
     first_name: textOf(record, ['first_name']),
     last_name: textOf(record, ['last_name']),
     display_name: textOf(record, ['display_name']),
@@ -1589,12 +1608,18 @@ function StaffForm({ staff, onSaved }: { staff?: TenantAccessRecord; onSaved: ()
     employment_type: textOf(record, ['employment_type'], 'full_time'),
     joining_date: textOf(record, ['joining_date']),
     exit_date: textOf(record, ['exit_date']),
-    employment_status: textOf(record, ['employment_status'], 'active')
+    employment_status: textOf(record, ['employment_status'], 'active'),
+    department_id: String((record?.department as TenantAccessRecord | undefined)?.uuid ?? ''),
+    designation_id: String((record?.designation as TenantAccessRecord | undefined)?.uuid ?? ''),
+    office_id: String((record?.office as TenantAccessRecord | undefined)?.uuid ?? ''),
+    primary_team_id: String((record?.primary_team as TenantAccessRecord | undefined)?.uuid ?? ''),
+    reporting_manager_id: String((record?.reporting_manager as TenantAccessRecord | undefined)?.uuid ?? '')
   });
   const [form, setForm] = useState(() => initialForm(staff));
   const [step, setStep] = useState(0);
   const [createLogin, setCreateLogin] = useState(false);
   const [roleIds, setRoleIds] = useState<string[]>([]);
+  const [formError, setFormError] = useState('');
   useEffect(() => { setForm(initialForm(staff)); setStep(0); }, [staff?.uuid]);
   const mutation = useMutation({
     mutationFn: () => staff?.uuid ? tenantAccessApi.staff.update(staff.uuid, form) : tenantAccessApi.staff.create({ ...form, create_user: createLogin, role_ids: roleIds }),
@@ -1602,30 +1627,45 @@ function StaffForm({ staff, onSaved }: { staff?: TenantAccessRecord; onSaved: ()
   });
   const steps = ['Basic details', 'Employment', 'Access'];
   const update = (field: keyof ReturnType<typeof initialForm>, value: string) => setForm((current) => ({ ...current, [field]: value }));
+  const select = (field: keyof ReturnType<typeof initialForm>, title: string, rows: TenantAccessRecord[] | undefined, nameKey: string) => <label key={field}><span>{title}</span><select value={form[field]} onChange={(event) => update(field, event.target.value)}><option value=''>None</option>{(rows ?? []).map((row) => <option key={row.uuid} value={row.uuid}>{String(row[nameKey] ?? row.uuid)}</option>)}</select></label>;
 
   return (
-    <form className="settings-stack" onSubmit={(event) => { event.preventDefault(); if (step < steps.length - 1) { setStep((current) => current + 1); return; } mutation.mutate(); }}>
+    <form className="settings-stack" noValidate onSubmit={(event) => { event.preventDefault(); if (!form.first_name.trim()) { setStep(0); setFormError('First name is required.'); return; } if (createLogin && !form.work_email.trim()) { setStep(1); setFormError('Work email is required for a linked login.'); return; } setFormError(''); if (step < steps.length - 1) { setStep((current) => current + 1); return; } mutation.mutate(); }}>
       <nav className="tabs" aria-label="Staff form steps">
         {steps.map((name, index) => <button key={name} type="button" className="tabs__item" aria-selected={index === step} aria-current={index === step ? 'step' : undefined} onClick={() => setStep(index)}>{index + 1}. {name}</button>)}
       </nav>
       {step === 0 ? <section className="settings-panel">
         <h2>Basic / Personal Details</h2>
         <div className="form-grid form-grid--two">
-          {(['employee_code', 'first_name', 'last_name', 'display_name', 'date_of_birth', 'gender', 'personal_email', 'mobile'] as const).map((field) => <SimpleInput key={field} label={label(field)} value={form[field]} onChange={(value) => update(field, value)} />)}
+          <label><span>First name *</span><input required maxLength={100} value={form.first_name} onChange={(event) => update('first_name', event.target.value)} /></label>
+          {(['last_name', 'display_name', 'mobile'] as const).map((field) => <SimpleInput key={field} label={label(field)} value={form[field]} onChange={(value) => update(field, value)} />)}
+          <label><span>Date of birth</span><input type="date" value={form.date_of_birth.slice(0, 10)} onChange={(event) => update('date_of_birth', event.target.value)} /></label>
+          <label><span>Gender</span><select value={form.gender} onChange={(event) => update('gender', event.target.value)}><option value="">None</option><option value="male">Male</option><option value="female">Female</option><option value="other">Other</option><option value="prefer_not_to_say">Prefer not to say</option></select></label>
+          <label><span>Personal email</span><input type="email" value={form.personal_email} onChange={(event) => update('personal_email', event.target.value)} /></label>
         </div>
       </section> : null}
       {step === 1 ? <section className="settings-panel">
         <h2>Employment Details</h2>
         <div className="form-grid form-grid--two">
-          {(['work_email', 'employment_type', 'joining_date', 'exit_date', 'employment_status'] as const).map((field) => <SimpleInput key={field} label={label(field)} value={form[field]} onChange={(value) => update(field, value)} />)}
+          <label><span>Work email{createLogin ? ' *' : ''}</span><input type="email" required={createLogin} value={form.work_email} onChange={(event) => update('work_email', event.target.value)} /></label>
+          <label><span>Employment type</span><select value={form.employment_type} onChange={(event) => update('employment_type', event.target.value)}><option value="">None</option><option value="full_time">Full time</option><option value="part_time">Part time</option><option value="contract">Contract</option><option value="intern">Intern</option><option value="temporary">Temporary</option></select></label>
+          <label><span>Joining date</span><input type="date" value={form.joining_date.slice(0, 10)} onChange={(event) => update('joining_date', event.target.value)} /></label>
+          <label><span>Exit date</span><input type="date" min={form.joining_date.slice(0, 10) || undefined} value={form.exit_date.slice(0, 10)} onChange={(event) => update('exit_date', event.target.value)} /></label>
+          <label><span>Employment status</span><select value={form.employment_status} onChange={(event) => update('employment_status', event.target.value)}><option value="active">Active</option><option value="inactive">Inactive</option><option value="on_leave">On leave</option><option value="terminated">Terminated</option></select></label>
+          {select('department_id', 'Department', options.data?.data.departments, 'name')}
+          {select('designation_id', 'Designation', options.data?.data.designations, 'name')}
+          {select('office_id', 'Office', options.data?.data.tenant_offices, 'office_name')}
+          {select('primary_team_id', 'Primary team', options.data?.data.teams, 'name')}
+          {select('reporting_manager_id', 'Reporting manager', options.data?.data.users, 'display_name')}
         </div>
-        <p className="permission-state permission-state--compact">Department, designation, office, team, and reporting manager fields will use tenant selectors when those lookup APIs are enabled.</p>
+
       </section> : null}
       {step === 2 ? <section className="settings-panel">
         <h2>Access</h2>
-        <label className="check-row"><input type="checkbox" checked={createLogin} onChange={(event) => setCreateLogin(event.target.checked)} /><span>Create linked login user and send invitation</span></label>
+        <label className="check-row"><input type="checkbox" checked={createLogin} onChange={(event) => setCreateLogin(event.target.checked)} /><span>Create linked Staff account and send invitation</span></label>
         {createLogin ? <MultiRecordPicker label="Initial roles" rows={roles.data?.data ?? []} selectedIds={roleIds} onChange={setRoleIds} labelKeys={['display_name', 'name']} /> : <p className="permission-state permission-state--compact">You can invite or manage login access later from the staff detail page.</p>}
       </section> : null}
+      {formError ? <div className="surface-error" role="alert">{formError}</div> : null}
       {mutation.error ? <div className="surface-error" role="alert">{errorMessage(mutation.error)}</div> : null}
       <div className="surface-footer">
         <Button type="button" variant="secondary" onClick={onSaved}>Cancel</Button>
@@ -1706,11 +1746,20 @@ function StaffTimelineDrawer({ open, staffId, onClose }: { open: boolean; staffI
   return <AppDrawer open={open} onClose={onClose} title="Staff Timeline" guard="tenant" permission="activity_log.view" size="lg"><RecordList title="Activity" rows={query.data?.data.activities ?? []} /></AppDrawer>;
 }
 
-function SimpleForm<T extends Record<string, unknown>>({ form, fields, onChange, onSubmit, onCancel, loading, error }: { form: T; fields: string[]; onChange: (form: T) => void; onSubmit?: () => void; onCancel?: () => void; loading?: boolean; error?: unknown }) {
+function SimpleForm<T extends Record<string, unknown>>({ form, fields, requiredFields = [], onChange, onSubmit, onCancel, loading, error }: { form: T; fields: string[]; requiredFields?: string[]; onChange: (form: T) => void; onSubmit?: () => void; onCancel?: () => void; loading?: boolean; error?: unknown }) {
   const submit = (event: FormEvent) => { event.preventDefault(); onSubmit?.(); };
   return (
     <form className="form-grid form-grid--two" onSubmit={submit}>
-      {fields.map((field) => field === 'status' ? (
+      {fields.map((field) => field === 'account_type' ? (
+        <label key={field}>
+          <span>Account type</span>
+          <select value={String(form[field] ?? 'staff')} onChange={(event) => onChange({ ...form, [field]: event.target.value })}>
+            <option value="staff">Staff</option>
+            <option value="client">Client</option>
+            <option value="owner">Owner</option>
+          </select>
+        </label>
+      ) : field === 'status' ? (
         <label key={field}>
           <span>Status</span>
           <select value={String(form[field] ?? 'active')} onChange={(event) => onChange({ ...form, [field]: event.target.value })}>
@@ -1718,15 +1767,15 @@ function SimpleForm<T extends Record<string, unknown>>({ form, fields, onChange,
             <option value="inactive">Inactive</option>
           </select>
         </label>
-      ) : <SimpleInput key={field} label={label(field)} value={String(form[field] ?? '')} onChange={(value) => onChange({ ...form, [field]: value })} />)}
-      {error ? <div className="surface-error">{errorMessage(error)}</div> : null}
+      ) : <SimpleInput key={field} label={label(field)} value={String(form[field] ?? '')} type={field.includes('email') ? 'email' : 'text'} required={requiredFields.includes(field)} onChange={(value) => onChange({ ...form, [field]: value })} />)}
+      {error ? <div className="surface-error" role="alert">{error instanceof ApiError && Object.keys(error.validationErrors).length ? Object.entries(error.validationErrors).map(([field, messages]) => <div key={field}>{label(field)}: {Array.isArray(messages) ? messages.join(' ') : String(messages)}</div>) : errorMessage(error)}</div> : null}
       {onSubmit ? <div className="surface-footer">{onCancel ? <Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button> : null}<Button type="submit" disabled={loading}>{loading ? 'Saving...' : 'Save'}</Button></div> : null}
     </form>
   );
 }
 
-function SimpleInput({ label: inputLabel, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
-  return <label><span>{inputLabel}</span><input value={value} onChange={(event) => onChange(event.target.value)} /></label>;
+function SimpleInput({ label: inputLabel, value, onChange, type = 'text', required = false }: { label: string; value: string; onChange: (value: string) => void; type?: string; required?: boolean }) {
+  return <label><span>{inputLabel}{required ? ' *' : ''}</span><input type={type} required={required} value={value} onChange={(event) => onChange(event.target.value)} /></label>;
 }
 
 function SelectInput({

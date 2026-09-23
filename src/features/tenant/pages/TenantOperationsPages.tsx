@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type FormEvent, type ReactNode, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -243,9 +243,10 @@ function RecordViewPage({ resource }: { resource: Exclude<Resource, 'calendar'> 
 
 function ViewTab({ resource, tab, bundle, loading, onModal }: { resource: Exclude<Resource, 'calendar'>; tab: string; bundle?: OperationsRecord; loading?: boolean; onModal: (modal: ModalState) => void }) {
   if (loading) return <div className="surface-state">Loading details...</div>;
-  if (tab === 'details') return <DetailGrid record={scrub(rootRecord(resource, bundle))} />;
-  if (resource === 'renewals' && tab === 'amc') { const amc = (bundle as Record<string, any> | undefined)?.amc; return <RecordList title="AMC Visits" rows={asRows(amc?.visits)} />; }
-  const rows = asRows((resource === 'todo' ? rootRecord(resource, bundle)?.[tab] : (bundle as Record<string, unknown> | undefined)?.[tab]));
+  const root = rootRecord(resource, bundle);
+  if (tab === 'details') return <DetailGrid record={scrub(root)} />;
+  if (resource === 'renewals' && tab === 'amc') { const amc = root.amc ?? (bundle as Record<string, unknown> | undefined)?.amc; return <RecordList title="AMC Visits" rows={asRows((amc as Record<string, unknown> | undefined)?.visits)} />; }
+  const rows = asRows(root[tab] ?? (bundle as Record<string, unknown> | undefined)?.[tab]);
   const actions: Record<string, ModalState> = {
     members: 'member', phases: 'phase', milestones: 'milestone', time_logs: 'logTime', expenses: 'expense',
     checklists: 'checklist', dependencies: 'dependency', watchers: 'watcher', reminders: 'reminder', items: 'quick',
@@ -283,6 +284,9 @@ function RecordActionModal({ resource, action, record, selectedIds, onClose, bun
   const selectors = useSelectors(Boolean(action));
   const [form, setForm] = useState<Record<string, string>>({});
   const id = idOf(record);
+  useEffect(() => {
+    setForm({});
+  }, [action, id]);
   const mutation = useMutation<unknown>({
     mutationFn: () => runAction(resource, action, id, form, selectedIds),
     onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: tenantQueryKeys.resource(tenantKey, resource) }); onClose(); }

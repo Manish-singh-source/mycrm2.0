@@ -149,6 +149,7 @@ export const tenantAccessApi = {
     requireTwoFactor: (id: string, required = true) => client().post(`/users/${encodeURIComponent(id)}/require-2fa`, { required })
   },
   staff: {
+    formOptions: () => client().get<Record<string, TenantAccessRecord[]>>('/staff/form-options'),
     dashboard: () => client().get<Record<string, unknown>>('/staff/dashboard'),
     list: (query?: ApiQuery) => list('/staff', query, ['staff']),
     grid: (query?: ApiQuery) => list('/staff/grid', query, ['staff']),
